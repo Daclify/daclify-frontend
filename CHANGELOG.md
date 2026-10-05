@@ -10,3 +10,5 @@
   and mobile focus/layout behavior. Add desktop/mobile presentation regressions.
 - Document the visual source, Daclify adaptations and limits of fixture-based
   verification. Core/module protocol pins remain at `0.1.0-alpha.1`.
+- Module enablement now sends the reviewed code hash. Disabling sends an empty
+  pin because the runtime clears grants without requiring the current code.

@@ -141,6 +141,7 @@ async function install(module: ModuleState['modules'][number]) {
       version: 1,
       actions: permission.actions,
       grants: permission.grants,
+      code_hash: module.deployment.codeHash,
     }),
     `${names[module.deployment.id]} enabled`,
   );
@@ -155,6 +156,7 @@ async function disable(module: ModuleState['modules'][number]) {
       version: 1,
       actions: [],
       grants: [],
+      code_hash: '00'.repeat(32),
     }),
     `${names[module.deployment.id]} disabled. Approved obligations remain payable.`,
   );
