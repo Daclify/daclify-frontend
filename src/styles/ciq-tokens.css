@@ -1,0 +1,45 @@
+/* Product foundations adapted from the supplied CIQ & MIQ Design System Oct 26.
+   Daclify uses the family palette and components, with its own dashboard layout.
+   Inter is bundled locally; no remote font, script, or marketing assets load. */
+:root {
+  color-scheme: dark;
+  --font-sans:
+    'Inter Variable', Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    'Segoe UI', sans-serif;
+  --color-bg-base: #08070a;
+  --color-bg-gradient: linear-gradient(180deg, #08070a 0%, #141012 100%);
+  --color-bg-atmosphere:
+    radial-gradient(circle at top right, rgba(120, 64, 182, 0.12), transparent 30%),
+    radial-gradient(circle at bottom center, rgba(219, 113, 35, 0.18), transparent 40%);
+  --surface-panel: rgba(24, 17, 14, 0.86);
+  --surface-raised: rgba(35, 24, 19, 0.92);
+  --surface-soft: rgba(255, 244, 228, 0.055);
+  --surface-brand: linear-gradient(160deg, rgba(244, 179, 93, 0.22), rgba(219, 113, 35, 0.12));
+  --border-default: rgba(255, 232, 203, 0.13);
+  --border-warm: rgba(245, 167, 74, 0.34);
+  /* Stronger than decorative panel borders so field boundaries remain visible. */
+  --border-control: rgba(255, 232, 203, 0.46);
+  --text-primary: #f3eadf;
+  --text-secondary: #ddd1c2;
+  --text-muted: #b8a791;
+  --text-on-amber: #160a02;
+  --accent-amber: #f4b35d;
+  --accent-amber-strong: #ee9c3d;
+  --accent-gradient: linear-gradient(180deg, #f4b35d 0%, #ee9c3d 100%);
+  --accent-soft: rgba(244, 179, 93, 0.08);
+  --state-success: #a7d96a;
+  --state-success-bg: rgba(167, 217, 106, 0.14);
+  --border-success: rgba(167, 217, 106, 0.5);
+  --state-danger: #ee8d82;
+  --state-danger-hover: #ff9b91;
+  --state-danger-bg: rgba(238, 141, 130, 0.12);
+  --border-danger: rgba(238, 141, 130, 0.5);
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+  --elevation-panel: inset 0 1px 0 rgba(255, 239, 218, 0.05), 0 10px 28px rgba(0, 0, 0, 0.22);
+  --glow-amber: 0 0 0 2px rgba(250, 175, 74, 0.12), 0 8px 20px rgba(250, 175, 74, 0.14);
+  --glow-danger: 0 0 0 2px rgba(238, 141, 130, 0.14), 0 8px 22px rgba(238, 141, 130, 0.16);
+  --motion-fast: 140ms ease;
+}

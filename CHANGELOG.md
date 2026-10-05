@@ -1,0 +1,12 @@
+# Changelog
+
+## 0.1.0-alpha.2
+
+- Align shared Vue UI with the supplied CIQ/MIQ operational design: espresso
+  surfaces, amber actions, ivory text, lime success and coral errors.
+- Bundle Inter locally and use consistent Vue Lucide icons in navigation and
+  the DAO hub.
+- Improve filter touch targets, destructive-button contrast, field boundaries
+  and mobile focus/layout behavior. Add desktop/mobile presentation regressions.
+- Document the visual source, Daclify adaptations and limits of fixture-based
+  verification. Core/module protocol pins remain at `0.1.0-alpha.1`.

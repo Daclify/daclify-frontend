@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { ArrowUpRight, Network, Plus } from '@lucide/vue';
 import { useWorkspace } from '../state/workspace';
 const state = useWorkspace();
 const search = ref('');
@@ -20,7 +21,7 @@ const visible = computed(() =>
       <h1>Your DAO hub</h1>
       <p class="lead">Find your community. Make decisions. Build something together.</p>
     </div>
-    <RouterLink class="button" to="/create">＋ Create DAO</RouterLink>
+    <RouterLink class="button" to="/create"><Plus aria-hidden="true" /> Create DAO</RouterLink>
   </div>
   <div class="stats-grid">
     <article class="stat-card">
@@ -47,7 +48,7 @@ const visible = computed(() =>
   </div>
   <p v-if="state.loading" role="status">Loading the hub…</p>
   <div v-else-if="!visible.length" class="empty-state">
-    <span class="empty-icon" aria-hidden="true">◈</span>
+    <Network class="empty-icon" aria-hidden="true" />
     <h2>{{ search ? 'No matching communities' : 'A place for your next community' }}</h2>
     <p>
       {{
@@ -76,12 +77,12 @@ const visible = computed(() =>
         }}
       </p>
       <div class="dao-card-footer">
-        <span>{{ dao.members }} members</span><span>Open workspace ↗</span>
-      </div></RouterLink
-    >
+        <span>{{ dao.members }} members</span>
+        <span class="card-action">Open workspace <ArrowUpRight aria-hidden="true" /></span></div
+    ></RouterLink>
   </div>
   <aside class="info-strip">
-    <span aria-hidden="true">↗</span>
+    <Network class="info-icon" aria-hidden="true" />
     <div>
       <strong>Your DAO, your deployment</strong>
       <p>

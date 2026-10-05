@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
+import { Blocks, BookOpen, LayoutGrid, Plus, UserRound } from '@lucide/vue';
 import { useWorkspace } from './state/workspace';
 import { lockVault, vaultUnlocked } from './auth/session';
 const state = useWorkspace();
@@ -27,20 +28,20 @@ onMounted(() => {
       <nav id="primary-links" :class="{ 'mobile-open': mobileOpen }">
         <p class="nav-label">WORKSPACE</p>
         <RouterLink to="/" @click="mobileOpen = false"
-          ><span aria-hidden="true">◈</span> DAO hub</RouterLink
+          ><LayoutGrid class="nav-icon" aria-hidden="true" /> DAO hub</RouterLink
         >
         <RouterLink to="/create" @click="mobileOpen = false"
-          ><span aria-hidden="true">＋</span> Create DAO</RouterLink
+          ><Plus class="nav-icon" aria-hidden="true" /> Create DAO</RouterLink
         >
         <RouterLink to="/account" @click="mobileOpen = false"
-          ><span aria-hidden="true">○</span> Account</RouterLink
+          ><UserRound class="nav-icon" aria-hidden="true" /> Account</RouterLink
         >
         <p class="nav-label">RESOURCES</p>
         <RouterLink to="/docs" @click="mobileOpen = false"
-          ><span aria-hidden="true">▤</span> Documentation</RouterLink
+          ><BookOpen class="nav-icon" aria-hidden="true" /> Documentation</RouterLink
         >
         <RouterLink to="/docs/modules" @click="mobileOpen = false"
-          ><span aria-hidden="true">⊞</span> Module guide</RouterLink
+          ><Blocks class="nav-icon" aria-hidden="true" /> Module guide</RouterLink
         >
       </nav>
       <div class="sidebar-footer">

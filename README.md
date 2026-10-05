@@ -14,3 +14,9 @@ The user requests one continuous implementation session and reviews the complete
 Daclify V2 — Vue and TypeScript frontend, account experience, and module interfaces
 
 Start from three sibling checkouts with core’s [development bootstrap](https://github.com/Daclify/daclify-backend-core/blob/main/docs/development.md). Then run `npm run build`, `npm test`, and `npm run test:e2e` with the documented disposable local API, PostgreSQL and native-chain fixtures. Pinata fixtures are labelled and do not establish live provider availability.
+
+The shared UI follows the supplied CIQ/MIQ operational visual system, adapted to
+Daclify's dashboard and governance screens. See [visual foundations and checks](docs/ui/ciq-alignment.md)
+for the source, palette, locally bundled fonts/icons and accessibility behavior.
+`npm run test:e2e -- theme.spec.ts` checks the visual layer using read-only,
+schema-validated fixtures; it does not require a running chain or API.
