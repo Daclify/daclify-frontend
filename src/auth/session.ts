@@ -70,6 +70,13 @@ function touch() {
   if (timer) clearTimeout(timer);
   timer = setTimeout(lockVault, 10 * 60_000);
 }
+export function acceptProviderSession(account: Account, csrfToken: string): Account {
+  if (!/^[A-Za-z0-9_-]{32,128}$/.test(csrfToken)) throw new Error('CSRF_REQUIRED');
+  sessionStorage.setItem('daclify.csrf', csrfToken);
+  const saved = savedVault();
+  if (secrets && saved && saved.signingPublicKey !== account.signingKey) lockVault();
+  return account;
+}
 export async function unlockAndLogin(password: string): Promise<Account> {
   const started = generation;
   const vault = savedVault();

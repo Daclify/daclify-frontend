@@ -15,3 +15,5 @@
 - Lint rejects explicit `any`, TypeScript suppressions, non-null assertions,
   and unchecked casts through `unknown`. `npm run verify` runs that lint,
   `vue-tsc`, and the unit tests. It does not publish a release.
+- A provider session can identify an account without unlocking a user-controlled
+  vault. A different signing key locks a vault that is already open.
