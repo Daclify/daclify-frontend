@@ -11,6 +11,8 @@
     "dev": "vite --host 127.0.0.1",
     "build": "vue-tsc --noEmit && vite build",
     "typecheck": "vue-tsc --noEmit",
+    "lint": "vitest run tests/unit/lint-policy.test.ts",
+    "verify": "npm run lint && npm run typecheck && npm test",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "format:check": "prettier --check \"**/*.{ts,vue,css,json}\"",

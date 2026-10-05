@@ -12,3 +12,6 @@
   verification. Core/module protocol pins remain at `0.1.0-alpha.1`.
 - Module enablement now sends the reviewed code hash. Disabling sends an empty
   pin because the runtime clears grants without requiring the current code.
+- Lint rejects explicit `any`, TypeScript suppressions, non-null assertions,
+  and unchecked casts through `unknown`. `npm run verify` runs that lint,
+  `vue-tsc`, and the unit tests. It does not publish a release.
