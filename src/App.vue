@@ -7,6 +7,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
+  Store,
   UserRound,
 } from '@lucide/vue';
 import { useWorkspace } from './state/workspace';
@@ -73,6 +74,11 @@ onMounted(() => {
         <RouterLink to="/create" @click="mobileOpen = false"
           ><Plus class="nav-icon" aria-hidden="true" /><span class="nav-text"
             >Create DAO</span
+          ></RouterLink
+        >
+        <RouterLink to="/marketplace" @click="mobileOpen = false"
+          ><Store class="nav-icon" aria-hidden="true" /><span class="nav-text"
+            >Marketplace</span
           ></RouterLink
         >
         <RouterLink to="/account" @click="mobileOpen = false"
