@@ -33,6 +33,10 @@ function base64(value: Uint8Array): string {
     binary += String.fromCharCode(...value.subarray(start, start + 0x8000));
   return btoa(binary);
 }
+export function generateVaultPassword(): string {
+  const raw = base64(crypto.getRandomValues(new Uint8Array(18)));
+  return raw.replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
+}
 function decode(value: string): Uint8Array {
   return Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
 }

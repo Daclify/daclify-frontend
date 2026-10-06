@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PrivateKey } from '@wharfkit/antelope';
 import {
   createVault,
+  generateVaultPassword,
   unlockVault,
   recoverVault,
   sealContent,
@@ -46,6 +47,13 @@ describe('user-controlled signing and encryption vault', () => {
   });
   it('rejects weak local unlock passwords', async () => {
     await expect(createVault('short')).rejects.toThrow('Use at least 12 characters');
+  });
+  it('generates a vault password that can be copied and used to create the vault', async () => {
+    const generated = generateVaultPassword();
+    expect(generated).toMatch(/^[A-Za-z0-9_-]{24}$/);
+    expect(generateVaultPassword()).not.toBe(generated);
+    const vault = await createVault(generated);
+    expect(await unlockVault(vault.localEnvelope, generated)).toBeTruthy();
   });
 });
 describe('private DAO content and epoch grants', () => {

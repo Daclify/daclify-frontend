@@ -174,6 +174,57 @@ p {
 .field-help {
   margin: 8px 0 20px;
 }
+.password-field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  padding-right: 4px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+}
+.password-field:focus-within {
+  border-color: var(--accent-amber);
+}
+.password-field input {
+  width: auto;
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.password-field input:focus {
+  border-color: transparent;
+}
+.password-field .field-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+}
+.password-field .field-actions button {
+  min-height: 0;
+  height: 100%;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--accent-amber);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1;
+}
+.password-field .field-actions button:hover {
+  background: var(--accent-soft);
+  box-shadow: none;
+  transform: none;
+}
+.password-field .field-actions button:disabled {
+  color: var(--text-muted);
+  opacity: 1;
+}
 .mono,
 code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -267,6 +318,65 @@ nav a.router-link-exact-active {
   width: 20px;
   height: 20px;
   flex: none;
+}
+.nav-fold {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  min-height: 44px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  box-shadow: none;
+  font-size: 14px;
+  font-weight: 550;
+  justify-content: flex-start;
+}
+.nav-fold:hover {
+  background: var(--surface-soft);
+  box-shadow: none;
+  transform: none;
+}
+.account-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 16px;
+}
+.account-tabs button {
+  min-height: 36px;
+  padding: 6px 14px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-panel);
+  color: var(--text-secondary);
+  border: 1px solid var(--line);
+  box-shadow: none;
+  font-size: 13px;
+  font-weight: 650;
+}
+.account-tabs button:hover {
+  transform: none;
+  box-shadow: none;
+  background: var(--surface-soft);
+}
+.account-tabs button[aria-selected='true'] {
+  background: var(--accent-soft);
+  color: var(--accent-amber);
+  border-color: var(--border-warm);
+}
+.docs-answer {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.evm-link {
+  min-width: 0;
+}
+.evm-link .mono {
+  display: block;
 }
 .sidebar-footer {
   margin-top: auto;
@@ -667,6 +777,23 @@ legend {
   font-weight: 400;
   margin: 20px 0;
 }
+.method-list {
+  list-style: none;
+  margin: 8px 0 12px;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.method-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.telegram-host:empty {
+  display: none;
+}
 .form-footer,
 .button-row {
   display: flex;
@@ -812,6 +939,46 @@ dd {
 .skip-link:focus {
   top: 10px;
 }
+@media (min-width: 851px) {
+  .app-shell.nav-folded {
+    grid-template-columns: 76px minmax(0, 1fr);
+  }
+  .nav-folded .sidebar {
+    padding: 20px 10px;
+    overflow-x: hidden;
+  }
+  .nav-folded .brand {
+    justify-content: center;
+    gap: 0;
+    margin-bottom: 18px;
+  }
+  .nav-folded .brand-name,
+  .nav-folded .nav-text,
+  .nav-folded .nav-label,
+  .nav-folded .sidebar-meta {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  .nav-folded nav a,
+  .nav-folded .nav-fold {
+    justify-content: center;
+    gap: 0;
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+  .nav-folded .sidebar-footer {
+    padding-left: 0;
+    padding-right: 0;
+    text-align: center;
+  }
+}
 @media (min-width: 1600px) {
   main {
     padding-top: 52px;
@@ -865,6 +1032,9 @@ dd {
   .mobile-menu {
     display: flex;
     padding: 8px 15px;
+  }
+  .nav-fold {
+    display: none;
   }
   .sidebar nav {
     display: none;

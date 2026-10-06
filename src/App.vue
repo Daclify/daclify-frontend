@@ -1,11 +1,35 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
-import { Blocks, BookOpen, LayoutGrid, Plus, UserRound } from '@lucide/vue';
+import {
+  Blocks,
+  BookOpen,
+  LayoutGrid,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Plus,
+  UserRound,
+} from '@lucide/vue';
 import { useWorkspace } from './state/workspace';
 import { lockVault, vaultUnlocked } from './auth/session';
 import { chooseNetwork, selectedNetwork, type DeployedNetwork } from './api/networks';
 const state = useWorkspace();
 const mobileOpen = ref(false);
+function storedFold(): boolean {
+  try {
+    return localStorage.getItem('daclify.nav.folded') === '1';
+  } catch {
+    return false;
+  }
+}
+const folded = ref(storedFold());
+function toggleFold() {
+  folded.value = !folded.value;
+  try {
+    localStorage.setItem('daclify.nav.folded', folded.value ? '1' : '0');
+  } catch {
+    // The menu still folds for this view when storage is blocked.
+  }
+}
 const networkChoice = ref(selectedNetwork());
 function selectServiceNetwork(name: DeployedNetwork) {
   chooseNetwork(name);
@@ -18,11 +42,13 @@ onMounted(() => {
 </script>
 <template>
   <a class="skip-link" href="#main">Skip to content</a>
-  <div class="app-shell">
+  <div class="app-shell" :class="{ 'nav-folded': folded }">
     <aside class="sidebar" aria-label="Primary navigation">
       <RouterLink class="brand" to="/" @click="mobileOpen = false"
         ><span class="brand-mark" aria-hidden="true">d.</span
-        ><span>daclify<span class="brand-caption">GOVERN TOGETHER</span></span></RouterLink
+        ><span class="brand-name"
+          >daclify<span class="brand-caption">GOVERN TOGETHER</span></span
+        ></RouterLink
       >
       <button
         class="mobile-menu secondary"
@@ -32,32 +58,49 @@ onMounted(() => {
       >
         Menu
       </button>
+      <button type="button" class="nav-fold" :aria-expanded="!folded" @click="toggleFold">
+        <PanelLeftClose v-if="!folded" class="nav-icon" aria-hidden="true" />
+        <PanelLeftOpen v-else class="nav-icon" aria-hidden="true" />
+        <span class="nav-text">{{ folded ? 'Expand menu' : 'Fold menu' }}</span>
+      </button>
       <nav id="primary-links" :class="{ 'mobile-open': mobileOpen }">
         <p class="nav-label">WORKSPACE</p>
         <RouterLink to="/" @click="mobileOpen = false"
-          ><LayoutGrid class="nav-icon" aria-hidden="true" /> DAO hub</RouterLink
+          ><LayoutGrid class="nav-icon" aria-hidden="true" /><span class="nav-text"
+            >DAO hub</span
+          ></RouterLink
         >
         <RouterLink to="/create" @click="mobileOpen = false"
-          ><Plus class="nav-icon" aria-hidden="true" /> Create DAO</RouterLink
+          ><Plus class="nav-icon" aria-hidden="true" /><span class="nav-text"
+            >Create DAO</span
+          ></RouterLink
         >
         <RouterLink to="/account" @click="mobileOpen = false"
-          ><UserRound class="nav-icon" aria-hidden="true" /> Account</RouterLink
+          ><UserRound class="nav-icon" aria-hidden="true" /><span class="nav-text"
+            >Account</span
+          ></RouterLink
         >
         <p class="nav-label">RESOURCES</p>
         <RouterLink to="/docs" @click="mobileOpen = false"
-          ><BookOpen class="nav-icon" aria-hidden="true" /> Documentation</RouterLink
+          ><BookOpen class="nav-icon" aria-hidden="true" /><span class="nav-text"
+            >Documentation</span
+          ></RouterLink
         >
         <RouterLink to="/docs/modules" @click="mobileOpen = false"
-          ><Blocks class="nav-icon" aria-hidden="true" /> Module guide</RouterLink
+          ><Blocks class="nav-icon" aria-hidden="true" /><span class="nav-text"
+            >Module guide</span
+          ></RouterLink
         >
       </nav>
       <div class="sidebar-footer">
         <span class="status-dot" aria-hidden="true"></span
-        ><span>{{ state.network?.environment ?? 'Connecting' }} network</span
-        ><small
-          >Core interface {{ state.network?.interfaceVersion ?? '—' }} · v{{
-            state.network?.coreVersion ?? '—'
-          }}</small
+        ><span class="sidebar-meta"
+          ><span>{{ state.network?.environment ?? 'Connecting' }} network</span
+          ><small
+            >Core interface {{ state.network?.interfaceVersion ?? '—' }} · v{{
+              state.network?.coreVersion ?? '—'
+            }}</small
+          ></span
         >
       </div>
     </aside>

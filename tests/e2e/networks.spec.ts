@@ -88,6 +88,7 @@ test('a deployed build switches production and testnet and starts card checkout'
   );
   await expect(page.getByText('mainnet network', { exact: true })).toBeAttached();
   await page.goto('/account');
+  await page.getByRole('tab', { name: 'Service', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Service payment' })).toBeVisible();
   await page.getByRole('button', { name: 'Continue to card payment' }).click();
   await expect(page).toHaveURL(/checkout\.stripe\.com/);

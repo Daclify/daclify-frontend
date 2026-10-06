@@ -4,7 +4,12 @@ import { useRoute } from 'vue-router';
 import { useWorkspace } from '../state/workspace';
 import { api, friendlyError, type ServiceReceipt } from '../api/client';
 import { formatReceiptAmount, hostedCheckoutUrl } from '../api/billing';
-import { createVault, restoreRecoveryKit, type CreatedVault } from '../auth/vault';
+import {
+  createVault,
+  generateVaultPassword,
+  restoreRecoveryKit,
+  type CreatedVault,
+} from '../auth/vault';
 import {
   savedVault,
   saveVault,
@@ -14,12 +19,45 @@ import {
   downloadBackup,
   vaultUnlocked,
 } from '../auth/session';
+import type { Account } from '@daclify/core-protocol';
+import ProfilePanel from '../components/ProfilePanel.vue';
+import SignInMethods from '../components/SignInMethods.vue';
+import LinkedAccounts from '../components/LinkedAccounts.vue';
+const accountTabs = [
+  { id: 'keys', label: 'Keys' },
+  { id: 'sign-in', label: 'Sign-in' },
+  { id: 'profile', label: 'Profile' },
+  { id: 'linked', label: 'Linked' },
+  { id: 'service', label: 'Service' },
+] as const;
+type AccountTab = (typeof accountTabs)[number]['id'];
+function billingTab(value: unknown): boolean {
+  return value === 'submitted' || value === 'cancelled';
+}
 const restoring = ref(false);
 const kitText = ref('');
 const recoveryCredential = ref('');
 const replacementAcknowledged = ref(false);
 const route = useRoute();
 const state = useWorkspace();
+const tab = ref<AccountTab>(billingTab(route.query.billing) ? 'service' : 'keys');
+const opened = ref<Record<AccountTab, boolean>>({
+  keys: true,
+  'sign-in': false,
+  profile: false,
+  linked: false,
+  service: true,
+});
+function openTab(next: AccountTab) {
+  tab.value = next;
+  opened.value = { ...opened.value, [next]: true };
+}
+watch(
+  () => route.query.billing,
+  (value) => {
+    if (billingTab(value)) openTab('service');
+  },
+);
 const saved = ref(savedVault());
 const receipts = ref<ServiceReceipt[]>([]);
 const billingError = ref('');
@@ -62,8 +100,11 @@ async function pay() {
   }
 }
 const password = ref('');
+const passwordVisible = ref(false);
+const passwordCopied = ref(false);
 const created = ref<CreatedVault>();
 const acknowledged = ref(false);
+const recoveryCopied = ref(false);
 const busy = ref(false);
 const error = ref('');
 const heading = computed(() =>
@@ -115,6 +156,23 @@ async function restore() {
     busy.value = false;
   }
 }
+function generatePassword() {
+  password.value = generateVaultPassword();
+  passwordVisible.value = true;
+  passwordCopied.value = false;
+  error.value = '';
+}
+async function copyPassword() {
+  if (password.value.length === 0) return;
+  error.value = '';
+  try {
+    await navigator.clipboard.writeText(password.value);
+    passwordCopied.value = true;
+  } catch {
+    passwordCopied.value = false;
+    error.value = 'Select the vault password and copy it manually.';
+  }
+}
 async function create() {
   busy.value = true;
   error.value = '';
@@ -127,6 +185,17 @@ async function create() {
         : friendlyError(cause);
   } finally {
     busy.value = false;
+  }
+}
+async function copyRecovery() {
+  if (!created.value) return;
+  error.value = '';
+  try {
+    await navigator.clipboard.writeText(created.value.recoveryCredential);
+    recoveryCopied.value = true;
+  } catch {
+    recoveryCopied.value = false;
+    error.value = 'Select the recovery credential and copy it manually.';
   }
 }
 async function finish() {
@@ -148,6 +217,12 @@ async function unlock() {
   } finally {
     busy.value = false;
   }
+}
+function onSignedIn(account: Account) {
+  state.account = account;
+  password.value = '';
+  error.value = '';
+  void state.refresh();
 }
 async function logout() {
   busy.value = true;
@@ -229,7 +304,7 @@ function backup() {
       your keys on another device.
     </p>
     <button class="secondary" @click="backup">Download encrypted recovery kit</button
-    ><label for="recovery">Recovery credential — save separately</label
+    ><label for="recovery">Recovery credential — generated for this vault</label
     ><textarea
       id="recovery"
       readonly
@@ -237,8 +312,15 @@ function backup() {
       rows="2"
       spellcheck="false"
     ></textarea>
+    <div class="button-row">
+      <button type="button" class="secondary" @click="copyRecovery">
+        Copy recovery credential
+      </button>
+    </div>
+    <p v-if="recoveryCopied" class="notice" role="status">Recovery credential copied.</p>
     <p class="muted">
-      Daclify cannot recover user-controlled keys without this credential and your kit.
+      Store this credential away from the downloaded kit. Daclify cannot recover user-controlled
+      keys without both.
     </p>
     <label class="checkbox"
       ><input v-model="acknowledged" type="checkbox" />I have saved my recovery kit and
@@ -247,8 +329,29 @@ function backup() {
       {{ busy ? 'Finishing…' : 'Finish account setup' }}
     </button>
   </section>
-  <template v-else-if="state.account"
-    ><section class="panel narrow">
+  <template v-else-if="state.account">
+    <div class="account-tabs" role="tablist" aria-label="Account sections">
+      <button
+        v-for="item in accountTabs"
+        :id="`account-tab-${item.id}`"
+        :key="item.id"
+        type="button"
+        role="tab"
+        :aria-selected="tab === item.id"
+        :aria-controls="`account-panel-${item.id}`"
+        :tabindex="tab === item.id ? 0 : -1"
+        @click="openTab(item.id)"
+      >
+        {{ item.label }}
+      </button>
+    </div>
+    <section
+      v-show="tab === 'keys'"
+      id="account-panel-keys"
+      class="panel narrow"
+      role="tabpanel"
+      aria-labelledby="account-tab-keys"
+    >
       <div class="panel-heading">
         <h2>
           {{
@@ -259,11 +362,14 @@ function backup() {
         </h2>
         <span class="pill">{{ state.account.custody }}</span>
       </div>
-      <p class="muted">Account ID</p>
+      <p class="muted">Server login id</p>
       <p class="mono wrap">{{ state.account.id }}</p>
+      <p class="field-help">
+        This id only labels the session on this server. Your signing key is the account.
+      </p>
       <p class="muted">Signing public key</p>
       <p class="mono wrap">{{ state.account.signingKey }}</p>
-      <form v-if="!vaultUnlocked" @submit.prevent="unlock">
+      <form v-if="!vaultUnlocked && saved" @submit.prevent="unlock">
         <label for="unlock">Vault password</label
         ><input
           id="unlock"
@@ -273,17 +379,62 @@ function backup() {
           required
         /><button :disabled="busy">Unlock and sign in</button>
       </form>
-      <div v-else class="button-row">
+      <div v-else-if="vaultUnlocked" class="button-row">
         <button class="secondary" @click="lockVault">Lock vault</button
         ><button class="secondary" @click="backup">Download encrypted backup</button>
       </div>
+      <p v-if="!vaultUnlocked && !saved" class="muted">
+        This sign-in opened the server session. Restore the recovery kit on this device to unlock
+        your keys.
+      </p>
+      <button
+        v-if="!vaultUnlocked && !saved"
+        type="button"
+        class="secondary"
+        @click="restoring = true"
+      >
+        Recover from an encrypted kit
+      </button>
       <button class="text-button danger" :disabled="busy" @click="logout">Sign out</button>
       <p class="muted">
         Keys lock after ten minutes without a signing action. Signing keys are separate from
         document encryption keys.
       </p>
     </section>
-    <section class="panel narrow">
+    <div
+      v-if="opened['sign-in']"
+      v-show="tab === 'sign-in'"
+      id="account-panel-sign-in"
+      role="tabpanel"
+      aria-labelledby="account-tab-sign-in"
+    >
+      <SignInMethods mode="manage" />
+    </div>
+    <div
+      v-if="opened.profile"
+      v-show="tab === 'profile'"
+      id="account-panel-profile"
+      role="tabpanel"
+      aria-labelledby="account-tab-profile"
+    >
+      <ProfilePanel />
+    </div>
+    <div
+      v-if="opened.linked"
+      v-show="tab === 'linked'"
+      id="account-panel-linked"
+      role="tabpanel"
+      aria-labelledby="account-tab-linked"
+    >
+      <LinkedAccounts />
+    </div>
+    <section
+      v-show="tab === 'service'"
+      id="account-panel-service"
+      class="panel narrow"
+      role="tabpanel"
+      aria-labelledby="account-tab-service"
+    >
       <h2>Service payment</h2>
       <p>
         Card checkout uses the Stripe price configured for this service. A card payment does not
@@ -302,8 +453,8 @@ function backup() {
           Refresh receipt
         </button>
       </div>
-    </section></template
-  >
+    </section>
+  </template>
   <section v-else-if="saved" class="panel narrow">
     <h2>Use your vault password</h2>
     <p>Unlock your local encrypted vault to prove ownership of your account.</p>
@@ -328,16 +479,33 @@ function backup() {
         it and your password means losing access.
       </p>
       <form @submit.prevent="create">
-        <label for="password">Vault password</label
-        ><input
-          id="password"
-          v-model="password"
-          type="password"
-          minlength="12"
-          autocomplete="new-password"
-          required
-        />
-        <p class="field-help">At least 12 characters. Use a unique passphrase.</p>
+        <label for="password">Vault password</label>
+        <div class="password-field">
+          <input
+            id="password"
+            v-model="password"
+            :type="passwordVisible ? 'text' : 'password'"
+            minlength="12"
+            autocomplete="new-password"
+            spellcheck="false"
+            required
+            @input="passwordCopied = false"
+          />
+          <div class="field-actions">
+            <button type="button" aria-label="Generate vault password" @click="generatePassword">
+              Generate
+            </button>
+            <button
+              type="button"
+              aria-label="Copy vault password"
+              :disabled="password.length === 0"
+              @click="copyPassword"
+            >
+              {{ passwordCopied ? 'Copied' : 'Copy' }}
+            </button>
+          </div>
+        </div>
+        <p class="field-help">At least 12 characters. Generate one, then copy it.</p>
         <button :disabled="busy">
           {{ busy ? 'Encrypting vault…' : 'Create encrypted vault' }}
         </button>
@@ -362,14 +530,9 @@ function backup() {
   >
     Recover from an encrypted kit
   </button>
-  <aside class="info-strip">
-    <div>
-      <strong>Social &amp; Telegram login</strong>
-      <p>
-        Google and Telegram require provider configuration. Social login identifies an account; it
-        does not decrypt a user-controlled vault.
-      </p>
-    </div>
-    <RouterLink to="/docs/providers">Setup guide</RouterLink>
-  </aside>
+  <SignInMethods
+    v-if="!state.account && !created && !restoring"
+    mode="enter"
+    @authenticated="onSignedIn"
+  />
 </template>

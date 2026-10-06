@@ -23,11 +23,30 @@ test('hub, versioned help, keyboard navigation and accessible layout', async ({ 
     true,
   );
 });
+test('generates a vault password and copies it before the vault is created', async ({ page }) => {
+  await page.goto('/account');
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.getByRole('button', { name: 'Generate vault password', exact: true }).click();
+  const generated = await page.getByLabel('Vault password', { exact: true }).inputValue();
+  expect(generated).toMatch(/^[A-Za-z0-9_-]{24}$/);
+  await page.getByRole('button', { name: 'Copy vault password', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Copy vault password' })).toHaveText('Copied');
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(generated);
+});
+
 test('walletless account and real DAO creation flow', async ({ page }) => {
   await page.goto('/account');
   await page.getByLabel('Vault password', { exact: true }).fill('local-test-password-2026');
   await page.getByRole('button', { name: 'Create encrypted vault' }).click();
   await expect(page.getByRole('heading', { name: 'Save your recovery kit' })).toBeVisible();
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  const credential = await page
+    .getByLabel('Recovery credential — generated for this vault')
+    .inputValue();
+  expect(credential.length).toBeGreaterThan(20);
+  await page.getByRole('button', { name: 'Copy recovery credential', exact: true }).click();
+  await expect(page.getByText('Recovery credential copied.', { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(credential);
   await page.getByLabel('I have saved my recovery kit and credential').check();
   await page.getByRole('button', { name: 'Finish account setup' }).click();
   await expect(page.getByText('Vault unlocked', { exact: true })).toBeVisible();
@@ -72,6 +91,7 @@ test('shows card payment state without treating the return page as paid', async 
   await page.getByRole('button', { name: 'Create encrypted vault' }).click();
   await page.getByLabel('I have saved my recovery kit and credential').check();
   await page.getByRole('button', { name: 'Finish account setup' }).click();
+  await page.getByRole('tab', { name: 'Service', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Service payment', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Continue to card payment' }).click();
   await expect(page.getByRole('alert')).toContainText(
@@ -98,7 +118,9 @@ test('recovers the same account and DAO membership on a fresh browser', async ({
   await page.getByLabel('Vault password', { exact: true }).fill('original vault password 2026');
   await page.getByRole('button', { name: 'Create encrypted vault' }).click();
   await expect(page.getByRole('heading', { name: 'Save your recovery kit' })).toBeVisible();
-  const credential = await page.getByLabel('Recovery credential — save separately').inputValue();
+  const credential = await page
+    .getByLabel('Recovery credential — generated for this vault')
+    .inputValue();
   await page.getByLabel('I have saved my recovery kit and credential').check();
   await page.getByRole('button', { name: 'Finish account setup' }).click();
   await expect(page.getByRole('heading', { name: 'Your account' })).toBeVisible();
