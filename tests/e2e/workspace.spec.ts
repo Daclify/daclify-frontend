@@ -66,6 +66,30 @@ test('walletless account and real DAO creation flow', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Unlock your account' })).toBeVisible();
 });
 
+test('shows card payment state without treating the return page as paid', async ({ page }) => {
+  await page.goto('/account');
+  await page.getByLabel('Vault password', { exact: true }).fill('billing-return-password-2026');
+  await page.getByRole('button', { name: 'Create encrypted vault' }).click();
+  await page.getByLabel('I have saved my recovery kit and credential').check();
+  await page.getByRole('button', { name: 'Finish account setup' }).click();
+  await expect(page.getByRole('heading', { name: 'Service payment', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Continue to card payment' }).click();
+  await expect(page.getByRole('alert')).toContainText(
+    'Card payments are not configured on this service.',
+  );
+  await page.goto('/account?billing=cancelled');
+  await expect(page.getByText('The card payment was cancelled.', { exact: true })).toBeVisible();
+  await expect(page.locator('.receipt-list')).toHaveCount(0);
+  await page.goto('/account?billing=submitted');
+  await expect(
+    page.getByText(
+      'The card payment is recorded when Stripe notifies this service. Refresh the receipt if it is not listed yet.',
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(page.locator('.receipt-list')).toHaveCount(0);
+});
+
 test('recovers the same account and DAO membership on a fresh browser', async ({
   page,
   browser,

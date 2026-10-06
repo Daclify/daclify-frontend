@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { useWorkspace } from '../state/workspace';
-import { api, friendlyError } from '../api/client';
+import { api, friendlyError, type ServiceReceipt } from '../api/client';
+import { formatReceiptAmount, hostedCheckoutUrl } from '../api/billing';
 import { createVault, restoreRecoveryKit, type CreatedVault } from '../auth/vault';
 import {
   savedVault,
@@ -16,8 +18,49 @@ const restoring = ref(false);
 const kitText = ref('');
 const recoveryCredential = ref('');
 const replacementAcknowledged = ref(false);
+const route = useRoute();
 const state = useWorkspace();
 const saved = ref(savedVault());
+const receipts = ref<ServiceReceipt[]>([]);
+const billingError = ref('');
+const billingNote = computed(() => {
+  if (route.query.billing === 'submitted') {
+    return 'The card payment is recorded when Stripe notifies this service. Refresh the receipt if it is not listed yet.';
+  }
+  if (route.query.billing === 'cancelled') return 'The card payment was cancelled.';
+  return '';
+});
+watch(
+  () => state.account?.id,
+  (id) => {
+    receipts.value = [];
+    if (id) void loadReceipts();
+  },
+  { immediate: true },
+);
+async function loadReceipts() {
+  billingError.value = '';
+  try {
+    receipts.value = (await api.serviceReceipts()).receipts;
+  } catch (cause) {
+    receipts.value = [];
+    if (!(cause instanceof Error) || cause.message !== 'STRIPE_NOT_CONFIGURED') {
+      if (cause instanceof Error && cause.message === 'AUTH_REQUIRED') return;
+      billingError.value = friendlyError(cause);
+    }
+  }
+}
+async function pay() {
+  busy.value = true;
+  billingError.value = '';
+  try {
+    const checkout = await api.serviceCheckout();
+    window.location.assign(hostedCheckoutUrl(checkout.url));
+  } catch (cause) {
+    billingError.value = friendlyError(cause);
+    busy.value = false;
+  }
+}
 const password = ref('');
 const created = ref<CreatedVault>();
 const acknowledged = ref(false);
@@ -239,6 +282,26 @@ function backup() {
         Keys lock after ten minutes without a signing action. Signing keys are separate from
         document encryption keys.
       </p>
+    </section>
+    <section class="panel narrow">
+      <h2>Service payment</h2>
+      <p>
+        Card checkout uses the Stripe price configured for this service. A card payment does not
+        change votes, permissions, withdrawals, or a DAO treasury.
+      </p>
+      <p v-if="billingNote">{{ billingNote }}</p>
+      <p v-if="billingError" class="alert" role="alert">{{ billingError }}</p>
+      <ul v-if="receipts.length" class="receipt-list">
+        <li v-for="(receipt, index) in receipts" :key="index">
+          {{ receipt.status }} · {{ formatReceiptAmount(receipt.currency, receipt.amountMinor) }}
+        </li>
+      </ul>
+      <div class="button-row">
+        <button type="button" :disabled="busy" @click="pay">Continue to card payment</button
+        ><button type="button" class="secondary" :disabled="busy" @click="loadReceipts">
+          Refresh receipt
+        </button>
+      </div>
     </section></template
   >
   <section v-else-if="saved" class="panel narrow">

@@ -16,19 +16,32 @@ import {
   type AssetRef,
 } from '@daclify/core-protocol';
 import type { instruction } from '@daclify/core-protocol/sdk';
+import { csrfStorageKey, resolveApiUrl } from './networks';
 export class ApiFailure extends Error {
   constructor(readonly code: string) {
     super(code);
   }
 }
+const ServiceCheckoutSchema = z.strictObject({ url: z.url() });
+const ServiceReceiptSchema = z.strictObject({
+  status: z.enum(['paid', 'failed']),
+  currency: z
+    .string()
+    .regex(/^[a-z]{3}$/)
+    .nullable(),
+  amountMinor: z.number().int().nonnegative().nullable(),
+  paymentStatus: z.string().min(1),
+});
+const ServiceReceiptsSchema = z.strictObject({ receipts: z.array(ServiceReceiptSchema) });
+export type ServiceReceipt = z.infer<typeof ServiceReceiptSchema>;
 async function request<T>(
   path: string,
   schema: z.ZodType<T>,
   input?: unknown,
   timeoutMs = 15000,
 ): Promise<T> {
-  const csrf = sessionStorage.getItem('daclify.csrf') ?? '';
-  const response = await fetch(path, {
+  const csrf = sessionStorage.getItem(csrfStorageKey()) ?? '';
+  const response = await fetch(resolveApiUrl(path), {
     method: input === undefined ? 'GET' : 'POST',
     credentials: 'include',
     headers: {
@@ -113,7 +126,7 @@ export const api = {
       signature,
       encryptionKey,
     });
-    sessionStorage.setItem('daclify.csrf', result.csrfToken);
+    sessionStorage.setItem(csrfStorageKey(), result.csrfToken);
     return result.account;
   },
   me: async (): Promise<Account> =>
@@ -124,9 +137,11 @@ export const api = {
     request(ApiRoutes.createDao.path, ApiRoutes.createDao.response, { metadata, privacy, token }),
   relay: (requestData: instruction, sig: string) =>
     request(ApiRoutes.relay.path, ApiRoutes.relay.response, { request: requestData, sig }),
+  serviceCheckout: () => request('/v1/billing/checkout', ServiceCheckoutSchema, {}),
+  serviceReceipts: () => request('/v1/billing/receipts', ServiceReceiptsSchema),
   logout: async () => {
     await request(ApiRoutes.logout.path, ApiRoutes.logout.response, {});
-    sessionStorage.removeItem('daclify.csrf');
+    sessionStorage.removeItem(csrfStorageKey());
   },
 };
 export function friendlyError(error: unknown): string {
@@ -144,6 +159,8 @@ export function friendlyError(error: unknown): string {
       RESULT_LIMIT:
         'This deployment exceeds the current read limit. Configure an indexed read service.',
       STORAGE_UNCONFIGURED: 'Hosted storage is not configured on this service.',
+      STRIPE_NOT_CONFIGURED: 'Card payments are not configured on this service.',
+      CHECKOUT_URL: 'The card checkout address was not accepted.',
       STORAGE_QUOTA: 'The DAO storage allowance is full. Existing documents remain available.',
       UPLOAD_PENDING:
         'Upload completion is uncertain. Keep the request ID and check completion before starting another upload.',
@@ -177,6 +194,7 @@ export function friendlyError(error: unknown): string {
       AMOUNT_REQUIRED: 'Enter a positive token amount.',
       INSUFFICIENT_EXIT_BALANCE: 'The amount exceeds the selected claim or stake balance.',
       PAYOUT_DESTINATION: 'Choose an existing native account other than this runtime.',
+      CHECKOUT_URL: 'The card checkout address was not accepted.',
       DAO_REFERENCE: 'The account and DAO deployment references do not match.',
     };
     const cryptoMessage = cryptoErrors[error.message];

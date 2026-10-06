@@ -4,6 +4,9 @@ import { NetworkSchema } from '@daclify/core-protocol';
 
 test('searches producer guides and opens generated references accessibly', async ({ page }) => {
   await page.goto('/docs');
+  await expect(
+    page.getByRole('heading', { name: 'Pay for a hosted service', exact: true }),
+  ).toBeVisible();
   await page.getByLabel('Search guides').fill('native stake');
   await expect(
     page.getByRole('heading', { name: 'Weights with an explicit snapshot', exact: true }),

@@ -2,8 +2,10 @@ import { createApp } from 'vue';
 import { createPinia } from 'pinia';
 import { createRouter, createWebHistory } from 'vue-router';
 import App from './App.vue';
+import { loadDeployedNetworks } from './api/networks';
 import '@fontsource-variable/inter';
 import './styles.css';
+await loadDeployedNetworks();
 const router = createRouter({
   history: createWebHistory(),
   routes: [

@@ -312,6 +312,38 @@ nav a.router-link-exact-active {
   align-items: center;
   gap: 18px;
 }
+.network-switch {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border-warm);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  background: var(--surface-raised);
+}
+.network-switch button {
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-weight: 600;
+  box-shadow: none;
+  transform: none;
+}
+.network-switch button:hover {
+  background: var(--accent-soft);
+  box-shadow: none;
+  transform: none;
+}
+.network-switch button[aria-pressed='true'] {
+  background: var(--accent-soft);
+  color: var(--accent-amber);
+}
+.receipt-list {
+  margin: 12px 0 16px;
+  padding-left: 18px;
+}
 .account-link {
   font-size: 13px;
   font-weight: 600;
@@ -854,6 +886,8 @@ dd {
   }
   .topbar-account {
     gap: 12px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
   .account-link {
     font-size: 12px;

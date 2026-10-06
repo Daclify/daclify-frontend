@@ -3,8 +3,15 @@ import { onMounted, ref } from 'vue';
 import { Blocks, BookOpen, LayoutGrid, Plus, UserRound } from '@lucide/vue';
 import { useWorkspace } from './state/workspace';
 import { lockVault, vaultUnlocked } from './auth/session';
+import { chooseNetwork, selectedNetwork, type DeployedNetwork } from './api/networks';
 const state = useWorkspace();
 const mobileOpen = ref(false);
+const networkChoice = ref(selectedNetwork());
+function selectServiceNetwork(name: DeployedNetwork) {
+  chooseNetwork(name);
+  networkChoice.value = name;
+  void state.refresh();
+}
 onMounted(() => {
   void state.refresh();
 });
@@ -60,6 +67,27 @@ onMounted(() => {
           >Daclify <span aria-hidden="true">/</span> Community workspace</span
         >
         <div class="topbar-account">
+          <div
+            v-if="networkChoice"
+            class="network-switch"
+            role="group"
+            aria-label="Service network"
+          >
+            <button
+              type="button"
+              :aria-pressed="networkChoice === 'production'"
+              @click="selectServiceNetwork('production')"
+            >
+              Production
+            </button>
+            <button
+              type="button"
+              :aria-pressed="networkChoice === 'testnet'"
+              @click="selectServiceNetwork('testnet')"
+            >
+              Testnet
+            </button>
+          </div>
           <span class="pill" :class="{ success: vaultUnlocked }">{{
             vaultUnlocked ? 'Vault unlocked' : 'Vault locked'
           }}</span

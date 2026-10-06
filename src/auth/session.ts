@@ -1,4 +1,5 @@
 import { ref } from 'vue';
+import { csrfStorageKey } from '../api/networks';
 import { PrivateKey } from '@wharfkit/antelope';
 import {
   contentDomain,
@@ -72,7 +73,7 @@ function touch() {
 }
 export function acceptProviderSession(account: Account, csrfToken: string): Account {
   if (!/^[A-Za-z0-9_-]{32,128}$/.test(csrfToken)) throw new Error('CSRF_REQUIRED');
-  sessionStorage.setItem('daclify.csrf', csrfToken);
+  sessionStorage.setItem(csrfStorageKey(), csrfToken);
   const saved = savedVault();
   if (secrets && saved && saved.signingPublicKey !== account.signingKey) lockVault();
   return account;

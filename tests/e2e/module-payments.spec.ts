@@ -76,6 +76,7 @@ test('reserves and cancels work, then settles disabled payroll and withdraws the
   await expect(settle).toBeVisible({ timeout: 16000 });
   await settle.click();
   await expect(page.getByText('Payment settled.', { exact: true })).toBeVisible();
+  await page.getByRole('checkbox', { name: 'Ongoing schedules', exact: true }).uncheck();
   await expect(page.getByText(/Installment .*Settled/)).toBeVisible();
   await page.getByRole('link', { name: 'Treasury', exact: true }).click();
   await expect(page.getByText('Claim: 0.5000 TLOS', { exact: false })).toBeVisible();
