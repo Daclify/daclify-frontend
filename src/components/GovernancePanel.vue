@@ -127,8 +127,8 @@ async function updatePolicy() {
       },
     });
     await run(
-      'setgov',
-      encodeAction('setgov', {
+      'setdaogov',
+      encodeAction('setdaogov', {
         ...actor(),
         settings: governanceSettings(setup, policy.value.config.decide),
       }),

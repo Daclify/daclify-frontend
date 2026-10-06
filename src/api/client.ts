@@ -92,6 +92,84 @@ const EvmChallengeSchema = z.strictObject({
   message: z.string().min(1),
   expiresAt: z.string().min(1),
 });
+const ListedModuleSchema = z.strictObject({
+  account: z.string(),
+  publisher: z.string(),
+  party: z.enum(['first-party', 'third-party']),
+  price: z.string(),
+  title: z.string(),
+  codeHash: z.string(),
+  summary: z.string(),
+  detail: z.string(),
+});
+const MarketplaceSchema = z.strictObject({
+  configured: z.boolean(),
+  reason: z.string().nullable(),
+  thirdPartyBps: z.number().int().nullable(),
+  firstPartyBps: z.number().int().nullable(),
+  treasury: z.string().nullable(),
+  modules: z.array(ListedModuleSchema),
+});
+const NameTierSchema = z.strictObject({
+  kind: z.enum(['basic', 'premium']),
+  price: z.string(),
+  usdCents: z.number().int().nonnegative(),
+  ramBytes: z.number().int().positive(),
+  netStake: z.string(),
+  cpuStake: z.string(),
+  tlosQuote: z.string().nullable(),
+});
+const NameListingSchema = z.strictObject({
+  accountName: z.string(),
+  seller: z.string(),
+  price: z.string(),
+  usdCents: z.number().int().nonnegative(),
+  sold: z.boolean(),
+});
+const NameSuffixSchema = z.strictObject({
+  suffix: z.string(),
+  seller: z.string(),
+  price: z.string(),
+  usdCents: z.number().int().nonnegative(),
+  sales: z.number().int().nonnegative(),
+});
+const NamesServiceSchema = z.strictObject({
+  configured: z.boolean(),
+  reason: z.string().nullable(),
+  cardPayments: z.boolean(),
+  thirdPartyBps: z.number().int().nullable(),
+  firstPartyBps: z.number().int().nullable(),
+  treasury: z.string().nullable(),
+  tiers: z.array(NameTierSchema),
+  listings: z.array(NameListingSchema),
+  suffixes: z.array(NameSuffixSchema),
+  bumpBps: z.number().int().nullable(),
+  quotePremiumBps: z.number().int().nullable(),
+  oracleMedian: z.string().nullable(),
+  oraclePrecision: z.number().int().nullable(),
+  oracleObservedAt: z.number().int().nullable(),
+  daoId: z.string().nullable(),
+});
+const NameQuoteSchema = z.strictObject({
+  accountName: z.string(),
+  kind: z.enum(['basic', 'premium']),
+  listed: z.boolean(),
+  seller: z.string(),
+  party: z.enum(['first-party', 'third-party']),
+  price: z.string(),
+  usdCents: z.number().int().nonnegative(),
+  platformBps: z.number().int().nonnegative(),
+  suffix: z.string().nullable(),
+  bumpBps: z.number().int().nonnegative(),
+  quotePremiumBps: z.number().int().nonnegative(),
+  ramBytes: z.number().int().nonnegative(),
+  netStake: z.string(),
+  cpuStake: z.string(),
+  priceFromOracle: z.boolean(),
+  sales: z.number().int().nonnegative(),
+  nextPrice: z.string().nullable(),
+  nextUsdCents: z.number().int().nullable(),
+});
 const DocsAgentStatusSchema = z.strictObject({ configured: z.boolean() });
 const DocsAnswerSchema = z.strictObject({
   status: z.enum(['answered', 'outside']),
@@ -277,6 +355,12 @@ export const api = {
   linkEvm: (input: { chainId: 40 | 41; address: string; signature: string }) =>
     request('/v1/account/evm/link', EvmLinkSchema, input),
   unlinkEvm: (chainId: 40 | 41) => request('/v1/account/evm/unlink', z.null(), { chainId }),
+  marketplace: () => request('/v1/marketplace', MarketplaceSchema),
+  names: () => request('/v1/names', NamesServiceSchema),
+  nameQuote: (accountName: string) =>
+    request(`/v1/names/quote?name=${encodeURIComponent(accountName)}`, NameQuoteSchema),
+  nameCheckout: (input: { accountName: string; ownerKey: string; activeKey: string }) =>
+    request('/v1/names/checkout', ServiceCheckoutSchema, input),
   docsAgent: () => request('/v1/docs/agent', DocsAgentStatusSchema),
   askDocs: (question: string) => request('/v1/docs/ask', DocsAnswerSchema, { question }, 20000),
   logout: async () => {
@@ -300,6 +384,15 @@ export function friendlyError(error: unknown): string {
         'This deployment exceeds the current read limit. Configure an indexed read service.',
       STORAGE_UNCONFIGURED: 'Hosted storage is not configured on this service.',
       STRIPE_NOT_CONFIGURED: 'Card payments are not configured on this service.',
+      NAMES_UNCONFIGURED: 'The Telos nameservice is not on this chain yet.',
+      CARD_UNAVAILABLE: 'This name has no card price on chain.',
+      NAME_TAKEN: 'That Telos account already exists.',
+      NAME_SOLD: 'That name has already been sold.',
+      NAME_PRICE: 'The card amount does not match the on-chain price.',
+      TIER_UNSET: 'That name tier is not set on chain.',
+      FEE_UNSET: 'Nameservice fees are not set on this chain yet.',
+      FEE_RULE: 'That listing does not accept the platform fee rule.',
+      SUFFIX: 'Connect the suffix account before this name can be sold.',
       CHECKOUT_URL: 'The card checkout address was not accepted.',
       STORAGE_QUOTA: 'The DAO storage allowance is full. Existing documents remain available.',
       UPLOAD_PENDING:

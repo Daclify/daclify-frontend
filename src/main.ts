@@ -12,6 +12,7 @@ const router = createRouter({
     { path: '/', component: () => import('./views/Hub.vue') },
     { path: '/account', component: () => import('./views/Account.vue') },
     { path: '/create', component: () => import('./views/CreateDao.vue') },
+    { path: '/marketplace', component: () => import('./views/Marketplace.vue') },
     { path: '/dao/:id/:section?', component: () => import('./views/Workspace.vue') },
     { path: '/docs/:topic?', component: () => import('./views/Docs.vue') },
   ],
