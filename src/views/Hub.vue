@@ -2,15 +2,18 @@
 import { computed, ref } from 'vue';
 import { ArrowUpRight, Network, Plus } from '@lucide/vue';
 import { useWorkspace } from '../state/workspace';
+import { DaoPresets, type DaoPurpose } from '@daclify/core-protocol';
 const state = useWorkspace();
 const search = ref('');
 const filter = ref('all');
+const purpose = ref<DaoPurpose | ''>('');
 const visible = computed(() =>
   state.daos.filter(
     (dao) =>
       (filter.value === 'all' ||
         state.memberships.some((m) => m.dao.daoId === dao.reference.daoId)) &&
-      dao.title.toLowerCase().includes(search.value.toLowerCase()),
+      dao.title.toLowerCase().includes(search.value.toLowerCase()) &&
+      (!purpose.value || (dao.purpose ?? 'custom') === purpose.value),
   ),
 );
 </script>
@@ -37,6 +40,14 @@ const visible = computed(() =>
     </article>
   </div>
   <div class="section-toolbar">
+    <label
+      >DAO purpose filter<select v-model="purpose">
+        <option value="">All purposes</option>
+        <option v-for="preset in DaoPresets" :key="preset.id" :value="preset.id">
+          {{ preset.title }}
+        </option>
+      </select></label
+    >
     <div class="segmented" role="group" aria-label="DAO filter">
       <button :aria-pressed="filter === 'all'" @click="filter = 'all'">All DAOs</button
       ><button :aria-pressed="filter === 'mine'" @click="filter = 'mine'">My communities</button>
@@ -70,6 +81,12 @@ const visible = computed(() =>
         ><span class="pill">{{ dao.privacy === 'public' ? 'Public' : 'Encrypted content' }}</span>
       </div>
       <h2>{{ dao.title }}</h2>
+      <span class="pill">{{
+        DaoPresets.find((preset) => preset.id === (dao.purpose ?? 'custom'))?.title
+      }}</span>
+      <span v-if="dao.participantMode === 'agents-guarded'" class="pill"
+        >Agents · human emergency controls</span
+      >
       <p>
         {{
           dao.description ||

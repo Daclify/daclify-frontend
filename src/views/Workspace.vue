@@ -4,7 +4,8 @@ import ModulesPanel from '../components/ModulesPanel.vue';
 import TreasuryPanel from '../components/TreasuryPanel.vue';
 import { computed, ref } from 'vue';
 import { useRoute } from 'vue-router';
-import { formatUnits } from '@daclify/core-protocol';
+import { formatUnits, DaoPresets } from '@daclify/core-protocol';
+import GovernancePanel from '../components/GovernancePanel.vue';
 import { encodeAction, makeInstruction } from '@daclify/core-protocol/sdk';
 import { useWorkspace } from '../state/workspace';
 import { vaultUnlocked, relayInstruction } from '../auth/session';
@@ -13,6 +14,9 @@ const route = useRoute();
 const state = useWorkspace();
 const dao = computed(() => state.daos.find((d) => d.reference.daoId === route.params.id));
 const membership = computed(() => state.memberships.find((m) => m.dao.daoId === route.params.id));
+const preset = computed(() =>
+  DaoPresets.find((preset) => preset.id === (dao.value?.purpose ?? 'custom')),
+);
 const section = computed(() =>
   typeof route.params.section === 'string' ? route.params.section : 'overview',
 );
@@ -52,9 +56,10 @@ async function rename() {
         dao_id: d.reference.daoId,
         member_id: m.memberId,
         metadata: JSON.stringify({
-          schemaVersion: 1,
+          schemaVersion: d.setup ? 2 : 1,
           title: newTitle.value,
           description: d.description,
+          ...(d.setup ? { purpose: d.purpose, setup: d.setup } : {}),
         }),
       }),
     );
@@ -77,7 +82,7 @@ async function rename() {
   <template v-else
     ><div class="page-heading">
       <div>
-        <p class="eyebrow">COMMUNITY WORKSPACE</p>
+        <p class="eyebrow">{{ preset?.title }} WORKSPACE</p>
         <h1>{{ dao.title }}</h1>
         <p class="lead">
           {{ dao.description || 'A shared place for decisions and contributions.' }}
@@ -99,6 +104,11 @@ async function rename() {
     <p v-if="error" class="alert" role="alert">{{ error }}</p>
     <template v-if="section === 'overview'"
       ><h2>Workspace overview</h2>
+      <p v-if="dao.setup" class="lead">{{ preset?.description }}</p>
+      <p v-if="dao.participantMode === 'agents-guarded'" class="notice">
+        Agent members govern this DAO. Human guardians retain disclosed emergency pause and signing
+        recovery powers.
+      </p>
       <div class="stats-grid">
         <article class="stat-card">
           <span>Members</span><strong>{{ dao.members }}</strong
@@ -170,8 +180,9 @@ async function rename() {
           <dt>Encryption epoch</dt>
           <dd>{{ dao.keyEpoch }}</dd>
         </dl>
-      </section></template
-    >
+      </section>
+      <GovernancePanel :key="JSON.stringify(dao.reference)" :dao="dao" :member="membership" />
+    </template>
     <ContentPanel
       v-else-if="['documents', 'members'].includes(section)"
       :dao="dao"

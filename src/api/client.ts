@@ -15,6 +15,8 @@ import {
   SessionSchema,
   type Privacy,
   type AssetRef,
+  type DaoSetup,
+  type FoundingAgentSchema,
 } from '@daclify/core-protocol';
 import type { instruction } from '@daclify/core-protocol/sdk';
 import { csrfStorageKey, resolveApiUrl } from './networks';
@@ -206,8 +208,31 @@ export const api = {
       `/v1/profile?daoId=${IdSchema.parse(daoId)}&memberId=${IdSchema.parse(memberId)}`,
       MemberProfileSchema,
     ),
-  createDao: (metadata: z.infer<typeof MetadataSchema>, privacy: Privacy, token: AssetRef) =>
-    request(ApiRoutes.createDao.path, ApiRoutes.createDao.response, { metadata, privacy, token }),
+  governance: (daoId: string) =>
+    request(
+      ApiRoutes.governance.path.replace(':id', IdSchema.parse(daoId)),
+      ApiRoutes.governance.response,
+    ),
+  execute: (dao: DaoSummary['reference'], ballotId: string) =>
+    request(
+      ModuleApiRoutes.execute.path,
+      ModuleApiRoutes.execute.response,
+      ModuleApiRoutes.execute.input.parse({ dao, ballotId }),
+    ),
+  createDao: (
+    metadata: z.infer<typeof MetadataSchema>,
+    privacy: Privacy,
+    token: AssetRef,
+    setup?: DaoSetup,
+    foundingAgent?: z.infer<typeof FoundingAgentSchema>,
+  ) =>
+    request(ApiRoutes.createDao.path, ApiRoutes.createDao.response, {
+      metadata,
+      privacy,
+      token,
+      ...(setup ? { setup } : {}),
+      ...(foundingAgent ? { foundingAgent } : {}),
+    }),
   relay: (requestData: instruction, sig: string) =>
     request(ApiRoutes.relay.path, ApiRoutes.relay.response, { request: requestData, sig }),
   serviceCheckout: () => request('/v1/billing/checkout', ServiceCheckoutSchema, {}),

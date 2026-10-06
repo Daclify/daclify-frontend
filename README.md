@@ -6,6 +6,8 @@ The screen consumes the packed protocol from [daclify-backend-core](https://gith
 
 This is an incomplete development application. It is not a production launch.
 
+DAO creation now offers community, NGO / grants, gaming guild, team / cooperative and custom presets, independently of human, mixed or guarded-agent participation. Policy and participant controls are in workspace settings; Works funding can require an executable member vote. Native guardian actions are prepared for external signing. See core's [authority and merge notes](../daclify-backend-core/docs/dao-presets.md).
+
 ## Screens
 
 | Route                              | Screen                                                           |
@@ -55,6 +57,8 @@ npm run test:e2e
 ```
 
 `npm run verify` runs lint, `vue-tsc`, and the unit tests. It does not run Playwright. `npm run test:e2e` starts Vite when port 5178 is free and reuses a server that is already running. The Playwright projects are desktop Chrome and a Pixel 7 viewport. Run the disposable core API and database first when the journey needs them. `theme.spec.ts` is the exception: it checks the visual layer with fixtures and does not need a chain.
+
+Run `npx playwright test --config playwright.presets.config.ts` for the DAO purpose, participant and authority-rendering regressions. They mock HTTP responses and start their own Vite instance on port 5278 without reusing another session's server. They do not prove contract execution; core's isolated native/API suite covers that separately.
 
 ## Boundaries
 

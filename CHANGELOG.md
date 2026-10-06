@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.0-alpha.1 — Purpose presets and participant modes
+
+- DAO preset onboarding, purpose filtering and contextual workspace descriptions.
+- Separate human, mixed and guarded-agent participation choices.
+- Policy, participant and scoped-credential controls with authority disclosures.
+- Unsigned guardian transaction preparation for external native signing.
+- Works funding votes and passed-vote execution.
+
+Requires compatible core and module 0.2.0-alpha.1 artifacts. Production deployment is not included.
+
 ## 0.1.0-alpha.2
 
 - Align shared Vue UI with the supplied CIQ/MIQ operational design: espresso

@@ -7,9 +7,10 @@ import {
   type Treasury,
   type DaoSummary,
   type UserMembership,
+  type GovernanceState,
 } from '@daclify/core-protocol';
 import { encodeAction, makeInstruction } from '@daclify/core-protocol/sdk';
-import { DecideConfigSchema, type ModuleState } from '@daclify/modules';
+import { DecideConfigSchema, ModulePermissions, type ModuleState } from '@daclify/modules';
 import { encodeDecide, encodeWorks, encodePayroll } from '@daclify/modules/sdk';
 import { api, friendlyError } from '../api/client';
 import { vaultUnlocked, relayInstruction } from '../auth/session';
@@ -21,6 +22,8 @@ const props = defineProps<{
 }>();
 const workspace = useWorkspace();
 const data = ref<ModuleState>();
+const governance = ref<GovernanceState>();
+const governedWorks = computed(() => governance.value?.policy?.config.governed_works === true);
 const loading = ref(false);
 const busy = ref(false);
 const error = ref('');
@@ -53,14 +56,6 @@ const showOngoing = ref(true);
 const draftLabel = ref<Record<string, string>>({});
 const draftPaused = ref<Record<string, boolean>>({});
 const names = { decide: 'Decide', works: 'Works', payroll: 'Payroll' };
-const permissions = {
-  decide: { actions: ['open', 'vote'], grants: ['govlock'] },
-  works: {
-    actions: ['propose', 'accept', 'submitwork', 'review', 'cancel'],
-    grants: ['reserve', 'approve', 'cancel'],
-  },
-  payroll: { actions: ['commit', 'edit'], grants: ['reserve', 'approve'] },
-};
 const canSign = computed(() => !!props.member?.active && vaultUnlocked.value && !busy.value);
 const current = computed(() => data.value?.modules.find((m) => m.deployment.id === props.section));
 const canAct = computed(
@@ -89,12 +84,23 @@ function actor() {
 async function load() {
   loading.value = true;
   try {
-    const [modules, records] = await Promise.all([
+    const [modules, records, policy] = await Promise.all([
       api.moduleState(props.dao.reference.daoId),
       api.treasury(props.dao.reference.daoId),
+      workspace.network?.capabilities.includes('governance-policy')
+        ? api.governance(props.dao.reference.daoId)
+        : Promise.resolve(undefined),
     ]);
     data.value = modules;
     treasury.value = records;
+    governance.value = policy;
+    if (policy?.policy) {
+      const saved = policy.policy.config;
+      weight.value = saved.kind === 0 ? 'member' : saved.kind === 1 ? 'credit' : 'native-stake';
+      duration.value = saved.duration;
+      quorum.value = saved.quorum;
+      approval.value = saved.approval;
+    }
     const labels = { ...draftLabel.value };
     const pauses = { ...draftPaused.value };
     for (const schedule of modules.schedules) {
@@ -144,7 +150,7 @@ async function run(target: string, action: string, payload: Uint8Array, message:
   }
 }
 async function install(module: ModuleState['modules'][number]) {
-  const permission = permissions[module.deployment.id];
+  const permission = ModulePermissions[module.deployment.id];
   await run(
     props.dao.reference.contract,
     'modconfig',
@@ -152,8 +158,8 @@ async function install(module: ModuleState['modules'][number]) {
       ...actor(),
       account: module.deployment.account,
       version: 1,
-      actions: permission.actions,
-      grants: permission.grants,
+      actions: [...permission.actions],
+      grants: [...permission.grants],
       code_hash: module.deployment.codeHash,
     }),
     `${names[module.deployment.id]} enabled`,
@@ -262,6 +268,48 @@ async function accept(projectId: string) {
       encodeWorks('accept', { ...actor(), project_id: projectId }),
       'Milestone funds reserved',
     );
+}
+async function fund(projectId: string) {
+  const decide = data.value?.modules.find((module) => module.deployment.id === 'decide');
+  const works = data.value?.modules.find((module) => module.deployment.id === 'works');
+  const policy = governance.value?.policy;
+  if (!decide?.enabled || !decide.compatible || !decide.codeVerified || !works || !policy) {
+    error.value = 'Enable the compatible Decide module before proposing funding.';
+    return;
+  }
+  await run(
+    decide.deployment.account,
+    'openwork',
+    encodeDecide('openwork', {
+      ...actor(),
+      ballot_id: newId(),
+      works: works.deployment.account,
+      project_id: projectId,
+      duration: policy.config.duration,
+      quorum: policy.config.quorum,
+      approval: policy.config.approval,
+      metadata: '{}',
+    }),
+    'Funding vote opened. Finalize it in Decide, then execute a passed result.',
+  );
+}
+async function execute(id: string) {
+  busy.value = true;
+  error.value = '';
+  success.value = '';
+  try {
+    const result = await api.execute(props.dao.reference, id);
+    await workspace.refresh();
+    await load();
+    success.value =
+      result.state === 'executed'
+        ? 'Approved Works funds reserved. Deliverables still require review.'
+        : 'Funding was already executed.';
+  } catch (cause) {
+    error.value = friendlyError(cause);
+  } finally {
+    busy.value = false;
+  }
 }
 async function commit() {
   if (!current.value) return;
@@ -486,8 +534,8 @@ const selectedProject = computed(() =>
           <dd>{{ module.compatible ? 'Compatible' : 'Incompatible release' }}</dd>
         </dl>
         <p class="field-help">
-          Grants: {{ permissions[module.deployment.id].grants.join(', ') }}. The contract’s upgrade
-          authority can change its behavior.
+          Grants: {{ ModulePermissions[module.deployment.id].grants.join(', ') }}. The contract’s
+          upgrade authority can change its behavior.
         </p>
         <button
           v-if="!module.enabled && member?.admin"
@@ -542,7 +590,7 @@ const selectedProject = computed(() =>
         <div class="three-column">
           <div>
             <label for="weight">Voting weight</label
-            ><select id="weight" v-model="weight">
+            ><select id="weight" v-model="weight" :disabled="!!governance?.policy">
               <option value="member">Equal active members</option>
               <option value="credit">Governance credits</option>
               <option value="native-stake">Escrowed native stake</option>
@@ -553,6 +601,7 @@ const selectedProject = computed(() =>
             ><input
               id="duration"
               v-model.number="duration"
+              :disabled="!!governance?.policy"
               type="number"
               min="60"
               max="2592000"
@@ -564,6 +613,7 @@ const selectedProject = computed(() =>
             ><input
               id="quorum"
               v-model.number="quorum"
+              :disabled="!!governance?.policy"
               type="number"
               min="1"
               max="10000"
@@ -575,6 +625,7 @@ const selectedProject = computed(() =>
         ><input
           id="approval"
           v-model.number="approval"
+          :disabled="!!governance?.policy"
           type="number"
           min="5001"
           max="10000"
@@ -627,6 +678,26 @@ const selectedProject = computed(() =>
         <p class="field-help">
           Reject {{ ballot.tallies[0] ?? '0' }} · Approve {{ ballot.tallies[1] ?? '0' }}
         </p>
+        <template
+          v-for="execution in data?.executions.filter(
+            (execution) => execution.ballot_id === ballot.id,
+          )"
+          :key="execution.ballot_id"
+        >
+          <p class="field-help">
+            Funds Works project {{ execution.project_id }} · policy revision
+            {{ execution.policy_revision }} · execute by
+            {{ new Date(execution.deadline * 1000).toISOString() }}.
+          </p>
+          <p v-if="execution.executed" role="status">Funding executed</p>
+          <button
+            v-else-if="ballot.status === 1"
+            :disabled="!canSettle"
+            @click="execute(ballot.id)"
+          >
+            Execute approved funding
+          </button>
+        </template>
       </article></template
     >
     <template v-else-if="section === 'works'"
@@ -672,11 +743,17 @@ const selectedProject = computed(() =>
           {{ project.status === 0 ? 'Proposed' : project.status === 1 ? 'Accepted' : 'Cancelled' }}
         </p>
         <button
-          v-if="project.status === 0 && member?.admin"
+          v-if="project.status === 0 && !governedWorks && member?.admin"
           :disabled="!canAct"
           @click="accept(project.id)"
         >
           Accept and reserve funds</button
+        ><button
+          v-if="project.status === 0 && governedWorks && member?.active"
+          :disabled="!canAct"
+          @click="fund(project.id)"
+        >
+          Propose funding vote</button
         ><button
           v-if="project.status <= 1 && member?.admin"
           class="secondary"
