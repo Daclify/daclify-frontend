@@ -73,6 +73,7 @@ const state = ModuleStateSchema.parse({
   milestones: [],
   schedules: [],
   entries: [],
+  controls: [],
 });
 describe('versioned handbook catalog', () => {
   it('uses validated producer bundles and rejects duplicate topic identifiers', () => {

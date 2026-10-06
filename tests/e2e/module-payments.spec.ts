@@ -72,7 +72,7 @@ test('reserves and cancels work, then settles disabled payroll and withdraws the
   await expect(
     page.getByRole('button', { name: 'Commit funded payroll', exact: true }),
   ).not.toBeVisible();
-  const settle = page.getByRole('button', { name: /^Settle installment / });
+  const settle = page.getByRole('button', { name: 'Pay outstanding', exact: true });
   await expect(settle).toBeVisible({ timeout: 16000 });
   await settle.click();
   await expect(page.getByText('Payment settled.', { exact: true })).toBeVisible();

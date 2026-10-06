@@ -48,6 +48,10 @@ const reviewDoc = ref('');
 const reviewVersion = ref(1);
 const selectedMilestone = ref('');
 const payrollStarts = ref(new Date(Date.now() + 60000).toISOString().slice(0, 19));
+const payrollQuery = ref('');
+const showOngoing = ref(true);
+const draftLabel = ref<Record<string, string>>({});
+const draftPaused = ref<Record<string, boolean>>({});
 const names = { decide: 'Decide', works: 'Works', payroll: 'Payroll' };
 const permissions = {
   decide: { actions: ['open', 'vote'], grants: ['govlock'] },
@@ -55,7 +59,7 @@ const permissions = {
     actions: ['propose', 'accept', 'submitwork', 'review', 'cancel'],
     grants: ['reserve', 'approve', 'cancel'],
   },
-  payroll: { actions: ['commit'], grants: ['reserve', 'approve'] },
+  payroll: { actions: ['commit', 'edit'], grants: ['reserve', 'approve'] },
 };
 const canSign = computed(() => !!props.member?.active && vaultUnlocked.value && !busy.value);
 const current = computed(() => data.value?.modules.find((m) => m.deployment.id === props.section));
@@ -91,6 +95,15 @@ async function load() {
     ]);
     data.value = modules;
     treasury.value = records;
+    const labels = { ...draftLabel.value };
+    const pauses = { ...draftPaused.value };
+    for (const schedule of modules.schedules) {
+      const control = modules.controls.find((row) => row.schedule_id === schedule.id);
+      if (labels[schedule.id] === undefined) labels[schedule.id] = control?.label ?? '';
+      if (pauses[schedule.id] === undefined) pauses[schedule.id] = control?.paused === 1;
+    }
+    draftLabel.value = labels;
+    draftPaused.value = pauses;
   } catch (cause) {
     error.value = friendlyError(cause);
   } finally {
@@ -289,6 +302,59 @@ function payable(id: string): boolean {
   const record = obligation(id);
   return record?.status === 1 && record.due <= now.value;
 }
+function scheduleEntries(scheduleId: string) {
+  return (data.value?.entries ?? [])
+    .filter((row) => row.schedule_id === scheduleId)
+    .sort((left, right) => left.due - right.due);
+}
+function controlFor(scheduleId: string) {
+  return data.value?.controls.find((row) => row.schedule_id === scheduleId);
+}
+function pausedSchedule(scheduleId: string): boolean {
+  return controlFor(scheduleId)?.paused === 1;
+}
+function lastPayout(scheduleId: string): string {
+  const payout = controlFor(scheduleId)?.last_payout ?? 0;
+  return payout > 0 ? new Date(payout * 1000).toLocaleString() : 'none';
+}
+function outstandingEntry(scheduleId: string) {
+  return scheduleEntries(scheduleId).find((entry) => payable(entry.id));
+}
+const visibleSchedules = computed(() => {
+  const query = payrollQuery.value.trim().toLowerCase();
+  return (data.value?.schedules ?? []).filter((schedule) => {
+    const entries = scheduleEntries(schedule.id);
+    const open = entries.some((entry) => obligation(entry.id)?.status !== 2);
+    if (showOngoing.value && entries.length > 0 && !open) return false;
+    if (!query) return true;
+    const label = controlFor(schedule.id)?.label ?? '';
+    return (
+      schedule.id.includes(query) ||
+      schedule.recipient.includes(query) ||
+      label.toLowerCase().includes(query)
+    );
+  });
+});
+async function editSchedule(scheduleId: string) {
+  if (!current.value) return;
+  const label = draftLabel.value[scheduleId] ?? '';
+  await run(
+    current.value.deployment.account,
+    'edit',
+    encodePayroll('edit', {
+      ...actor(),
+      schedule_id: scheduleId,
+      paused: draftPaused.value[scheduleId] ? 1 : 0,
+      label,
+    }),
+    'Payroll settings saved',
+  );
+}
+async function payOutstanding(scheduleId: string) {
+  const entry = outstandingEntry(scheduleId);
+  if (!entry || pausedSchedule(scheduleId)) return;
+  await settle(entry.id);
+}
 async function settle(id: string) {
   const module = current.value;
   if (!module) return;
@@ -408,7 +474,7 @@ const selectedProject = computed(() =>
               ? 'Member, credit, or escrowed native stake ballots.'
               : module.deployment.id === 'works'
                 ? 'Reserved milestones with independent contributor review.'
-                : 'Bounded, funded installments with protected liabilities.'
+                : 'One settlement pays every due installment. Pause and the label do not rewrite the term.'
           }}
         </p>
         <dl>
@@ -747,7 +813,8 @@ const selectedProject = computed(() =>
         <h3>Commit fixed-term payroll</h3>
         <p class="notice">
           All installments are funded and approved now. Approved commitments cannot be cancelled.
-          Choose only the term your DAO intends to honor.
+          Choose only the term your DAO intends to honor. Settlement pays every installment that is
+          already due. The recipient and the DAO treasury asset stay on the approved obligation.
         </p>
         <label for="pay-recipient">Recipient member ID</label
         ><input id="pay-recipient" v-model="contributor" inputmode="numeric" required /><label
@@ -767,7 +834,7 @@ const selectedProject = computed(() =>
             />
           </div>
           <div>
-            <label for="pay-interval">Interval (days)</label
+            <label for="pay-interval">Claim frequency (days)</label
             ><input
               id="pay-interval"
               v-model.number="intervalDays"
@@ -787,28 +854,63 @@ const selectedProject = computed(() =>
           required
         /><button :disabled="!canAct">Commit funded payroll</button>
       </form>
-      <article v-for="schedule in data?.schedules" :key="schedule.id" class="panel">
-        <h3>Schedule {{ schedule.id }}</h3>
+      <form class="panel form-panel" @submit.prevent>
+        <label for="pay-search">Search payrolls</label
+        ><input id="pay-search" v-model="payrollQuery" placeholder="Label, member, or schedule" />
+        <label class="choice"
+          ><input v-model="showOngoing" type="checkbox" /> Ongoing schedules</label
+        >
+      </form>
+      <p v-if="current?.enabled && !current.actions.includes('edit')" class="notice">
+        Pause and the label need the edit action. Enable payroll again after disabling it once to
+        grant that action. Approved installments stay payable.
+      </p>
+      <article v-for="schedule in visibleSchedules" :key="schedule.id" class="panel">
+        <h3>{{ controlFor(schedule.id)?.label || `Schedule ${schedule.id}` }}</h3>
         <p>
           {{ schedule.periods }} installments of {{ schedule.quantity }} for member
           {{ schedule.recipient }}.
+          {{
+            scheduleEntries(schedule.id).filter((entry) => obligation(entry.id)?.status === 2)
+              .length
+          }}
+          paid. Unpaid installments stay reserved in the DAO treasury.
         </p>
         <p>
-          First due {{ new Date(schedule.starts * 1000).toLocaleString() }} · Every
-          {{ schedule.interval / 86400 }} days.
+          First due {{ new Date(schedule.starts * 1000).toLocaleString() }} · Claim frequency
+          {{ schedule.interval / 86400 }} days · Last payout {{ lastPayout(schedule.id) }}.
         </p>
+        <p v-if="pausedSchedule(schedule.id)">
+          Paused. Settlement pays nothing until an administrator resumes it.
+        </p>
+        <form
+          v-if="member?.admin && current?.enabled && current.actions.includes('edit')"
+          class="form-panel"
+          @submit.prevent="editSchedule(schedule.id)"
+        >
+          <label :for="`pay-label-${schedule.id}`">Label</label
+          ><input
+            :id="`pay-label-${schedule.id}`"
+            v-model="draftLabel[schedule.id]"
+            maxlength="80"
+          />
+          <label class="choice"
+            ><input v-model="draftPaused[schedule.id]" type="checkbox" /> Paused</label
+          ><button :disabled="!canAct">Save payroll settings</button>
+        </form>
+        <button
+          v-if="outstandingEntry(schedule.id)"
+          :disabled="!canSettle || pausedSchedule(schedule.id)"
+          @click="payOutstanding(schedule.id)"
+        >
+          Pay outstanding
+        </button>
         <ul class="milestone-list">
-          <li
-            v-for="entry in data?.entries.filter((row) => row.schedule_id === schedule.id)"
-            :key="entry.id"
-          >
+          <li v-for="entry in scheduleEntries(schedule.id)" :key="entry.id">
             <p>
               Installment {{ entry.id }} · Due {{ new Date(entry.due * 1000).toLocaleString() }} ·
               {{ paymentStatus(entry.id) }}
             </p>
-            <button v-if="payable(entry.id)" :disabled="!canSettle" @click="settle(entry.id)">
-              Settle installment {{ entry.id }}
-            </button>
           </li>
         </ul>
       </article></template
