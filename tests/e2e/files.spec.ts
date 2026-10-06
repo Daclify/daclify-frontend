@@ -1,3 +1,4 @@
+import { payCreation } from './creation-payment';
 import { test, expect, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import AxeBuilder from '@axe-core/playwright';
@@ -19,7 +20,7 @@ async function createWorkspace(page: Page, encrypted = false) {
   await page.getByRole('link', { name: 'Create DAO', exact: true }).click();
   await page.getByLabel('DAO name').fill(`File fixture ${Date.now()}`);
   if (encrypted) await page.getByLabel('Privacy policy').selectOption('encrypted-user-controlled');
-  await page.getByRole('button', { name: 'Create shared DAO' }).click();
+  await payCreation(page);
   await expect(page.getByRole('heading', { name: 'Workspace overview' })).toBeVisible();
   await page.getByRole('link', { name: 'Documents', exact: true }).click();
   if (encrypted) {

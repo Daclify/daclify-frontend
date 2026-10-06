@@ -17,7 +17,7 @@ async function authenticator(page: Page) {
 
 test('pairs a passkey and email with an existing vault', async ({ page }) => {
   await authenticator(page);
-  await page.goto('http://localhost:5178/account');
+  await page.goto('http://localhost:' + (process.env.DACLIFY_TEST_UI_PORT ?? 5178) + '/account');
   await page.getByLabel('Vault password', { exact: true }).fill('local-test-password-2026');
   await page.getByRole('button', { name: 'Create encrypted vault' }).click();
   await page.getByLabel('I have saved my recovery kit and credential').check();

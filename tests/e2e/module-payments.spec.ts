@@ -1,3 +1,4 @@
+import { payCreation } from './creation-payment';
 import { test, expect } from '@playwright/test';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -18,7 +19,7 @@ test('reserves and cancels work, then settles disabled payroll and withdraws the
   if (await menu.isVisible()) await menu.click();
   await page.getByRole('link', { name: 'Create DAO', exact: true }).click();
   await page.getByLabel('DAO name').fill(`Payment fixture ${Date.now()}`);
-  await page.getByRole('button', { name: 'Create shared DAO' }).click();
+  await payCreation(page, 'custom');
   await expect(page.getByRole('heading', { name: 'Workspace overview' })).toBeVisible();
   const id = /\/dao\/([0-9]+)/.exec(page.url())?.[1];
   if (!id) throw new Error('Fixture DAO unavailable');
@@ -31,11 +32,10 @@ test('reserves and cancels work, then settles disabled payroll and withdraws the
   await page.getByRole('button', { name: 'Publish JSON', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Document 1', exact: true })).toBeVisible();
   await page.getByRole('link', { name: 'Modules', exact: true }).click();
-  await page.getByRole('button', { name: 'Enable Decide', exact: true }).click();
-  await expect(page.getByText('Decide enabled', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Disable Decide', exact: true })).toBeVisible();
   await page.getByRole('link', { name: 'Decide', exact: true }).click();
   await page.getByLabel('Public ballot title').fill('Settlement journey decision');
-  await page.getByLabel('Duration (seconds)').fill('60');
+  await expect(page.getByLabel('Duration (seconds)')).toHaveValue('60');
   await page.getByRole('button', { name: 'Open ballot', exact: true }).click();
   await page.getByRole('button', { name: 'Vote Approve', exact: true }).click();
   await expect(page.getByText('Your vote: Approve', { exact: true })).toBeVisible();

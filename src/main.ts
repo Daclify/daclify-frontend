@@ -11,6 +11,8 @@ const router = createRouter({
   routes: [
     { path: '/', component: () => import('./views/Hub.vue') },
     { path: '/account', component: () => import('./views/Account.vue') },
+    { path: '/daclify', component: () => import('./views/PlatformDao.vue') },
+    { path: '/status', component: () => import('./views/Status.vue') },
     { path: '/create', component: () => import('./views/CreateDao.vue') },
     { path: '/marketplace', component: () => import('./views/Marketplace.vue') },
     { path: '/dao/:id/:section?', component: () => import('./views/Workspace.vue') },

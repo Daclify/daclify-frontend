@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import {
-  Blocks,
+  Activity,
+  Shield,
   BookOpen,
   LayoutGrid,
   PanelLeftClose,
@@ -71,6 +72,11 @@ onMounted(() => {
             >DAO hub</span
           ></RouterLink
         >
+        <RouterLink to="/daclify" @click="mobileOpen = false"
+          ><Shield class="nav-icon" aria-hidden="true" /><span class="nav-text"
+            >Daclify DAO</span
+          ></RouterLink
+        >
         <RouterLink to="/create" @click="mobileOpen = false"
           ><Plus class="nav-icon" aria-hidden="true" /><span class="nav-text"
             >Create DAO</span
@@ -92,9 +98,9 @@ onMounted(() => {
             >Documentation</span
           ></RouterLink
         >
-        <RouterLink to="/docs/modules" @click="mobileOpen = false"
-          ><Blocks class="nav-icon" aria-hidden="true" /><span class="nav-text"
-            >Module guide</span
+        <RouterLink to="/status" @click="mobileOpen = false"
+          ><Activity class="nav-icon" aria-hidden="true" /><span class="nav-text"
+            >Status</span
           ></RouterLink
         >
       </nav>

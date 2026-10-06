@@ -121,7 +121,7 @@ test('shows purpose presets and makes participant mode a separate choice', async
       { exact: true },
     ),
   ).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Create shared DAO' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Review setup payment' })).toBeDisabled();
 });
 test('filters discovery by purpose without treating it as a permission', async ({ page }) => {
   await page.goto('/');

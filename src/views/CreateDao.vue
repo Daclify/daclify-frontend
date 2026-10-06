@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
-import { useRouter } from 'vue-router';
+import { ref, computed, watch, onMounted } from 'vue';
+import { useRouter, useRoute } from 'vue-router';
 import {
   DaoPresets,
   DaoSetupSchema,
@@ -8,11 +8,65 @@ import {
   defaultDaoSetup,
   parseUnits,
   type Privacy,
+  type CreationMethodSchema,
+  type CreationOrderView,
+  type PlatformStatus,
 } from '@daclify/core-protocol';
+import type { z } from 'zod';
 import { useWorkspace } from '../state/workspace';
 import { api, friendlyError } from '../api/client';
 const state = useWorkspace();
 const router = useRouter();
+const route = useRoute();
+const platform = ref<PlatformStatus>();
+const order = ref<CreationOrderView>();
+const method = ref<z.infer<typeof CreationMethodSchema>>('tlos');
+const orderId = ref(typeof route.query.order === 'string' ? route.query.order : '');
+const resumeId = ref(orderId.value);
+const quotedInput = ref<Parameters<typeof api.creationOrder>[0]>();
+const sharedPrice = computed(() => platform.value?.chain?.creation?.shared_usd ?? 2000);
+const independentPrice = computed(() => platform.value?.chain?.creation?.independent_usd ?? 5000);
+const premium = computed(() => (platform.value?.chain?.creation?.premium_bps ?? 2000) / 100);
+const cardAvailable = computed(
+  () => platform.value?.services.find((s) => s.id === 'card')?.configured ?? false,
+);
+function usd(cents: number) {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
+}
+let loadSequence = 0;
+async function loadPlatform() {
+  const current = ++loadSequence;
+  try {
+    const result = await api.platformStatus();
+    if (current === loadSequence) platform.value = result;
+  } catch (cause) {
+    if (current === loadSequence) error.value = friendlyError(cause);
+  }
+}
+onMounted(loadPlatform);
+let displayedChain: string | undefined;
+watch(
+  () => state.network?.chainId,
+  (chain) => {
+    if (!chain) return;
+    if (displayedChain && displayedChain !== chain) {
+      platform.value = undefined;
+      order.value = undefined;
+      quotedInput.value = undefined;
+    }
+    displayedChain = chain;
+    void loadPlatform();
+    if (state.account && orderId.value && !busy.value && !order.value) void checkOrder();
+  },
+);
+function acceptOrder(result: CreationOrderView) {
+  if (
+    result.network.chainId !== state.network?.chainId ||
+    result.network.runtime !== state.network?.runtime
+  )
+    throw new Error('DAO_REFERENCE');
+  order.value = result;
+}
 const title = ref('');
 const description = ref('');
 const privacy = ref<Privacy>('public');
@@ -79,37 +133,103 @@ const ready = computed(
 );
 const available = computed(
   () =>
+    platform.value?.chain?.sharedAvailable &&
+    platform.value.chain.network.chainId === state.network?.chainId &&
     state.network?.capabilities.includes('shared-dao-create') &&
     state.network.capabilities.includes('dao-presets'),
 );
 async function create() {
-  if (!state.network) return;
+  if (!state.network || !resolved.value || deployment.value !== 'shared') return;
   busy.value = true;
   error.value = '';
   try {
-    if (!resolved.value) throw new Error('INPUT_INVALID');
-    const dao = await api.createDao(
-      { schemaVersion: 1, title: title.value, description: description.value },
-      privacy.value,
-      {
-        chainId: state.network.chainId,
-        contract: token.value,
-        symbol: symbol.value,
-        precision: precision.value,
-      },
-      resolved.value,
-      setup.value.participantMode === 'agents-guarded'
-        ? (foundingAgent.value ?? undefined)
-        : undefined,
-    );
-    await state.refresh();
-    await router.push(`/dao/${dao.reference.daoId}`);
+    if (!quotedInput.value) {
+      orderId.value = crypto.randomUUID();
+      quotedInput.value = {
+        requestId: orderId.value,
+        deployment: 'shared',
+        method: method.value,
+        request: {
+          metadata: { schemaVersion: 1, title: title.value, description: description.value },
+          privacy: privacy.value,
+          token: {
+            chainId: state.network.chainId,
+            contract: token.value,
+            symbol: symbol.value,
+            precision: precision.value,
+          },
+          setup: resolved.value,
+          ...(setup.value.participantMode === 'agents-guarded' && foundingAgent.value
+            ? { foundingAgent: foundingAgent.value }
+            : {}),
+        },
+      };
+      await router.replace({ path: '/create', query: { order: orderId.value } });
+    }
+    acceptOrder(await api.creationOrder(quotedInput.value));
   } catch (cause) {
     error.value = friendlyError(cause);
   } finally {
     busy.value = false;
   }
 }
+async function checkOrder() {
+  if (!orderId.value) return;
+  busy.value = true;
+  error.value = '';
+  try {
+    acceptOrder(await api.creationOrderStatus(orderId.value));
+    if (order.value?.state === 'paid') acceptOrder(await api.creationFulfill(orderId.value));
+    if (order.value?.state === 'created' && order.value.dao) {
+      const dao = order.value.dao;
+      await state.refresh();
+      await router.push('/dao/' + dao.daoId);
+    }
+  } catch (cause) {
+    error.value = friendlyError(cause);
+  } finally {
+    busy.value = false;
+  }
+}
+async function checkout() {
+  busy.value = true;
+  error.value = '';
+  try {
+    const result = await api.creationCheckout(orderId.value);
+    const url = new URL(result.url);
+    if (
+      url.protocol !== 'https:' ||
+      url.hostname !== 'checkout.stripe.com' ||
+      url.username ||
+      url.password
+    )
+      throw new Error('CHECKOUT_URL');
+    window.location.assign(url.toString());
+  } catch (cause) {
+    error.value = friendlyError(cause);
+  } finally {
+    busy.value = false;
+  }
+}
+async function resume() {
+  orderId.value = resumeId.value.trim();
+  await router.replace({ path: '/create', query: { order: orderId.value } });
+  await checkOrder();
+}
+function newOrder() {
+  order.value = undefined;
+  quotedInput.value = undefined;
+  orderId.value = '';
+  void router.replace('/create');
+}
+watch(
+  () => state.account?.id,
+  () => {
+    order.value = undefined;
+    quotedInput.value = undefined;
+    if (state.account && orderId.value && !busy.value) void checkOrder();
+  },
+);
 </script>
 <template>
   <div class="page-heading">
@@ -126,6 +246,60 @@ async function create() {
     <p>Your internal account becomes the first administrator of this DAO.</p>
     <RouterLink class="button" to="/account">Set up account</RouterLink>
   </div>
+  <section v-else-if="order" class="panel narrow">
+    <h2>DAO setup payment</h2>
+    <p>
+      Network: <strong>{{ order.network.environment }}</strong> · {{ order.network.runtime }}
+    </p>
+    <p class="field-help break-word">Chain ID: {{ order.network.chainId }}</p>
+    <p>
+      Shared DAO setup: <strong>{{ usd(order.usdCents) }}</strong> USD.
+    </p>
+    <p>
+      Order <code>{{ order.requestId }}</code> · {{ order.state }}
+    </p>
+    <template v-if="order.state === 'awaiting-payment'">
+      <p>Expires {{ new Date(order.expires * 1000).toLocaleString() }}.</p>
+      <template v-if="order.method === 'tlos'">
+        <p>
+          The quoted amount includes the conversion premium. Send the exact amount before expiry.
+        </p>
+        <dl class="fact-list">
+          <dt>Amount</dt>
+          <dd>{{ order.tlosAmount }}</dd>
+          <dt>Recipient</dt>
+          <dd>{{ order.recipient }}</dd>
+          <dt>Token contract</dt>
+          <dd>{{ order.tokenContract }}</dd>
+          <dt>Memo</dt>
+          <dd class="break-word">{{ order.memo }}</dd>
+        </dl>
+        <p>
+          Pay with a native Telos wallet. Payment funds the platform fee treasury; it is separate
+          from this DAO's treasury.
+        </p>
+      </template>
+      <button v-else :disabled="busy" @click="checkout">
+        Pay {{ usd(order.usdCents) }} by card
+      </button>
+    </template>
+    <p v-else>Payment verified. Creation can be resumed if the chain response is interrupted.</p>
+    <button class="secondary" :disabled="busy" @click="checkOrder">
+      {{ busy ? 'Checking…' : 'Check payment and create DAO' }}
+    </button>
+    <button
+      v-if="order.state === 'awaiting-payment'"
+      class="text-button"
+      :disabled="busy"
+      @click="newOrder"
+    >
+      Start a different order
+    </button>
+    <p class="field-help">
+      Keep this order ID. A browser return or a transaction ID you enter is not accepted as payment
+      proof.
+    </p>
+  </section>
   <form v-else class="panel form-panel" @submit.prevent="create">
     <fieldset>
       <legend>Purpose and participants</legend>
@@ -181,7 +355,7 @@ async function create() {
       <div class="choice-grid">
         <label class="choice"
           ><input v-model="deployment" type="radio" value="shared" name="deployment" /><span
-            ><strong>Shared contract</strong
+            ><strong>Shared contract · {{ usd(sharedPrice) }}</strong
             ><small
               >Start with a managed runtime. The deployment operator controls contract
               upgrades.</small
@@ -189,7 +363,7 @@ async function create() {
           ></label
         ><label class="choice"
           ><input v-model="deployment" type="radio" value="independent" name="deployment" /><span
-            ><strong>Independent contract</strong
+            ><strong>Independent contract · {{ usd(independentPrice) }} + resources</strong
             ><small
               >Your DAO controls its deployment and upgrade permissions. Connect it to the hub
               afterward.</small
@@ -287,8 +461,9 @@ async function create() {
       contract upgrade powers. <RouterLink to="/docs/dao-presets">Read the setup guide</RouterLink>.
     </aside>
     <aside v-if="deployment === 'independent'" class="notice">
-      Independent deployment requires the deployment kit and an on-chain account with CPU, NET, and
-      RAM. <RouterLink to="/docs/deployments">Open the deployment guide</RouterLink>.
+      Independent setup is {{ usd(independentPrice) }} USD, plus native account creation, CPU, NET
+      and RAM charged separately. Self-service deployment and checkout are not available yet. Use
+      the deployment kit. <RouterLink to="/docs/deployments">Open the deployment guide</RouterLink>.
     </aside>
     <fieldset>
       <legend>02 · Public identity</legend>
@@ -356,11 +531,52 @@ async function create() {
         nontransferable internal units.
       </p>
     </fieldset>
+    <fieldset>
+      <legend>05 · Setup payment</legend>
+      <label for="payment-method">Pay with</label
+      ><select id="payment-method" v-model="method">
+        <option value="tlos" :disabled="!platform?.chain?.rateFresh">
+          TLOS · {{ premium }}% conversion premium
+        </option>
+        <option value="card" :disabled="!cardAvailable">
+          Card · USD{{ cardAvailable ? '' : ' (unconfigured)' }}
+        </option>
+      </select>
+      <p v-if="!platform?.chain?.rateFresh" class="notice">
+        A fresh TLOS conversion rate is unavailable. The operator must publish a current observation
+        before a TLOS quote can be prepared.
+      </p>
+      <p class="field-help">
+        Shared setup: {{ usd(sharedPrice) }} USD. TLOS converts this fee with a {{ premium }}%
+        premium using a fresh quote. Independent setup: {{ usd(independentPrice) }} USD plus
+        blockchain resources. Prices are captured when your order is prepared.
+      </p>
+      <RouterLink to="/docs/creation-fees">Payment guide ↗</RouterLink>
+    </fieldset>
     <div class="form-footer">
       <span v-if="!available" class="muted">Shared creation is unavailable on this deployment.</span
-      ><button :disabled="busy || !available || !ready || deployment !== 'shared'">
-        {{ busy ? 'Creating on chain…' : 'Create shared DAO' }}
+      ><button
+        :disabled="
+          busy ||
+          !available ||
+          !ready ||
+          deployment !== 'shared' ||
+          (method === 'tlos' && !platform?.chain?.rateFresh) ||
+          (method === 'card' && !cardAvailable)
+        "
+      >
+        {{ busy ? 'Preparing order…' : 'Review setup payment' }}
       </button>
     </div>
+  </form>
+  <form v-if="state.account && !order" class="panel narrow" @submit.prevent="resume">
+    <h2>Resume a setup order</h2>
+    <label for="resume-order">Order ID</label
+    ><input id="resume-order" v-model="resumeId" required /><button :disabled="busy">
+      Check existing order
+    </button>
+    <p v-if="quotedInput" class="field-help">
+      Pending order: {{ orderId }}. Retry the original request before paying or starting another.
+    </p>
   </form>
 </template>

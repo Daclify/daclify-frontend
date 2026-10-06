@@ -1,3 +1,4 @@
+import { payCreation } from './creation-payment';
 import { test, expect, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 async function openMenu(page: Page) {
@@ -58,7 +59,7 @@ test('walletless account and real DAO creation flow', async ({ page }) => {
   await page
     .getByLabel('Description')
     .fill('Created with an internal account on the local native fixture.');
-  await page.getByRole('button', { name: 'Create shared DAO' }).click();
+  await payCreation(page, 'custom');
   await expect(page.getByRole('heading', { name: 'Workspace overview' })).toBeVisible();
   await expect(page.getByText('Administrator', { exact: true })).toBeVisible();
   await page.getByRole('link', { name: 'Documents', exact: true }).click();
@@ -67,8 +68,7 @@ test('walletless account and real DAO creation flow', async ({ page }) => {
   await page.getByRole('button', { name: 'Publish JSON', exact: true }).click();
   await expect(page.getByText('Browser durable document', { exact: false })).toBeVisible();
   await page.getByRole('link', { name: 'Modules', exact: true }).click();
-  await page.getByRole('button', { name: 'Enable Decide', exact: true }).click();
-  await expect(page.getByText('Decide enabled', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Disable Decide', exact: true })).toBeVisible();
   await page.getByRole('link', { name: 'Decide', exact: true }).click();
   await page.getByLabel('Public ballot title').fill('Browser governance ballot');
   await page.getByRole('button', { name: 'Open ballot', exact: true }).click();
@@ -131,12 +131,12 @@ test('recovers the same account and DAO membership on a fresh browser', async ({
   await page.getByRole('link', { name: 'Create DAO', exact: true }).click();
   const title = `Recovery DAO ${Date.now()}`;
   await page.getByLabel('DAO name').fill(title);
-  await page.getByRole('button', { name: 'Create shared DAO' }).click();
+  await payCreation(page, 'custom');
   await expect(page.getByRole('heading', { name: 'Workspace overview' })).toBeVisible();
   const fresh = await browser.newContext();
   try {
     const recovered = await fresh.newPage();
-    await recovered.goto('http://127.0.0.1:5178/account');
+    await recovered.goto(new URL('/account', page.url()).toString());
     await recovered.getByRole('button', { name: 'Recover from an encrypted kit' }).click();
     await recovered.getByLabel('Encrypted recovery kit').setInputFiles({
       name: 'encrypted-kit.json',
@@ -148,7 +148,7 @@ test('recovers the same account and DAO membership on a fresh browser', async ({
     await recovered.getByRole('button', { name: 'Restore and sign in' }).click();
     await expect(recovered.getByRole('heading', { name: 'Your account' })).toBeVisible();
     await expect(recovered.getByText(id, { exact: true })).toBeVisible();
-    await recovered.goto('http://127.0.0.1:5178/');
+    await recovered.goto(new URL('/', page.url()).toString());
     await recovered
       .getByRole('link')
       .filter({ has: recovered.getByRole('heading', { name: title, exact: true }) })
@@ -173,7 +173,7 @@ test('keeps private JSON encrypted on chain and clears plaintext when keys lock'
   await page.getByRole('link', { name: 'Create DAO', exact: true }).click();
   await page.getByLabel('DAO name').fill(`Encrypted browser DAO ${Date.now()}`);
   await page.getByLabel('Privacy policy').selectOption('encrypted-user-controlled');
-  await page.getByRole('button', { name: 'Create shared DAO' }).click();
+  await payCreation(page, 'custom');
   await expect(page.getByRole('heading', { name: 'Workspace overview' })).toBeVisible();
   await page.getByRole('link', { name: 'Documents', exact: true }).click();
   await page.getByRole('button', { name: 'Initialize encryption epoch' }).click();

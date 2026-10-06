@@ -1,3 +1,4 @@
+import { payCreation } from './creation-payment';
 import { test, expect, devices, type Page } from '@playwright/test';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -36,7 +37,7 @@ test('hands work between two internal accounts, requests a revision, approves an
   await page.getByRole('link', { name: 'Create DAO', exact: true }).click();
   const title = `Review fixture ${Date.now()}`;
   await page.getByLabel('DAO name').fill(title);
-  await page.getByRole('button', { name: 'Create shared DAO' }).click();
+  await payCreation(page, 'custom');
   await expect(page.getByRole('heading', { name: 'Workspace overview' })).toBeVisible();
   const daoId = /\/dao\/([0-9]+)/.exec(page.url())?.[1];
   if (!daoId) throw new Error('Fixture DAO unavailable');
@@ -44,7 +45,7 @@ test('hands work between two internal accounts, requests a revision, approves an
     cwd: core,
   });
   const context = await browser.newContext({
-    baseURL: 'http://127.0.0.1:5178',
+    baseURL: new URL(page.url()).origin,
     ...(test.info().project.name === 'mobile-chromium'
       ? devices['Pixel 7']
       : devices['Desktop Chrome']),

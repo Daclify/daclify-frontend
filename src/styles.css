@@ -1486,3 +1486,28 @@ nav a,
 .workspace-tabs a {
   display: inline-flex;
 }
+
+.break-word {
+  overflow-wrap: anywhere;
+}
+.fact-list {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1fr) minmax(0, 2fr);
+  gap: 0.65rem 1.25rem;
+}
+.fact-list dt {
+  color: var(--muted);
+}
+.fact-list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 600px) {
+  .fact-list {
+    grid-template-columns: 1fr;
+    gap: 0.35rem;
+  }
+  .fact-list dd {
+    margin-bottom: 0.65rem;
+  }
+}

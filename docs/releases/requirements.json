@@ -1,9 +1,28 @@
 {
   "requirements": [
-    { "id": "VAULT-RECOVERY", "tests": ["tests/unit/vault.test.ts"] },
-    { "id": "WORKSPACE-STATE", "tests": ["tests/unit/workspace.test.ts"] },
-    { "id": "BROWSER-WORKSPACE", "tests": ["tests/e2e/workspace.spec.ts"] },
-    { "id": "LINT-POLICY", "tests": ["tests/unit/lint-policy.test.ts"] },
-    { "id": "PROVIDER-SESSION", "tests": ["tests/unit/provider-session.test.ts"] }
+    {
+      "id": "VAULT-RECOVERY",
+      "tests": ["tests/unit/vault.test.ts"]
+    },
+    {
+      "id": "WORKSPACE-STATE",
+      "tests": ["tests/unit/workspace.test.ts"]
+    },
+    {
+      "id": "BROWSER-WORKSPACE",
+      "tests": ["tests/e2e/workspace.spec.ts"]
+    },
+    {
+      "id": "LINT-POLICY",
+      "tests": ["tests/unit/lint-policy.test.ts"]
+    },
+    {
+      "id": "PROVIDER-SESSION",
+      "tests": ["tests/unit/provider-session.test.ts"]
+    },
+    {
+      "id": "PLATFORM-PAID-CREATION-AND-ADMIN",
+      "tests": ["tests/e2e/platform.spec.ts"]
+    }
   ]
 }

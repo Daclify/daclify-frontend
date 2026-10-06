@@ -11,12 +11,7 @@ import {
   type DaoSummary,
   type Network,
   type UserMembership,
-  type MetadataSchema,
   SessionSchema,
-  type Privacy,
-  type AssetRef,
-  type DaoSetup,
-  type FoundingAgentSchema,
 } from '@daclify/core-protocol';
 import type { instruction } from '@daclify/core-protocol/sdk';
 import { csrfStorageKey, resolveApiUrl } from './networks';
@@ -297,20 +292,32 @@ export const api = {
       ModuleApiRoutes.execute.response,
       ModuleApiRoutes.execute.input.parse({ dao, ballotId }),
     ),
-  createDao: (
-    metadata: z.infer<typeof MetadataSchema>,
-    privacy: Privacy,
-    token: AssetRef,
-    setup?: DaoSetup,
-    foundingAgent?: z.infer<typeof FoundingAgentSchema>,
-  ) =>
-    request(ApiRoutes.createDao.path, ApiRoutes.createDao.response, {
-      metadata,
-      privacy,
-      token,
-      ...(setup ? { setup } : {}),
-      ...(foundingAgent ? { foundingAgent } : {}),
-    }),
+  platformStatus: () => request(ApiRoutes.status.path, ApiRoutes.status.response),
+  creationOrder: (input: z.infer<typeof ApiRoutes.creationOrder.input>) =>
+    request(
+      ApiRoutes.creationOrder.path,
+      ApiRoutes.creationOrder.response,
+      ApiRoutes.creationOrder.input.parse(input),
+      60000,
+    ),
+  creationOrderStatus: (id: string) =>
+    request(
+      ApiRoutes.creationOrderStatus.path.replace(':id', z.uuid().parse(id)),
+      ApiRoutes.creationOrderStatus.response,
+    ),
+  creationCheckout: (id: string) =>
+    request(
+      ApiRoutes.creationCheckout.path.replace(':id', z.uuid().parse(id)),
+      ApiRoutes.creationCheckout.response,
+      {},
+    ),
+  creationFulfill: (id: string) =>
+    request(
+      ApiRoutes.creationFulfill.path.replace(':id', z.uuid().parse(id)),
+      ApiRoutes.creationFulfill.response,
+      {},
+      60000,
+    ),
   relay: (requestData: instruction, sig: string) =>
     request(ApiRoutes.relay.path, ApiRoutes.relay.response, { request: requestData, sig }),
   serviceCheckout: () => request('/v1/billing/checkout', ServiceCheckoutSchema, {}),
@@ -371,6 +378,21 @@ export const api = {
 export function friendlyError(error: unknown): string {
   if (error instanceof ApiFailure) {
     const messages: Record<string, string> = {
+      CREATION_RATE_UNAVAILABLE:
+        'A fresh TLOS rate is unavailable. Try card payment or ask the operator to update the rate.',
+      PRESET_MODULE_UNAVAILABLE:
+        'This setup requires verified, registered modules that are unavailable on this deployment.',
+      CREATION_PAYMENT_REQUIRED: 'Pay this setup order before creating the DAO.',
+      CREATION_ORDER_UNKNOWN: 'No setup order belongs to this account with that ID.',
+      CREATION_ORDER_PENDING:
+        'The order response is uncertain. Resume this order before paying or starting another.',
+      CREATION_ORDER_CONFLICT:
+        'This order uses the original setup. Resume it or start a new unpaid order.',
+      DAO_CREATION_UNAVAILABLE: 'Paid DAO creation is not configured on this deployment.',
+      INDEPENDENT_UNAVAILABLE:
+        'Independent deployment requires the operator kit. Checkout is not available yet.',
+      CREATION_CHECKOUT_UNAVAILABLE:
+        'This card order is expired or already paid. Check its status.',
       AUTH_REQUIRED: 'Sign in to continue.',
       AUTH_INVALID: 'The login proof expired or was already used. Try again.',
       KEY_CHANGE_REQUIRED:

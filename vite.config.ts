@@ -1,10 +1,23 @@
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
+import { z } from 'zod';
+const uiPort = z.coerce
+  .number()
+  .int()
+  .min(1024)
+  .max(65535)
+  .parse(process.env.DACLIFY_TEST_UI_PORT ?? 5178);
+const apiPort = z.coerce
+  .number()
+  .int()
+  .min(1024)
+  .max(65535)
+  .parse(process.env.DACLIFY_TEST_API_PORT ?? 3008);
 export default defineConfig({
   plugins: [vue()],
   server: {
-    port: 5178,
+    port: uiPort,
     strictPort: true,
-    proxy: { '/v1': { target: 'http://127.0.0.1:3008', changeOrigin: false } },
+    proxy: { '/v1': { target: 'http://127.0.0.1:' + apiPort, changeOrigin: false } },
   },
 });

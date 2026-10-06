@@ -1,3 +1,4 @@
+import { payCreation } from './creation-payment';
 import { expect, test, type Page } from '@playwright/test';
 
 const cid = 'bafkreiehxpuhtr5f6v4eu4byjo2j7kkrhjvd7psmfu4imnpdzb3bdqb7vy';
@@ -30,7 +31,7 @@ test('publishes a public profile from the unlocked vault', async ({ page }, test
   await page.getByRole('link', { name: 'Create DAO', exact: true }).click();
   await page.getByLabel('DAO name').fill(`Profile DAO ${name}`);
   await page.getByLabel('Description').fill('A DAO used to publish a member profile.');
-  await page.getByRole('button', { name: 'Create shared DAO' }).click();
+  await payCreation(page);
   await expect(page.getByRole('heading', { name: 'Workspace overview' })).toBeVisible();
   await page.getByRole('link', { name: 'Your account', exact: true }).click();
   await page.getByRole('tab', { name: 'Profile', exact: true }).click();

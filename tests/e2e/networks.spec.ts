@@ -3,7 +3,7 @@ import { test, expect, type Route } from '@playwright/test';
 import { PrivateKey } from '@wharfkit/antelope';
 import { AccountSchema, ErrorSchema, NetworkSchema } from '@daclify/core-protocol';
 
-const origin = 'http://127.0.0.1:5178';
+const origin = 'http://127.0.0.1:' + (process.env.DACLIFY_TEST_UI_PORT ?? 5178);
 const productionOrigin = 'https://api.example';
 const testnetOrigin = 'https://testnet-api.example';
 const signedOut = ErrorSchema.parse({ code: 'AUTH_REQUIRED', message: 'Sign in to continue.' });
