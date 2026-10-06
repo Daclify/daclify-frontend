@@ -9,7 +9,7 @@ import {
 import { encodeAction, makeInstruction } from '@daclify/core-protocol/sdk';
 import { api, friendlyError } from '../api/client';
 import { vaultUnlocked, relayInstruction } from '../auth/session';
-import { prepareExit } from '../content/treasury';
+import { prepareExit, prepareExternalEvidence } from '../content/treasury';
 import { useWorkspace } from '../state/workspace';
 const props = defineProps<{ dao: DaoSummary; member: UserMembership | undefined }>();
 const workspace = useWorkspace();
@@ -20,6 +20,9 @@ const busy = ref(false);
 const destination = ref(props.member?.nativeAccount ?? '');
 const amount = ref('');
 const kind = ref<'withdraw' | 'unstake'>('withdraw');
+const draftChain = ref<Record<string, string>>({});
+const draftPayer = ref<Record<string, string>>({});
+const draftReference = ref<Record<string, string>>({});
 const now = ref(Math.floor(Date.now() / 1000));
 const timer = setInterval(() => {
   now.value = Math.floor(Date.now() / 1000);
@@ -55,6 +58,57 @@ async function settle(source: string, sourceId: string) {
     await load();
     notice.value =
       result.state === 'already-settled' ? 'Payment was already settled.' : 'Payment settled.';
+  } catch (cause) {
+    error.value = friendlyError(cause);
+  } finally {
+    busy.value = false;
+  }
+}
+function statements(obligationId: string) {
+  return records.value?.evidence.filter((row) => row.obligation_id === obligationId) ?? [];
+}
+function unmatchedStatements() {
+  const ids = new Set(records.value?.obligations.map((row) => row.id) ?? []);
+  return records.value?.evidence.filter((row) => !ids.has(row.obligation_id)) ?? [];
+}
+function setDraft(target: Record<string, string>, id: string, event: Event) {
+  const field = event.target;
+  if (!(field instanceof HTMLInputElement)) return;
+  target[id] = field.value;
+}
+async function recordStatement(record: {
+  id: string;
+  recipient: string;
+  quantity: string;
+  status: number;
+}) {
+  const actor = props.member;
+  if (!actor) return;
+  busy.value = true;
+  error.value = '';
+  notice.value = '';
+  try {
+    const data = prepareExternalEvidence(
+      props.dao,
+      actor,
+      record,
+      draftChain.value[record.id] ?? '',
+      draftPayer.value[record.id] ?? '',
+      draftReference.value[record.id] ?? '',
+    );
+    await relayInstruction(
+      makeInstruction(
+        props.dao.reference,
+        actor.memberId,
+        actor.nonce,
+        Math.floor(Date.now() / 1000) + 300,
+        props.dao.reference.contract,
+        'confirmext',
+        encodeAction('confirmext', data),
+      ),
+    );
+    await load();
+    notice.value = 'External payment statement recorded. The obligation is still unpaid.';
   } catch (cause) {
     error.value = friendlyError(cause);
   } finally {
@@ -196,6 +250,60 @@ async function exit() {
         Settlement delivers to the recipient’s linked native account or their internal claim. It
         does not change the recipient or amount.
       </p>
+      <ul v-if="statements(record.id).length">
+        <li v-for="statement in statements(record.id)" :key="statement.id">
+          {{
+            statement.mode === 1
+              ? 'DAO-confirmed external payment'
+              : 'External statement mode ' + statement.mode
+          }}. {{ statement.quantity }} from {{ statement.payer }} on {{ statement.chain }}.
+          Reference {{ statement.reference }}. This statement does not settle the obligation.
+        </li>
+      </ul>
+      <p v-else class="field-help">No external payment statement is recorded.</p>
+      <form v-if="member?.admin && record.status === 1" @submit.prevent="recordStatement(record)">
+        <p class="field-help">
+          Record a statement that this approved obligation was paid outside this chain. The
+          statement keeps the recipient and amount already on the obligation.
+        </p>
+        <label :for="'evidence-chain-' + record.id">External chain</label>
+        <input
+          :id="'evidence-chain-' + record.id"
+          :value="draftChain[record.id] ?? ''"
+          maxlength="64"
+          required
+          spellcheck="false"
+          @input="setDraft(draftChain, record.id, $event)"
+        />
+        <label :for="'evidence-payer-' + record.id">External payer</label>
+        <input
+          :id="'evidence-payer-' + record.id"
+          :value="draftPayer[record.id] ?? ''"
+          maxlength="128"
+          required
+          spellcheck="false"
+          @input="setDraft(draftPayer, record.id, $event)"
+        />
+        <label :for="'evidence-reference-' + record.id">Reference</label>
+        <input
+          :id="'evidence-reference-' + record.id"
+          :value="draftReference[record.id] ?? ''"
+          maxlength="64"
+          required
+          spellcheck="false"
+          @input="setDraft(draftReference, record.id, $event)"
+        />
+        <button :disabled="busy || !vaultUnlocked">Record external statement</button>
+      </form>
     </article>
   </div>
+  <section v-if="unmatchedStatements().length" class="panel">
+    <h3>Other external statements</h3>
+    <ul>
+      <li v-for="statement in unmatchedStatements()" :key="statement.id">
+        Obligation {{ statement.obligation_id }} · {{ statement.quantity }} from
+        {{ statement.payer }} on {{ statement.chain }}. Reference {{ statement.reference }}.
+      </li>
+    </ul>
+  </section>
 </template>

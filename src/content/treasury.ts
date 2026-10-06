@@ -1,4 +1,5 @@
 import {
+  ChainIdSchema,
   NativeAccountSchema,
   parseUnits,
   formatUnits,
@@ -33,5 +34,43 @@ export function prepareExit(
     member_id: member.memberId,
     destination,
     quantity: `${formatUnits(amount, dao.token.precision)} ${dao.token.symbol}`,
+  });
+}
+function printable(value: string, max: number, error: string): string {
+  if (value.length < 1 || value.length > max) throw new Error(error);
+  for (const char of value) {
+    const code = char.codePointAt(0);
+    if (code === undefined || code < 0x21 || code > 0x7e) throw new Error(error);
+  }
+  return value;
+}
+export function prepareExternalEvidence(
+  dao: DaoSummary,
+  member: UserMembership,
+  obligation: { id: string; recipient: string; quantity: string; status: number },
+  chain: string,
+  payer: string,
+  reference: string,
+): RuntimeActions['confirmext'] {
+  const ref = dao.reference;
+  if (
+    member.dao.chainId !== ref.chainId ||
+    member.dao.contract !== ref.contract ||
+    member.dao.daoId !== ref.daoId ||
+    member.dao.interfaceVersion !== ref.interfaceVersion
+  )
+    throw new Error('DAO_REFERENCE');
+  if (!member.admin) throw new Error('ADMIN_REQUIRED');
+  if (obligation.status !== 1) throw new Error('EVIDENCE_STATE');
+  return RuntimeActionSchemas.confirmext.parse({
+    runtime: ref.contract,
+    dao_id: ref.daoId,
+    member_id: member.memberId,
+    obligation_id: obligation.id,
+    chain: printable(chain, 64, 'EVIDENCE_CHAIN'),
+    payer: printable(payer, 128, 'EVIDENCE_PAYER'),
+    recipient: obligation.recipient,
+    quantity: obligation.quantity,
+    reference: ChainIdSchema.parse(reference),
   });
 }

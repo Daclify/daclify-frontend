@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { DaoSummarySchema, UserMembershipSchema } from '@daclify/core-protocol';
-import { prepareExit } from '../../src/content/treasury.js';
+import { prepareExit, prepareExternalEvidence } from '../../src/content/treasury.js';
 const dao = DaoSummarySchema.parse({
   reference: { chainId: 'ab'.repeat(32), contract: 'daclifycore', daoId: '1', interfaceVersion: 1 },
   title: 'Treasury fixture',
@@ -45,6 +45,60 @@ describe('signed treasury exit preparation', () => {
     expect(() => prepareExit(dao, member, 'withdraw', 'daclifycore', '1')).toThrow(
       'PAYOUT_DESTINATION',
     );
+  });
+  it('records the obligation’s recipient and amount on an external statement', () => {
+    const action = prepareExternalEvidence(
+      dao,
+      { ...member, admin: true },
+      { id: '7', recipient: '2', quantity: '1.0000 TLOS', status: 1 },
+      'telos',
+      'payer.account',
+      'cd'.repeat(32),
+    );
+    expect(action.obligation_id).toBe('7');
+    expect(action.recipient).toBe('2');
+    expect(action.quantity).toBe('1.0000 TLOS');
+    expect(action.chain).toBe('telos');
+    expect(() =>
+      prepareExternalEvidence(
+        dao,
+        member,
+        { id: '7', recipient: '2', quantity: '1.0000 TLOS', status: 1 },
+        'telos',
+        'alice',
+        'cd'.repeat(32),
+      ),
+    ).toThrow('ADMIN_REQUIRED');
+    expect(() =>
+      prepareExternalEvidence(
+        dao,
+        { ...member, admin: true },
+        { id: '7', recipient: '2', quantity: '1.0000 TLOS', status: 0 },
+        'telos',
+        'alice',
+        'cd'.repeat(32),
+      ),
+    ).toThrow('EVIDENCE_STATE');
+    expect(() =>
+      prepareExternalEvidence(
+        dao,
+        { ...member, admin: true },
+        { id: '7', recipient: '2', quantity: '1.0000 TLOS', status: 1 },
+        'telos mainnet',
+        'alice',
+        'cd'.repeat(32),
+      ),
+    ).toThrow('EVIDENCE_CHAIN');
+    expect(() =>
+      prepareExternalEvidence(
+        dao,
+        { ...member, admin: true },
+        { id: '7', recipient: '2', quantity: '1.0000 TLOS', status: 1 },
+        'telos',
+        'alice',
+        'CD'.repeat(32),
+      ),
+    ).toThrow();
   });
   it('requires the matching complete DAO membership', () => {
     expect(() =>
