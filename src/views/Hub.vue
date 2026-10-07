@@ -1,20 +1,27 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
-import { ArrowUpRight, Network, Plus } from '@lucide/vue';
+import { computed } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import { Network, Plus } from '@lucide/vue';
+import { DaoPresets } from '@daclify/core-protocol';
 import { useWorkspace } from '../state/workspace';
-import { DaoPresets, type DaoPurpose } from '@daclify/core-protocol';
-const state = useWorkspace();
-const search = ref('');
-const filter = ref('all');
-const purpose = ref<DaoPurpose | ''>('');
-const visible = computed(() =>
-  state.daos.filter(
-    (dao) =>
-      (filter.value === 'all' ||
-        state.memberships.some((m) => m.dao.daoId === dao.reference.daoId)) &&
-      dao.title.toLowerCase().includes(search.value.toLowerCase()) &&
-      (!purpose.value || (dao.purpose ?? 'custom') === purpose.value),
-  ),
+import { directoryQuery, directoryMember, filterDirectory } from '../state/directory';
+import DaoCard from '../components/DaoCard.vue';
+const state = useWorkspace(),
+  route = useRoute(),
+  router = useRouter();
+const query = computed(() => directoryQuery(route.query));
+function update(key: 'q' | 'purpose' | 'mine' | 'sort', value: string | undefined) {
+  void router.replace({ query: { ...route.query, [key]: value || undefined } });
+}
+const search = computed({ get: () => query.value.q, set: (value) => update('q', value) });
+const purpose = computed({
+  get: () => query.value.purpose,
+  set: (value) => update('purpose', value),
+});
+const sort = computed({ get: () => query.value.sort, set: (value) => update('sort', value) });
+const visible = computed(() => filterDirectory(state.daos, state.memberships, query.value));
+const memberCount = computed(
+  () => state.daos.filter((d) => directoryMember(d, state.memberships)).length,
 );
 </script>
 <template>
@@ -32,7 +39,7 @@ const visible = computed(() =>
       ><small>Current configured runtime</small>
     </article>
     <article class="stat-card">
-      <span>Your memberships</span><strong>{{ state.memberships.length }}</strong
+      <span>Your memberships</span><strong>{{ memberCount }}</strong
       ><small>One identity, separate DAO permissions</small>
     </article>
     <article class="stat-card">
@@ -49,54 +56,57 @@ const visible = computed(() =>
       </select></label
     >
     <div class="segmented" role="group" aria-label="DAO filter">
-      <button :aria-pressed="filter === 'all'" @click="filter = 'all'">All DAOs</button
-      ><button :aria-pressed="filter === 'mine'" @click="filter = 'mine'">My communities</button>
+      <button :aria-pressed="!query.mine" @click="update('mine', undefined)">All DAOs</button
+      ><button :aria-pressed="query.mine" @click="update('mine', '1')">My communities</button>
     </div>
+    <label
+      >Sort DAOs<select v-model="sort">
+        <option value="name">Name</option>
+        <option value="members">Member count</option>
+      </select></label
+    >
     <label class="search"
       ><span class="sr-only">Search DAOs</span
       ><input v-model="search" type="search" placeholder="Search communities…"
     /></label>
   </div>
+  <p v-if="!state.loading" class="field-help" role="status">
+    {{ visible.length }} of {{ state.daos.length }} DAOs · configured runtime directory
+  </p>
   <p v-if="state.loading" role="status">Loading the hub…</p>
   <div v-else-if="!visible.length" class="empty-state">
     <Network class="empty-icon" aria-hidden="true" />
-    <h2>{{ search ? 'No matching communities' : 'A place for your next community' }}</h2>
+    <h2>
+      {{
+        search || query.purpose || query.mine
+          ? 'No matching communities'
+          : 'A place for your next community'
+      }}
+    </h2>
     <p>
       {{
-        search
-          ? 'Try another name or clear the filter.'
+        search || query.purpose || query.mine
+          ? 'Try another name or clear the filters.'
           : 'Create your first DAO on this runtime. Independent deployment discovery in this application is still being completed.'
       }}
     </p>
-    <RouterLink class="button secondary" to="/create">Create your first DAO</RouterLink>
+    <button
+      v-if="search || query.purpose || query.mine"
+      class="secondary"
+      @click="router.replace({ query: {} })"
+    >
+      Clear filters
+    </button>
+    <RouterLink v-else class="button secondary" to="/create">Create your first DAO</RouterLink>
   </div>
   <div v-else class="dao-grid">
-    <RouterLink
+    <DaoCard
       v-for="dao in visible"
-      :key="dao.reference.daoId"
-      :to="`/dao/${dao.reference.daoId}`"
-      class="dao-card"
-      ><div class="dao-card-top">
-        <span class="dao-avatar" aria-hidden="true">{{ dao.title.slice(0, 2).toUpperCase() }}</span
-        ><span class="pill">{{ dao.privacy === 'public' ? 'Public' : 'Encrypted content' }}</span>
-      </div>
-      <h2>{{ dao.title }}</h2>
-      <span class="pill">{{
-        DaoPresets.find((preset) => preset.id === (dao.purpose ?? 'custom'))?.title
-      }}</span>
-      <span v-if="dao.participantMode === 'agents-guarded'" class="pill"
-        >Agents · human emergency controls</span
-      >
-      <p>
-        {{
-          dao.description ||
-          'A community workspace for decisions, contributions, and shared resources.'
-        }}
-      </p>
-      <div class="dao-card-footer">
-        <span>{{ dao.members }} members</span>
-        <span class="card-action">Open workspace <ArrowUpRight aria-hidden="true" /></span></div
-    ></RouterLink>
+      :key="JSON.stringify(dao.reference)"
+      :dao="dao"
+      :member="!!directoryMember(dao, state.memberships)"
+      :network="state.network"
+    />
   </div>
   <aside class="info-strip">
     <Network class="info-icon" aria-hidden="true" />

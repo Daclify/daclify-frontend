@@ -58,6 +58,9 @@ test('hands work between two internal accounts, requests a revision, approves an
     if (!kitText) throw new Error('Public fixture keys unavailable');
     await page.getByRole('link', { name: 'Members', exact: true }).click();
     await page.getByLabel('Applicant public join identity (JSON)').fill(kitText);
+    await page
+      .getByLabel('I confirmed these public keys, participant identity and application terms')
+      .check();
     await page.getByRole('button', { name: 'Sign participant admission', exact: true }).click();
     await expect(page.getByRole('alert')).toBeVisible();
     await page.getByLabel('Applicant public join identity (JSON)').fill(identity);

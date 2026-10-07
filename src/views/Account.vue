@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useWorkspace } from '../state/workspace';
 import { api, friendlyError, type ServiceReceipt } from '../api/client';
@@ -18,6 +18,7 @@ import {
   lockVault,
   downloadBackup,
   vaultUnlocked,
+  acceptProviderSession,
 } from '../auth/session';
 import { JoinIdentitySchema, type Account } from '@daclify/core-protocol';
 import { accountDestination } from '../auth/destination';
@@ -79,6 +80,18 @@ function openTab(next: AccountTab) {
   tab.value = next;
   opened.value = { ...opened.value, [next]: true };
 }
+onMounted(async () => {
+  if (typeof route.query.telegramPair === 'string') openTab('sign-in');
+  if (route.query.telegram === 'complete') {
+    try {
+      const session = await api.resumeSession();
+      await router.replace({ query: { ...route.query, telegram: undefined } });
+      await onSignedIn(acceptProviderSession(session.account, session.csrfToken));
+    } catch (cause) {
+      error.value = friendlyError(cause);
+    }
+  }
+});
 watch(
   () => route.query.billing,
   (value) => {
@@ -141,9 +154,7 @@ const heading = computed(() =>
       ? 'Save your recovery kit'
       : state.account
         ? 'Your account'
-        : saved.value
-          ? 'Unlock your account'
-          : 'Choose how you control your account',
+        : 'Sign in to Daclify',
 );
 async function selectKit(event: Event) {
   const target = event.target;
@@ -246,11 +257,12 @@ async function unlock() {
     busy.value = false;
   }
 }
-function onSignedIn(account: Account) {
+async function onSignedIn(account: Account) {
   state.account = account;
   password.value = '';
   error.value = '';
-  void state.refresh();
+  await state.refresh();
+  if (destination.value) await router.push(destination.value);
 }
 async function logout() {
   busy.value = true;
@@ -287,7 +299,19 @@ function backup() {
     </div>
     <RouterLink class="help-link" to="/docs/accounts">Account help ↗</RouterLink>
   </div>
+  <p v-if="route.query.telegram === 'failed'" class="alert" role="alert">
+    Telegram sign-in could not be completed. Try again from this browser. New Telegram identities
+    must first be paired from an existing account.
+  </p>
+  <p v-if="route.query.notice === 'signin-removed'" class="notice" role="status">
+    Sign-in method removed. Its sessions were revoked; sign in with a remaining method.
+  </p>
   <p v-if="error" class="alert" role="alert">{{ error }}</p>
+  <SignInMethods
+    v-if="!state.account && !created && !restoring"
+    mode="enter"
+    @authenticated="onSignedIn"
+  />
   <section v-if="restoring" class="panel narrow">
     <h2>Restore your existing keys</h2>
     <p>
@@ -393,7 +417,8 @@ function backup() {
       <p class="muted">Server login id</p>
       <p class="mono wrap">{{ state.account.id }}</p>
       <p class="field-help">
-        This id only labels the session on this server. Your signing key is the account.
+        This service ID connects your paired sign-in methods. DAO membership and permissions are
+        verified separately.
       </p>
       <p class="muted">Signing public key</p>
       <p class="mono wrap">{{ state.account.signingKey }}</p>
@@ -498,7 +523,7 @@ function backup() {
     </section>
   </template>
   <section v-else-if="saved" class="panel narrow">
-    <h2>Use your vault password</h2>
+    <h2>Use your Daclify keys</h2>
     <p>Unlock your local encrypted vault to prove ownership of your account.</p>
     <form @submit.prevent="unlock">
       <label for="unlock">Vault password</label
@@ -572,9 +597,4 @@ function backup() {
   >
     Recover from an encrypted kit
   </button>
-  <SignInMethods
-    v-if="!state.account && !created && !restoring"
-    mode="enter"
-    @authenticated="onSignedIn"
-  />
 </template>

@@ -22,11 +22,13 @@ import { decodeStoredBytes, verifyStoredFile, downloadFile } from '../content/fi
 import FilePanel from './FilePanel.vue';
 import AdmissionPanel from './AdmissionPanel.vue';
 import { useWorkspace } from '../state/workspace';
+import { canSignMember } from '../auth/action-signer';
 const props = defineProps<{
   dao: DaoSummary;
   member: UserMembership | undefined;
   section: string;
 }>();
+const signerReady = computed(() => canSignMember(props.member));
 const decrypted = ref(new Map<string, string>());
 const epochChoice = ref(props.dao.keyEpoch);
 const state = useWorkspace();
@@ -133,7 +135,7 @@ watch(selected, (m) => {
 });
 async function transact<K extends keyof RuntimeActions>(action: K, args: RuntimeActions[K]) {
   const member = props.member;
-  if (disposed || !member?.active || !vaultUnlocked.value) return;
+  if (disposed || !member?.active || !signerReady.value) return;
   await relayInstruction(
     makeInstruction(
       props.dao.reference,
@@ -150,7 +152,13 @@ async function transact<K extends keyof RuntimeActions>(action: K, args: Runtime
 }
 async function publish() {
   const m = props.member;
-  if (!m?.active || !content.value || !vaultUnlocked.value) return;
+  if (
+    !m?.active ||
+    !content.value ||
+    !signerReady.value ||
+    (privateDao.value && !vaultUnlocked.value)
+  )
+    return;
   const domain = context.value;
   busy.value = true;
   error.value = '';
@@ -181,7 +189,13 @@ async function publish() {
         'The stored JSON or encrypted envelope exceeds 4096 bytes. Use an IPFS document for larger content.';
       return;
     }
-    if (disposed || domain !== context.value || !vaultUnlocked.value) return;
+    if (
+      disposed ||
+      domain !== context.value ||
+      !signerReady.value ||
+      (privateDao.value && !vaultUnlocked.value)
+    )
+      return;
     await transact('putjson', {
       runtime: props.dao.reference.contract,
       dao_id: props.dao.reference.daoId,
@@ -424,7 +438,7 @@ async function retrieve(document: DaoContent['documents'][number]) {
       </button>
     </section>
     <section
-      v-if="member?.active && vaultUnlocked && (!privateDao || hasCurrentKey)"
+      v-if="member?.active && signerReady && (!privateDao || (vaultUnlocked && hasCurrentKey))"
       class="panel narrow"
     >
       <h3>{{ privateDao ? 'Publish encrypted JSON' : 'Publish small JSON' }}</h3>
@@ -442,7 +456,7 @@ async function retrieve(document: DaoContent['documents'][number]) {
           required
         /><label for="json-value">JSON content</label
         ><textarea id="json-value" v-model="value" rows="5" required spellcheck="false"></textarea
-        ><button :disabled="busy || !vaultUnlocked">
+        ><button :disabled="busy || !signerReady || (privateDao && !vaultUnlocked)">
           {{ busy ? 'Publishing…' : privateDao ? 'Encrypt and publish JSON' : 'Publish JSON' }}
         </button>
       </form>
@@ -536,12 +550,7 @@ async function retrieve(document: DaoContent['documents'][number]) {
         <option v-for="row in content?.members" :key="row.id" :value="row.id">
           Member {{ row.id }}
         </option></select
-      ><button
-        v-if="selected"
-        class="secondary"
-        :disabled="busy || !vaultUnlocked"
-        @click="activate"
-      >
+      ><button v-if="selected" class="secondary" :disabled="busy || !signerReady" @click="activate">
         {{ selected.active ? 'Deactivate member' : 'Reactivate member' }}
       </button>
       <form v-if="privateDao" @submit.prevent="share">
@@ -550,12 +559,14 @@ async function retrieve(document: DaoContent['documents'][number]) {
           <option v-for="epoch in content?.epochs" :key="epoch.epoch" :value="epoch.epoch">
             Epoch {{ epoch.epoch }}
           </option></select
-        ><button :disabled="busy || !vaultUnlocked || !selected?.active">Grant epoch access</button>
+        ><button :disabled="busy || !signerReady || !vaultUnlocked || !selected?.active">
+          Grant epoch access
+        </button>
       </form>
       <form @submit.prevent="roles">
         <label class="checkbox"><input v-model="admin" type="checkbox" />Administrator</label
         ><label class="checkbox"><input v-model="reviewer" type="checkbox" />Reviewer</label
-        ><button :disabled="busy || !vaultUnlocked || !selected">Save roles</button>
+        ><button :disabled="busy || !signerReady || !selected">Save roles</button>
       </form>
       <form @submit.prevent="credits">
         <label for="credits">Governance credits</label
@@ -567,7 +578,7 @@ async function retrieve(document: DaoContent['documents'][number]) {
           required
         />
         <p class="field-help">Credits cannot change while a ballot has locked voting weights.</p>
-        <button class="secondary" :disabled="busy || !vaultUnlocked || !selected">
+        <button class="secondary" :disabled="busy || !signerReady || !selected">
           Set governance credits
         </button>
       </form>

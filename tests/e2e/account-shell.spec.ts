@@ -41,14 +41,17 @@ test('shows the handbook assistant without sending a question', async ({ page })
   await noOverflow(page);
 });
 
-test('links a Telos EVM address from the account tab', async ({ page }) => {
+test('reviews EVM pairing and removal using a provider fixture', async ({ page }) => {
+  page.on('dialog', (dialog) => void dialog.accept());
   await page.addInitScript(() => {
     const ethereum = {
       request(args: { method: string }) {
-        if (args.method === 'eth_requestAccounts') {
+        if (args.method === 'eth_chainId') return Promise.resolve('0x29');
+        if (args.method === 'eth_requestAccounts' || args.method === 'eth_accounts') {
           return Promise.resolve(['0x1111111111111111111111111111111111111111']);
         }
-        if (args.method === 'personal_sign') return Promise.resolve(`0x${'ab'.repeat(65)}`);
+        if (args.method === 'personal_sign')
+          return Promise.resolve(`0x${'11'.repeat(32)}${'22'.repeat(32)}1b`);
         return Promise.resolve(null);
       },
     };
@@ -63,39 +66,66 @@ test('links a Telos EVM address from the account tab', async ({ page }) => {
     'aria-selected',
     'true',
   );
+  let linked = false;
   await page.route('**/v1/account/evm**', async (route) => {
     const url = route.request().url();
     if (url.endsWith('/challenge')) {
       await route.fulfill({
         json: {
+          id: crypto.randomUUID(),
           chainId: 41,
-          message: 'Link this Telos EVM address',
-          expiresAt: new Date(Date.now() + 600_000).toISOString(),
+          address: '0x1111111111111111111111111111111111111111',
+          message: `${new URL(page.url()).origin} wants you to sign in with your Ethereum account:\n0x1111111111111111111111111111111111111111\n\nURI: ${new URL(page.url()).origin}/account\n`,
+          expires: new Date(Date.now() + 300_000).toISOString(),
         },
       });
       return;
     }
     if (url.endsWith('/link')) {
+      linked = true;
       await route.fulfill({
         json: { chainId: 41, address: '0x1111111111111111111111111111111111111111' },
       });
       return;
     }
     if (url.endsWith('/unlink')) {
+      linked = false;
       await route.fulfill({ status: 204, body: '' });
       return;
     }
-    await route.fulfill({ json: { links: [] } });
+    await route.fulfill({
+      json: {
+        links: linked
+          ? [
+              {
+                chainId: 41,
+                address: '0x1111111111111111111111111111111111111111',
+                controlVerified: true,
+              },
+            ]
+          : [],
+      },
+    });
   });
   await page.getByRole('tab', { name: 'Linked', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Linked accounts', exact: true })).toBeVisible();
   await page.getByLabel('Telos EVM network', { exact: true }).selectOption('41');
-  await page.getByRole('button', { name: 'Link Telos EVM address', exact: true }).click();
-  await expect(page.getByText('Telos EVM address linked.', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Pair Telos EVM wallet', exact: true }).click();
+  await expect(
+    page.getByText(
+      'Wallet paired for sign-in. DAO governance authorization is activated separately in each workspace.',
+      { exact: true },
+    ),
+  ).toBeVisible();
   await expect(page.getByText('0x1111111111111111111111111111111111111111')).toBeVisible();
-  await page.getByRole('button', { name: 'Unlink', exact: true }).click();
-  await expect(page.getByText('Telos EVM address unlinked.', { exact: true })).toBeVisible();
-  await expect(page.getByText('No Telos EVM address is linked to this account.')).toBeVisible();
+  await page.getByRole('button', { name: 'Remove sign-in pairing', exact: true }).click();
+  await expect(
+    page.getByText(
+      'Sign-in pairing removed and its sessions revoked. Remove DAO wallet authorizations separately in each workspace.',
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Remove sign-in pairing' })).toHaveCount(0);
   await page.getByRole('tab', { name: 'Sign-in', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Sign-in methods', exact: true })).toBeVisible();
   await page.getByRole('tab', { name: 'Service', exact: true }).click();

@@ -53,7 +53,7 @@ test('checks preflight, retains immutable order review and requires explicit pai
   await expect(
     page.getByRole('heading', { name: 'Workspace overview', exact: true }),
   ).toBeVisible();
-  await page.getByRole('link', { name: 'Unlock account', exact: true }).click();
+  await page.getByRole('link', { name: 'Unlock Daclify keys', exact: true }).click();
   await page.getByLabel('Vault password', { exact: true }).fill('creation resume fixture password');
   await page.getByRole('button', { name: 'Unlock and sign in', exact: true }).click();
   await expect(

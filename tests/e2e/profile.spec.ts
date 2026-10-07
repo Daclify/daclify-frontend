@@ -46,6 +46,10 @@ test('publishes a public profile from the unlocked vault', async ({ page }, test
   await page.reload();
   await page.getByLabel('Vault password', { exact: true }).fill('local-test-password-2026');
   await page.getByRole('button', { name: 'Unlock and sign in' }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Workspace overview', exact: true }),
+  ).toBeVisible();
+  await page.getByRole('link', { name: 'Your account', exact: true }).click();
   await page.getByRole('tab', { name: 'Profile', exact: true }).click();
   await expect(page.getByLabel('Account name', { exact: true })).toHaveValue(name);
   await expect(page.getByLabel('Motto', { exact: true })).toHaveValue('Build in public');

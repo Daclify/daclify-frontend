@@ -68,6 +68,9 @@ function json(value: unknown) {
         ><h4>Query schema</h4>
         <pre class="wrap">{{ json(endpoint.query) }}</pre>
       </template>
+      <p v-if="endpoint.status">
+        HTTP {{ endpoint.status }}{{ endpoint.status === 204 ? ' · no response body' : '' }}
+      </p>
       <h4>Response schema</h4>
       <pre class="wrap">{{ json(endpoint.response) }}</pre>
     </details>

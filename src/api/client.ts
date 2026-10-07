@@ -1,4 +1,5 @@
-import { ModuleApiRoutes } from '@daclify/modules';
+import { ModuleCodeHashes } from '@daclify/modules/sdk';
+import { ModuleApiRoutes, VERSION as MODULE_VERSION, type ModuleState } from '@daclify/modules';
 import { z } from 'zod';
 import {
   ServiceCheckoutSchema,
@@ -14,7 +15,6 @@ import {
   PasskeyRegisteredSchema,
   EvmLinkSchema,
   EvmLinksSchema,
-  EvmChallengeSchema,
   MarketplaceSchema,
   NamesServiceSchema,
   NameQuoteSchema,
@@ -32,6 +32,32 @@ import {
   type Network,
   type UserMembership,
   SessionSchema,
+  AccountControlPaths,
+  AccountControlChallengeSchema,
+  type AccountControlChallenge,
+  type AccountControlProof,
+  TelegramAuthorizationSchema,
+  TelegramStartSchema,
+  SignInPasskeyRegisterSchema,
+  SignInPasskeyLoginSchema,
+  SignInEmailSchema,
+  SignInEmailCodeSchema,
+  SignInProofSchema,
+  SignInRemoveSchema,
+  TelegramPendingPairSchema,
+  NativeChallengeSchema,
+  NativeIntentSchema,
+  NativeFinishSchema,
+  NativeIdentitySchema,
+  NativeLinksSchema,
+  type NativeProof,
+  EvmIntentSchema,
+  EvmFinishSchema,
+  EvmSignInChallengeSchema,
+  EvmGovernanceBindingSchema,
+  EvmRelaySchema,
+  CredentialHistorySchema,
+  type EvmRelay,
 } from '@daclify/core-protocol';
 import type { instruction } from '@daclify/core-protocol/sdk';
 import { csrfStorageKey, resolveApiUrl } from './networks';
@@ -45,6 +71,13 @@ export type SignInMethods = z.infer<typeof SignInMethodsSchema>;
 export type PasskeyRegisterOptions = z.infer<typeof PasskeyRegisterOptionsSchema>;
 export type PasskeyLoginOptions = z.infer<typeof PasskeyLoginOptionsSchema>;
 export type ServiceReceipt = z.infer<typeof ServiceReceiptSchema>;
+let accountControlSigner:
+  ((challenge: AccountControlChallenge) => Promise<AccountControlProof>) | undefined;
+export function setAccountControlSigner(
+  signer: (challenge: AccountControlChallenge) => Promise<AccountControlProof>,
+): void {
+  accountControlSigner = signer;
+}
 async function request<T>(
   path: string,
   schema: z.ZodType<T>,
@@ -52,13 +85,31 @@ async function request<T>(
   timeoutMs = 15000,
 ): Promise<T> {
   const csrf = sessionStorage.getItem(csrfStorageKey()) ?? '';
+  const encoded = input === undefined ? undefined : JSON.stringify(input);
+  const controlHeaders: Record<string, string> = {};
+  if (encoded !== undefined && AccountControlPaths.some((route) => route === path)) {
+    if (!accountControlSigner) throw new ApiFailure('ACCOUNT_CONTROL_REQUIRED');
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(encoded));
+    const bodyHash = Array.from(new Uint8Array(digest), (byte) =>
+      byte.toString(16).padStart(2, '0'),
+    ).join('');
+    const challenge = await request('/v1/account/control', AccountControlChallengeSchema, {
+      path,
+      bodyHash,
+    });
+    controlHeaders['x-account-intent-id'] = challenge.id;
+    const proof = await accountControlSigner(challenge);
+    if (proof.kind === 'root') controlHeaders['x-account-signature'] = proof.signature;
+    else controlHeaders['x-account-proof'] = JSON.stringify(proof);
+  }
   const response = await fetch(resolveApiUrl(path), {
     method: input === undefined ? 'GET' : 'POST',
     credentials: 'include',
     headers: {
       ...(input === undefined ? {} : { 'content-type': 'application/json', 'x-csrf-token': csrf }),
+      ...controlHeaders,
     },
-    ...(input === undefined ? {} : { body: JSON.stringify(input) }),
+    ...(encoded === undefined ? {} : { body: encoded }),
     signal: AbortSignal.timeout(timeoutMs),
   });
   const body: unknown = response.status === 204 ? null : await response.json();
@@ -68,7 +119,38 @@ async function request<T>(
   }
   return schema.parse(body);
 }
+export function verifiedModuleRelease(state: ModuleState): ModuleState {
+  return {
+    ...state,
+    modules: state.modules.map((module) => ({
+      ...module,
+      compatible: module.compatible && module.deployment.version === MODULE_VERSION,
+      codeVerified:
+        module.codeVerified &&
+        module.deployment.codeHash === ModuleCodeHashes[module.deployment.id],
+    })),
+  };
+}
 export const api = {
+  spendingReport: (daoId: string) =>
+    request(
+      ApiRoutes.spendingReport.path.replace(':id', IdSchema.parse(daoId)),
+      ApiRoutes.spendingReport.response,
+      undefined,
+      60000,
+    ),
+  spendingCsv: (daoId: string) =>
+    request(
+      ApiRoutes.spendingCsv.path.replace(':id', IdSchema.parse(daoId)),
+      ApiRoutes.spendingCsv.response,
+      undefined,
+      60000,
+    ),
+  brandImage: (daoId: string, slot: 'logo' | 'cover') =>
+    request(
+      ApiRoutes.branding.path.replace(':id', IdSchema.parse(daoId)).replace(':slot', slot),
+      ApiRoutes.branding.response,
+    ),
   content: async (daoId: string) => {
     const path = ApiRoutes.content.path.replace(':id', IdSchema.parse(daoId));
     const all = await request(path, ApiRoutes.content.response);
@@ -135,7 +217,7 @@ export const api = {
             value === undefined ? [] : [[key, value]],
           ),
         ).toString(),
-      ModuleApiRoutes.state.response,
+      ModuleApiRoutes.state.response.transform(verifiedModuleRelease),
     ),
   treasury: (daoId: string) =>
     request(
@@ -229,17 +311,55 @@ export const api = {
   serviceCheckout: () => request('/v1/billing/checkout', ServiceCheckoutSchema, {}),
   serviceReceipts: () => request('/v1/billing/receipts', ServiceReceiptsSchema),
   signInOptions: () => request('/v1/sign-in/options', SignInOptionsSchema),
+  resumeSession: () => request('/v1/sign-in/session', SessionSchema, {}),
+  startTelegram: (mode: 'login' | 'pair', returnTo?: string) =>
+    request(
+      `/v1/sign-in/telegram/oidc/${mode}/start`,
+      TelegramAuthorizationSchema,
+      TelegramStartSchema.parse({ returnTo }),
+    ),
+  telegramPendingPair: (id: string) =>
+    request(`/v1/sign-in/telegram/oidc/pair/${z.uuid().parse(id)}`, TelegramPendingPairSchema),
+  confirmTelegramPair: (id: string) =>
+    request('/v1/sign-in/telegram/oidc/pair/confirm', ApiRoutes.providerLink.response, {
+      id: z.uuid().parse(id),
+    }),
   signInMethods: () => request('/v1/sign-in/methods', SignInMethodsSchema),
+  credentialHistory: (before?: string) =>
+    request(
+      '/v1/account/history' + (before ? '?before=' + encodeURIComponent(before) : ''),
+      CredentialHistorySchema,
+    ),
+  nativeLinks: () => request('/v1/account/native', NativeLinksSchema),
+  nativeChallenge: (purpose: 'login' | 'pair', account: string) =>
+    request(
+      '/v1/account/native/challenge',
+      NativeChallengeSchema,
+      NativeIntentSchema.parse({ purpose, account, permission: 'active' }),
+    ),
+  nativeFinish: (purpose: 'login' | 'pair', id: string, proof: NativeProof) =>
+    purpose === 'login'
+      ? request('/v1/sign-in/native', SessionSchema, NativeFinishSchema.parse({ id, proof }))
+      : request(
+          '/v1/account/native/link',
+          NativeIdentitySchema,
+          NativeFinishSchema.parse({ id, proof }),
+        ),
+  unlinkNative: (chainId: string) => request('/v1/account/native/unlink', z.null(), { chainId }),
   startEmailLink: (email: string) =>
-    request('/v1/sign-in/email/start', EmailStartSchema, { email }),
+    request('/v1/sign-in/email/start', EmailStartSchema, SignInEmailSchema.parse({ email })),
   confirmEmailLink: (email: string, code: string) =>
-    request('/v1/sign-in/email/confirm', EmailSubjectSchema, { email, code }),
+    request(
+      '/v1/sign-in/email/confirm',
+      EmailSubjectSchema,
+      SignInEmailCodeSchema.parse({ email, code }),
+    ),
   startEmailLogin: (email: string) =>
     request('/v1/sign-in/email/login/start', z.strictObject({ delivery: z.literal('sent') }), {
       email,
     }),
   loginWithEmail: (email: string, code: string) =>
-    request('/v1/sign-in/email/login', SessionSchema, { email, code }),
+    request('/v1/sign-in/email/login', SessionSchema, SignInEmailCodeSchema.parse({ email, code })),
   linkTelegram: (proof: string) =>
     request(
       '/v1/sign-in/telegram',
@@ -247,26 +367,43 @@ export const api = {
       { proof },
     ),
   loginWithTelegram: (proof: string) =>
-    request('/v1/sign-in/telegram/login', SessionSchema, { proof }),
+    request('/v1/sign-in/telegram/login', SessionSchema, SignInProofSchema.parse({ proof })),
   passkeyRegisterOptions: () =>
     request('/v1/sign-in/passkey/register/options', PasskeyRegisterOptionsSchema, {}),
-  registerPasskey: (input: { clientDataJSON: string; attestationObject: string }) =>
-    request('/v1/sign-in/passkey/register', PasskeyRegisteredSchema, input),
+  registerPasskey: (input: z.infer<typeof SignInPasskeyRegisterSchema>) =>
+    request(
+      '/v1/sign-in/passkey/register',
+      PasskeyRegisteredSchema,
+      SignInPasskeyRegisterSchema.parse(input),
+    ),
   passkeyLoginOptions: () =>
     request('/v1/sign-in/passkey/login/options', PasskeyLoginOptionsSchema, {}),
-  loginWithPasskey: (input: {
-    credentialId: string;
-    clientDataJSON: string;
-    authenticatorData: string;
-    signature: string;
-  }) => request('/v1/sign-in/passkey/login', SessionSchema, input),
+  loginWithPasskey: (input: z.infer<typeof SignInPasskeyLoginSchema>) =>
+    request('/v1/sign-in/passkey/login', SessionSchema, SignInPasskeyLoginSchema.parse(input)),
   removeSignIn: (method: 'telegram' | 'email' | 'passkey', subject: string) =>
-    request('/v1/sign-in/remove', z.null(), { method, subject }),
+    request('/v1/sign-in/remove', z.null(), SignInRemoveSchema.parse({ method, subject })),
   evmLinks: () => request('/v1/account/evm', EvmLinksSchema),
-  evmChallenge: (chainId: 40 | 41) =>
-    request('/v1/account/evm/challenge', EvmChallengeSchema, { chainId }),
-  linkEvm: (input: { chainId: 40 | 41; address: string; signature: string }) =>
-    request('/v1/account/evm/link', EvmLinkSchema, input),
+  evmSignInChallenge: (purpose: 'login' | 'pair', chainId: 40 | 41, address: string) =>
+    request(
+      '/v1/account/evm/sign-in/challenge',
+      EvmSignInChallengeSchema,
+      EvmIntentSchema.parse({ purpose, chainId, address }),
+    ),
+  pairEvm: (id: string, signature: string) =>
+    request(
+      '/v1/account/evm/sign-in/link',
+      EvmLinkSchema,
+      EvmFinishSchema.parse({ id, signature }),
+    ),
+  loginEvm: (id: string, signature: string) =>
+    request('/v1/sign-in/evm', SessionSchema, EvmFinishSchema.parse({ id, signature })),
+  evmBinding: (dao: string, member: string) =>
+    request(
+      `/v1/daos/${IdSchema.parse(dao)}/evm/${IdSchema.parse(member)}`,
+      EvmGovernanceBindingSchema,
+    ),
+  relayEvm: (input: EvmRelay) =>
+    request('/v1/relay/evm', ApiRoutes.relay.response, EvmRelaySchema.parse(input)),
   unlinkEvm: (chainId: 40 | 41) => request('/v1/account/evm/unlink', z.null(), { chainId }),
   marketplace: () => request('/v1/marketplace', MarketplaceSchema),
   names: () => request('/v1/names', NamesServiceSchema),
@@ -305,6 +442,8 @@ export function friendlyError(error: unknown): string {
       CREATION_CHECKOUT_UNAVAILABLE:
         'This card order is expired or already paid. Check its status.',
       AUTH_REQUIRED: 'Sign in to continue.',
+      ACCOUNT_CONTROL_REQUIRED:
+        'Prove control with your Daclify keys or an authorized linked wallet before changing sign-in methods.',
       AUTH_INVALID: 'The login proof expired or was already used. Try again.',
       KEY_CHANGE_REQUIRED:
         'This account uses a different encryption key. Use its original recovery kit.',
@@ -341,6 +480,7 @@ export function friendlyError(error: unknown): string {
       PROVIDER_REPLAY: 'That login proof was already used. Try again.',
       PROVIDER_UNKNOWN: 'That sign-in method is not paired with an account.',
       EMAIL_UNAVAILABLE: 'Email delivery is not configured on this server.',
+      EMAIL_DELIVERY_FAILED: 'The email could not be sent. Try again or use another paired method.',
       EMAIL_INVALID: 'That email code is not valid anymore.',
       CREDENTIAL_LINKED: 'That sign-in method is already paired with another account.',
       CREDENTIAL_UNKNOWN: 'That sign-in method is not paired with this account.',
@@ -361,6 +501,12 @@ export function friendlyError(error: unknown): string {
   }
   if (error instanceof Error) {
     const cryptoErrors: Record<string, string> = {
+      WALLET_CONTEXT_CHANGED:
+        'The account, wallet, network or page changed. Review the current action and sign again.',
+      NATIVE_UNLINKED: 'Authorize this native wallet for the DAO member before signing.',
+      NATIVE_WALLET_MISSING: 'Connect your Telos Zero wallet before signing.',
+      EVM_WALLET_MISSING: 'Connect your Telos EVM wallet before signing.',
+      NATIVE_AUTHORITY_UNSUPPORTED: 'Use an active permission with supported direct signing keys.',
       MANAGED_UNAVAILABLE: 'Managed admission is not available on this deployment.',
       PARTICIPANT_MODE: 'This participant kind does not match the DAO admission policy.',
       VAULT_LOCKED: 'Unlock your vault to use your keys.',

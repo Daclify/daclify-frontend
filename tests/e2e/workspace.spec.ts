@@ -82,7 +82,7 @@ test('walletless account and real DAO creation flow', async ({ page }) => {
   await page.getByRole('button', { name: 'Lock vault' }).click();
   await expect(page.getByText('Vault locked', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Sign out' }).click();
-  await expect(page.getByRole('heading', { name: 'Unlock your account' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Sign in to Daclify' })).toBeVisible();
 });
 
 test('shows card payment state without treating the return page as paid', async ({ page }) => {

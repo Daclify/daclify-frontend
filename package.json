@@ -1,6 +1,6 @@
 {
   "name": "@daclify/frontend",
-  "version": "0.4.0-alpha.1",
+  "version": "0.5.0-alpha.1",
   "private": true,
   "type": "module",
   "engines": {
@@ -19,11 +19,14 @@
     "format": "prettier --write \"**/*.{ts,vue,css,json}\""
   },
   "dependencies": {
-    "@daclify/core-protocol": "file:../daclify-backend-core/.artifacts/daclify-core-protocol-0.4.0-alpha.1.tgz",
-    "@daclify/modules": "file:../daclify-backend-modules/.artifacts/daclify-modules-0.4.0-alpha.1.tgz",
+    "@daclify/core-protocol": "file:../daclify-backend-core/.artifacts/daclify-core-protocol-0.5.0-alpha.1.tgz",
+    "@daclify/modules": "file:../daclify-backend-modules/.artifacts/daclify-modules-0.5.0-alpha.1.tgz",
     "@fontsource-variable/inter": "5.3.0",
     "@lucide/vue": "1.52.0",
     "@wharfkit/antelope": "4.0.2",
+    "@wharfkit/session": "4.0.2",
+    "@wharfkit/wallet-plugin-anchor": "4.0.2",
+    "@wharfkit/web-renderer": "4.0.2",
     "pinia": "4.0.3",
     "vue": "3.5.43",
     "vue-router": "5.3.1",

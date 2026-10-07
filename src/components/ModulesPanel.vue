@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import ElectionPanel from './ElectionPanel.vue';
+import GrantsPanel from './GrantsPanel.vue';
+import ContributionAgreementPanel from './ContributionAgreementPanel.vue';
+import ServiceCatalogue from './ServiceCatalogue.vue';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { z } from 'zod';
 import {
@@ -14,7 +18,9 @@ import { encodeAction, makeInstruction } from '@daclify/core-protocol/sdk';
 import { DecideConfigSchema, ModulePermissions, type ModuleState } from '@daclify/modules';
 import { encodeDecide, encodeWorks, encodePayroll } from '@daclify/modules/sdk';
 import { api, friendlyError } from '../api/client';
-import { vaultUnlocked, relayInstruction } from '../auth/session';
+import { relayInstruction } from '../auth/session';
+import { canSignMember } from '../auth/action-signer';
+const signerReady = computed(() => canSignMember(props.member));
 import { useWorkspace } from '../state/workspace';
 const props = defineProps<{
   dao: DaoSummary;
@@ -49,6 +55,9 @@ const contributor = ref('1');
 const documentId = ref('1');
 const documentVersion = ref(1);
 const milestoneAmounts = ref('1.0000');
+const milestoneDue = ref('');
+const agreementSearch = ref('');
+const agreementsOnly = ref(false);
 const periods = ref(2);
 const intervalDays = ref(30);
 const treasury = ref<Treasury>();
@@ -71,8 +80,14 @@ const payrollQuery = ref('');
 const showOngoing = ref(true);
 const draftLabel = ref<Record<string, string>>({});
 const draftPaused = ref<Record<string, boolean>>({});
-const names = { decide: 'Decide', works: 'Works', payroll: 'Payroll' };
-const canSign = computed(() => !!props.member?.active && vaultUnlocked.value && !busy.value);
+const names = {
+  decide: 'Decide',
+  works: 'Works',
+  payroll: 'Payroll',
+  'grants-rounds': 'Grants rounds',
+  'endorsement-admission': 'Endorsement admission',
+};
+const canSign = computed(() => !!props.member?.active && signerReady.value && !busy.value);
 const current = computed(() => data.value?.modules.find((m) => m.deployment.id === props.section));
 const limitedActions = computed(() => {
   const module = current.value;
@@ -131,6 +146,16 @@ async function load(more = false) {
               projects: props.section === 'works' ? (data.value.next.projects ?? 'done') : 'done',
               schedules:
                 props.section === 'payroll' ? (data.value.next.schedules ?? 'done') : 'done',
+              joinApplications: 'done',
+              elections:
+                props.section === 'decide' ? (data.value.next.elections ?? 'done') : 'done',
+              terms: props.section === 'decide' ? (data.value.next.terms ?? 'done') : 'done',
+              rounds:
+                props.section === 'grants-rounds' ? (data.value.next.rounds ?? 'done') : 'done',
+              applications:
+                props.section === 'grants-rounds'
+                  ? (data.value.next.applications ?? 'done')
+                  : 'done',
             }
           : {}),
       }),
@@ -138,7 +163,7 @@ async function load(more = false) {
       workspace.network?.capabilities.includes('governance-policy')
         ? api.governance(props.dao.reference.daoId)
         : Promise.resolve(undefined),
-      ['works', 'payroll'].includes(props.section)
+      ['works', 'payroll', 'grants-rounds'].includes(props.section)
         ? api.content(props.dao.reference.daoId)
         : Promise.resolve(undefined),
     ]);
@@ -159,16 +184,29 @@ async function load(more = false) {
       modules.executions.unshift(...previous.executions);
       modules.projects.unshift(...previous.projects);
       modules.milestones.unshift(...previous.milestones);
+      modules.agreements.unshift(...previous.agreements);
       modules.schedules.unshift(...previous.schedules);
       modules.entries.unshift(...previous.entries);
       modules.controls.unshift(...previous.controls);
+      modules.elections.unshift(...previous.elections);
+      modules.nominations.unshift(...previous.nominations);
+      modules.terms.unshift(...previous.terms);
+      modules.grantPlans.unshift(...previous.grantPlans);
+      modules.rounds.unshift(...previous.rounds);
+      modules.applications.unshift(...previous.applications);
       modules.next = {
         ...previous.next,
         ...(props.section === 'decide'
-          ? { ballots: modules.next.ballots }
+          ? {
+              ballots: modules.next.ballots,
+              elections: modules.next.elections,
+              terms: modules.next.terms,
+            }
           : props.section === 'works'
             ? { projects: modules.next.projects }
-            : { schedules: modules.next.schedules }),
+            : props.section === 'grants-rounds'
+              ? { rounds: modules.next.rounds, applications: modules.next.applications }
+              : { schedules: modules.next.schedules }),
       };
     }
     data.value = modules;
@@ -240,6 +278,7 @@ async function run(target: string, action: string, payload: Uint8Array, message:
     )
   )
     return;
+  const domain = context.value;
   busy.value = true;
   error.value = '';
   success.value = '';
@@ -255,13 +294,16 @@ async function run(target: string, action: string, payload: Uint8Array, message:
         payload,
       ),
     );
+    if (disposed || domain !== context.value) return;
     await workspace.refresh();
+    if (disposed || domain !== context.value) return;
     await load();
+    if (disposed || domain !== context.value) return;
     success.value = message;
   } catch (cause) {
-    error.value = friendlyError(cause);
+    if (!disposed && domain === context.value) error.value = friendlyError(cause);
   } finally {
-    busy.value = false;
+    if (!disposed && domain === context.value) busy.value = false;
   }
 }
 async function install(module: ModuleState['modules'][number]) {
@@ -367,13 +409,46 @@ async function propose() {
         document_id: documentId.value,
         document_version: documentVersion.value,
         payments,
-        dues: payments.map(() => 0),
+        dues: payments.map(() =>
+          milestoneDue.value ? Math.floor(new Date(milestoneDue.value).getTime() / 1000) : 0,
+        ),
       }),
       'Work proposed',
     );
   } catch (cause) {
     error.value = friendlyError(cause);
   }
+}
+const visibleProjects = computed(
+  () =>
+    data.value?.projects.filter(
+      (project) =>
+        (!agreementsOnly.value ||
+          data.value?.agreements.some((a) => a.project_id === project.id)) &&
+        `${project.id} ${project.contributor}`.includes(agreementSearch.value.trim()),
+    ) ?? [],
+);
+function consentReady(project: string) {
+  const agreement = data.value?.agreements.find((a) => a.project_id === project);
+  return !agreement || agreement.accepted;
+}
+async function offerAgreement(project_id: string, term_start: number, term_end: number) {
+  if (current.value)
+    await run(
+      current.value.deployment.account,
+      'offeragr',
+      encodeWorks('offeragr', { ...actor(), project_id, term_start, term_end }),
+      'Agreement offered; contributor consent is required before funding.',
+    );
+}
+async function acceptAgreement(project_id: string) {
+  if (current.value)
+    await run(
+      current.value.deployment.account,
+      'acceptagr',
+      encodeWorks('acceptagr', { ...actor(), project_id }),
+      'Agreement terms accepted. Funding still requires DAO approval.',
+    );
 }
 async function accept(projectId: string) {
   if (current.value)
@@ -652,7 +727,11 @@ const selectedProject = computed(() =>
               ? 'Member, credit, or escrowed native stake ballots.'
               : module.deployment.id === 'works'
                 ? 'Reserved milestones with independent contributor review.'
-                : 'One settlement pays every due installment. Pause and the label do not rewrite the term.'
+                : module.deployment.id === 'grants-rounds'
+                  ? 'Application consent, eligibility review and vote-authorized Works awards.'
+                  : module.deployment.id === 'endorsement-admission'
+                    ? 'Opt-in membership with current member endorsements and a disclosed admission policy.'
+                    : 'One settlement pays every due installment. Pause and the label do not rewrite the term.'
           }}
         </p>
         <dl>
@@ -696,9 +775,14 @@ const selectedProject = computed(() =>
   >
   <template v-else
     ><div class="section-toolbar">
-      <h2>{{ section === 'decide' ? 'Decide' : section === 'works' ? 'Works' : 'Payroll' }}</h2>
+      <h2>{{ current ? names[current.deployment.id] : 'Module workspace' }}</h2>
       <RouterLink :to="helpLink(section)">Rules &amp; help ↗</RouterLink>
     </div>
+    <p v-if="current && (!current.codeVerified || !current.compatible)" class="alert" role="alert">
+      New actions are unavailable because this deployment does not match the installed code pin or
+      supported release. An administrator must review the upgrade and permissions in Modules.
+      Existing approved Treasury liabilities remain separate.
+    </p>
     <p v-if="limitedActions" class="notice">
       This DAO has limited this module’s actions. An administrator can review the permissions in
       Modules; unavailable actions remain disabled.
@@ -778,7 +862,23 @@ const selectedProject = computed(() =>
         <h3>No ballots yet</h3>
         <p>Open a decision with an explicit weight, quorum, and closing time.</p>
       </div>
-      <article v-for="ballot in data?.ballots" :key="ballot.id" class="panel">
+      <ElectionPanel
+        v-if="data"
+        :key="context"
+        :dao="dao"
+        :member="member"
+        :data="data"
+        :can-sign="canSign"
+        :can-finalize="canSettle"
+        :now="now"
+        :run="run"
+        :finalize="finalize"
+      />
+      <article
+        v-for="ballot in data?.ballots.filter((b) => !data?.elections.some((e) => e.id === b.id))"
+        :key="ballot.id"
+        class="panel"
+      >
         <div class="panel-heading">
           <h3>{{ ballotTitle(ballot) }}</h3>
           <span class="pill">{{
@@ -817,7 +917,7 @@ const selectedProject = computed(() =>
           Reject {{ ballot.tallies[0] ?? '0' }} · Approve {{ ballot.tallies[1] ?? '0' }}
         </p>
         <template
-          v-for="execution in data?.executions.filter(
+          v-for="execution in [...(data?.executions ?? []), ...(data?.grantPlans ?? [])].filter(
             (execution) => execution.ballot_id === ballot.id,
           )"
           :key="execution.ballot_id"
@@ -838,6 +938,16 @@ const selectedProject = computed(() =>
         </template>
       </article></template
     >
+    <GrantsPanel
+      v-else-if="section === 'grants-rounds' && data"
+      :key="context"
+      :dao="dao"
+      :member="member"
+      :data="data"
+      :policy="governance"
+      :can-sign="canSign"
+      :run="run"
+    />
     <template v-else-if="section === 'works'"
       ><form
         v-if="member?.active && current?.enabled"
@@ -846,8 +956,8 @@ const selectedProject = computed(() =>
       >
         <h3>Propose milestone work</h3>
         <p>
-          1. Publish the proposal document. 2. Choose a contributor and request funding. 3. Submit
-          evidence. 4. An independent reviewer approves payment.
+          1. Publish the proposal document. 2. Choose a contributor, offer an agreement if needed,
+          then request funding. 3. Submit evidence. 4. An independent reviewer approves payment.
         </p>
         <RouterLink :to="`/dao/${dao.reference.daoId}/documents`">Open DAO documents</RouterLink>
         <label for="contributor">Contributor member ID</label
@@ -882,13 +992,31 @@ const selectedProject = computed(() =>
         </div>
         <label for="milestones">Milestone amounts · one per line ({{ dao.token.symbol }})</label
         ><textarea id="milestones" v-model="milestoneAmounts" rows="3" required></textarea>
+        <label for="work-due">Milestone due date (optional; applies to each milestone)</label
+        ><input id="work-due" v-model="milestoneDue" type="datetime-local" />
+        <p class="field-help">
+          Use due dates when offering a contribution agreement. For different milestone due dates,
+          use the documented native action.
+        </p>
         <p class="field-help">
           Use an existing durable document. Acceptance reserves the full project amount; review
           approves each payment.
         </p>
         <button :disabled="!allowed('propose')">Propose work</button>
       </form>
-      <article v-for="project in data?.projects" :key="project.id" class="panel">
+      <ServiceCatalogue
+        :content="content"
+        :dao="dao.reference"
+        :can-propose="allowed('propose')"
+        @choose="contributor = $event"
+      />
+      <div class="section-toolbar">
+        <label>Find project or contributor<input v-model="agreementSearch" type="search" /></label
+        ><label class="checkbox"
+          ><input v-model="agreementsOnly" type="checkbox" />Contribution agreements only</label
+        >
+      </div>
+      <article v-for="project in visibleProjects" :key="project.id" class="panel">
         <h3>Project {{ project.id }}</h3>
         <p>
           Contributor {{ project.contributor }} · Document {{ project.document_id }} / v{{
@@ -897,15 +1025,26 @@ const selectedProject = computed(() =>
           ·
           {{ project.status === 0 ? 'Proposed' : project.status === 1 ? 'Accepted' : 'Cancelled' }}
         </p>
+        <ContributionAgreementPanel
+          :project="project"
+          :milestones="data?.milestones.filter((m) => m.project_id === project.id) ?? []"
+          :agreement="data?.agreements.find((a) => a.project_id === project.id)"
+          :member="member"
+          :offer-allowed="allowed('offeragr')"
+          :accept-allowed="allowed('acceptagr')"
+          :busy="busy"
+          @offer="offerAgreement"
+          @accept="acceptAgreement"
+        />
         <button
           v-if="project.status === 0 && !governedWorks && member?.active && member.admin"
-          :disabled="!allowed('accept')"
+          :disabled="!allowed('accept') || !consentReady(project.id)"
           @click="accept(project.id)"
         >
           Accept and reserve funds</button
         ><button
           v-if="project.status === 0 && governedWorks && member?.active"
-          :disabled="!fundAllowed()"
+          :disabled="!fundAllowed() || !consentReady(project.id)"
           @click="fund(project.id)"
         >
           Propose funding vote</button
@@ -1159,15 +1298,16 @@ const selectedProject = computed(() =>
   <button
     v-if="
       data &&
-      ((section === 'decide' && data.next.ballots) ||
+      ((section === 'decide' && (data.next.ballots || data.next.elections || data.next.terms)) ||
         (section === 'works' && data.next.projects) ||
-        (section === 'payroll' && data.next.schedules))
+        (section === 'payroll' && data.next.schedules) ||
+        (section === 'grants-rounds' && (data.next.rounds || data.next.applications)))
     "
     class="secondary"
     :disabled="loading || busy"
     @click="load(true)"
   >
     Load more
-    {{ names[section === 'decide' ? 'decide' : section === 'works' ? 'works' : 'payroll'] }} records
+    {{ current ? names[current.deployment.id] : 'Module' }} records
   </button>
 </template>

@@ -16,6 +16,7 @@ async function authenticator(page: Page) {
 }
 
 test('pairs a passkey and email with an existing vault', async ({ page }) => {
+  page.on('dialog', (dialog) => void dialog.accept());
   await authenticator(page);
   await page.goto('http://localhost:' + (process.env.DACLIFY_TEST_UI_PORT ?? 5178) + '/account');
   await page.getByLabel('Vault password', { exact: true }).fill('local-test-password-2026');
@@ -35,7 +36,7 @@ test('pairs a passkey and email with an existing vault', async ({ page }) => {
   await page.getByLabel('Email code').fill(code);
   await page.getByRole('button', { name: 'Confirm email' }).click();
   await expect(page.getByText('Email paired.', { exact: true })).toBeVisible();
-  await expect(page.getByText(mailbox, { exact: true })).toBeVisible();
+  await expect(page.locator('.method-row').getByText(mailbox, { exact: true })).toBeVisible();
   await expect(
     page
       .getByText('Telegram is not configured on this server.')

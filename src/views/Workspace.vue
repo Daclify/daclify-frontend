@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DaoBrandingPanel from '../components/DaoBrandingPanel.vue';
 import ContentPanel from '../components/ContentPanel.vue';
 import ModulesPanel from '../components/ModulesPanel.vue';
 import TreasuryPanel from '../components/TreasuryPanel.vue';
@@ -8,7 +9,10 @@ import { formatUnits, DaoPresets } from '@daclify/core-protocol';
 import GovernancePanel from '../components/GovernancePanel.vue';
 import { encodeAction, makeInstruction } from '@daclify/core-protocol/sdk';
 import { useWorkspace } from '../state/workspace';
-import { vaultUnlocked, relayInstruction } from '../auth/session';
+import { relayInstruction } from '../auth/session';
+import { canSignMember } from '../auth/action-signer';
+import ActionSigner from '../components/ActionSigner.vue';
+const signerReady = computed(() => canSignMember(membership.value));
 import { api, friendlyError } from '../api/client';
 const route = useRoute();
 const state = useWorkspace();
@@ -53,6 +57,11 @@ watch(
         ballots: 'done',
         projects: 'done',
         schedules: 'done',
+        rounds: 'done',
+        applications: 'done',
+        joinApplications: 'done',
+        elections: 'done',
+        terms: 'done',
       });
       if (request === tabRequest)
         enabledModules.value = modules.modules
@@ -72,6 +81,7 @@ const allTabs: ReadonlyArray<readonly [string, string]> = [
   ['decide', 'Decide'],
   ['works', 'Works'],
   ['payroll', 'Payroll'],
+  ['grants-rounds', 'Grants'],
   ['treasury', 'Treasury'],
   ['documents', 'Documents'],
   ['members', 'Members'],
@@ -80,7 +90,9 @@ const allTabs: ReadonlyArray<readonly [string, string]> = [
 ];
 const tabs = computed(() =>
   allTabs.filter(
-    ([id]) => !['decide', 'works', 'payroll'].includes(id) || enabledModules.value.includes(id),
+    ([id]) =>
+      !['decide', 'works', 'payroll', 'grants-rounds'].includes(id) ||
+      enabledModules.value.includes(id),
   ),
 );
 const error = ref('');
@@ -112,10 +124,13 @@ async function rename() {
         dao_id: d.reference.daoId,
         member_id: m.memberId,
         metadata: JSON.stringify({
-          schemaVersion: d.setup ? 2 : 1,
+          schemaVersion: d.branding ? 3 : d.setup ? 2 : 1,
           title: newTitle.value,
           description: d.description,
-          ...(d.setup ? { purpose: d.purpose, setup: d.setup } : {}),
+          ...(d.setup || d.branding
+            ? { purpose: d.purpose ?? 'custom', setup: d.setup ?? null }
+            : {}),
+          ...(d.branding ? { branding: d.branding } : {}),
         }),
       }),
     );
@@ -157,7 +172,8 @@ async function rename() {
         >{{ label }}</RouterLink
       >
     </nav>
-    <aside v-if="!membership?.active || !vaultUnlocked" class="notice" aria-label="Account access">
+    <ActionSigner :member="membership" />
+    <aside v-if="!membership?.active || !signerReady" class="notice" aria-label="Account access">
       <template v-if="!state.account"
         >Sign in to request membership or use your DAO permissions.</template
       >
@@ -171,11 +187,14 @@ async function rename() {
         >Your membership is inactive. Existing claim and stake exits remain available in
         Treasury.</template
       >
-      <template v-else>Unlock your account to sign actions and decrypt documents.</template>
+      <template v-else
+        >Choose an authorized signer for actions. Unlock your Daclify keys separately to decrypt
+        private documents.</template
+      >
       <RouterLink
-        v-if="!state.account || (membership?.active && !vaultUnlocked)"
+        v-if="!state.account || (membership?.active && !signerReady)"
         :to="{ path: '/account', query: { returnTo: route.fullPath } }"
-        >{{ state.account ? 'Unlock account' : 'Sign in' }}</RouterLink
+        >{{ state.account ? 'Account and keys' : 'Sign in' }}</RouterLink
       >
     </aside>
     <p v-if="error" class="alert" role="alert">{{ error }}</p>
@@ -241,16 +260,19 @@ async function rename() {
     />
     <template v-else-if="section === 'settings'"
       ><h2>DAO settings</h2>
+      <DaoBrandingPanel :key="panelKey" :dao="dao" :member="membership" @updated="state.refresh" />
       <section class="panel narrow">
         <h3>Public identity</h3>
         <form v-if="membership?.active && membership.admin" @submit.prevent="rename">
           <label for="rename">New DAO name</label
           ><input id="rename" v-model="newTitle" maxlength="160" required /><button
-            :disabled="busy || !vaultUnlocked"
+            :disabled="busy || !signerReady"
           >
             {{ busy ? 'Submitting…' : 'Sign and update name' }}
           </button>
-          <p v-if="!vaultUnlocked" class="field-help">Unlock your vault to sign this update.</p>
+          <p v-if="!signerReady" class="field-help">
+            Choose an authorized signer to sign this update.
+          </p>
         </form>
         <p v-else>Administrator permission is required to update this DAO.</p>
         <dl>
@@ -273,7 +295,7 @@ async function rename() {
       :member="membership"
       :section="section"
     /><ModulesPanel
-      v-else-if="['modules', 'decide', 'works', 'payroll'].includes(section)"
+      v-else-if="['modules', 'decide', 'works', 'payroll', 'grants-rounds'].includes(section)"
       :key="panelKey"
       :dao="dao"
       :member="membership"

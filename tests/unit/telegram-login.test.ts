@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { telegramWidgetProof } from '../../src/auth/telegram-login';
+import { telegramWidgetProof, telegramMiniAppProof } from '../../src/auth/telegram-login';
 describe('Telegram website login proof', () => {
   it('uses the numeric id and omits empty profile fields', () => {
     const proof = new URLSearchParams(
@@ -15,4 +15,16 @@ describe('Telegram website login proof', () => {
     expect(proof.get('username')).toBeNull();
     expect(proof.getAll('hash')).toHaveLength(1);
   });
+});
+
+it('reads bounded untrusted Mini App proof without treating profile data as authentication', () => {
+  const proof = 'user=%7B%22id%22%3A123%7D&hash=untrusted';
+  expect(telegramMiniAppProof({ Telegram: { WebApp: { initData: proof } } }, '')).toBe(proof);
+  expect(telegramMiniAppProof({}, '#' + new URLSearchParams({ tgWebAppData: proof }))).toBe(proof);
+  expect(
+    telegramMiniAppProof({ Telegram: { WebApp: { initData: 'profile-only' } } }, ''),
+  ).toBeUndefined();
+  expect(
+    telegramMiniAppProof({ Telegram: { WebApp: { initData: 'a'.repeat(16385) } } }, ''),
+  ).toBeUndefined();
 });

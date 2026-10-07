@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createServer } from 'vite';
 import vue from '@vitejs/plugin-vue';
+import {ModuleStateSchema,Catalog} from '@daclify/modules';
 import { createRenderer, reactive, h, nextTick, compile, ssrContextKey } from 'vue';
 import { parse, compileScript } from 'vue/compiler-sfc';
 import { createPinia } from 'pinia';
@@ -234,12 +235,13 @@ console.log(
 inactive.app.unmount();
 
 const ModulesPanel = await component('/src/components/ModulesPanel.vue');
-const moduleData = {
+const moduleData = ModuleStateSchema.parse({
   next: { ballots: null, projects: null, schedules: null },
   dao: reference('1'),
   modules: [
     {
-      deployment: { id: 'works', account: 'works' },
+      deployment: { id: 'works', account: 'works',version:'0.4.0-alpha.1',codeHash:'ab'.repeat(32) },
+      manifest:Catalog.find(module=>module.id==='works'),
       enabled: true,
       compatible: true,
       codeVerified: true,
@@ -247,11 +249,11 @@ const moduleData = {
       grants: ['reserve', 'approve', 'cancel'],
     },
   ],
-  projects: [{ id: '1', contributor: '2', status: 1, document_id: '1', document_version: 1 }],
+  projects: [{ id: '1',dao_id:'1',creator:'1', contributor: '2', status: 1, document_id: '1', document_version: 1,milestones:['1'] }],
   milestones: [
     {
       id: '1',
-      project_id: '1',
+      project_id: '1',dao_id:'1',due:0,reviewer:'0',
       status: 2,
       quantity: '1.0000 TLOS',
       submission_doc: '1',
@@ -266,7 +268,7 @@ const moduleData = {
   ballots: [],
   votes: [],
   entries: [],
-};
+});
 api.moduleState = async () => moduleData;
 api.treasury = async (id) => ({ dao: reference(id), obligations: [] });
 const modules = mount(

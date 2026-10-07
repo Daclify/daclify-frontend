@@ -13,9 +13,10 @@ import {
   EncryptionPublicKeySchema,
   type VaultSecrets,
   type Account,
+  AccountControlMessageSchema,
 } from '@daclify/core-protocol';
 import { instructionDigest, type instruction } from '@daclify/core-protocol/sdk';
-import { api } from '../api/client';
+import { api, setAccountControlSigner } from '../api/client';
 import {
   unlockVault,
   createEpochGrant,
@@ -37,6 +38,62 @@ let generation = 0;
 let secrets: VaultSecrets | undefined;
 let timer: ReturnType<typeof setTimeout> | undefined;
 export const vaultUnlocked = ref(false);
+setAccountControlSigner(async (challenge) => {
+  const message = AccountControlMessageSchema.parse(JSON.parse(challenge.message));
+  const { useWorkspace } = await import('../state/workspace');
+  if (message.origin !== window.location.origin || message.accountId !== useWorkspace().account?.id)
+    throw new Error('ACCOUNT_KEY_MISMATCH');
+  const { selectedSigner } = await import('./action-signer');
+  if (selectedSigner.value === 'native') {
+    const { nativeIdentity, nativeIntentProof } = await import('./telos-zero');
+    const identity = nativeIdentity(),
+      network = await api.network(),
+      links = await api.nativeLinks();
+    if (
+      !links.links.some(
+        (link) => link.chainId === identity.chainId && link.account === identity.account,
+      ) ||
+      identity.chainId !== network.chainId
+    )
+      throw new Error('NATIVE_UNLINKED');
+    return {
+      kind: 'native',
+      chainId: identity.chainId,
+      account: identity.account,
+      proof: await nativeIntentProof(network.runtime, challenge.message),
+    };
+  }
+  if (selectedSigner.value === 'evm') {
+    const { evmWallet, signEvmMessage } = await import('./telos-evm');
+    const wallet = evmWallet.value;
+    if (!wallet) throw new Error('EVM_WALLET_MISSING');
+    const links = await api.evmLinks();
+    if (
+      !links.links.some(
+        (link) =>
+          link.controlVerified &&
+          link.chainId === wallet.chainId &&
+          link.address.toLowerCase() === wallet.address.toLowerCase(),
+      )
+    )
+      throw new Error('EVM_LINKED_REQUIRED');
+    return {
+      kind: 'evm',
+      chainId: wallet.chainId,
+      address: wallet.address,
+      signature: await signEvmMessage(challenge.message),
+    };
+  }
+  if (!secrets) throw new Error('VAULT_LOCKED');
+  const key = PrivateKey.from(secrets.signingKey);
+  if (message.origin !== window.location.origin || message.signingKey !== key.toPublic().toString())
+    throw new Error('ACCOUNT_KEY_MISMATCH');
+  touch();
+  return {
+    kind: 'root',
+    signature: key.signMessage(new TextEncoder().encode(challenge.message)).toString(),
+  };
+});
 export function savedVault(): SavedVault | undefined {
   const raw = localStorage.getItem('daclify.vault.v1');
   if (!raw) return undefined;
@@ -103,11 +160,27 @@ export async function unlockAndLogin(password: string): Promise<Account> {
   );
   if (started !== generation) throw new Error('VAULT_LOCKED');
   secrets = opened;
+  (await import('./action-signer')).selectedSigner.value = 'vault';
   vaultUnlocked.value = true;
   touch();
   return account;
 }
 export async function relayInstruction(request: instruction): Promise<string> {
+  return (await import('./action-signer')).dispatchInstruction(request);
+}
+export function canUseVaultKey(signingKey: string | undefined): boolean {
+  return (
+    vaultUnlocked.value &&
+    (!signingKey ||
+      (!!secrets && PrivateKey.from(secrets.signingKey).toPublic().toString() === signingKey))
+  );
+}
+export function signInstruction(request: instruction): string {
+  if (!secrets) throw new Error('VAULT_LOCKED');
+  touch();
+  return PrivateKey.from(secrets.signingKey).signDigest(instructionDigest(request)).toString();
+}
+export async function relayWithVault(request: instruction): Promise<string> {
   if (!secrets) throw new Error('VAULT_LOCKED');
   touch();
   return (

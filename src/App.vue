@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
-import { useRoute } from 'vue-router';
+import { onMounted, onBeforeUnmount, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import {
   Activity,
   Shield,
@@ -16,7 +16,22 @@ import { useWorkspace } from './state/workspace';
 import { lockVault, vaultUnlocked } from './auth/session';
 import { chooseNetwork, selectedNetwork, type DeployedNetwork } from './api/networks';
 const state = useWorkspace();
-const route = useRoute();
+const route = useRoute(),
+  router = useRouter(),
+  routeError = ref('');
+const removeRouteError = router.onError((_error, to) => {
+  routeError.value = to.fullPath;
+});
+const removeRouteSuccess = router.afterEach((_to, _from, failure) => {
+  if (!failure) routeError.value = '';
+});
+onBeforeUnmount(() => {
+  removeRouteError();
+  removeRouteSuccess();
+});
+function reloadPage() {
+  window.location.reload();
+}
 const mobileOpen = ref(false);
 function storedFold(): boolean {
   try {
@@ -155,7 +170,7 @@ onMounted(() => {
               path: '/account',
               query: route.path === '/account' ? {} : { returnTo: route.fullPath },
             }"
-            >{{ state.account ? 'Your account' : 'Set up account' }}</RouterLink
+            >{{ state.account ? 'Your account' : 'Sign in' }}</RouterLink
           >
         </div>
       </header>
@@ -164,7 +179,16 @@ onMounted(() => {
           {{ state.error }}
           <button class="text-button" @click="state.refresh">Retry connection</button>
         </div>
-        <RouterView />
+        <section v-if="routeError" class="panel narrow" role="alert">
+          <h1>This page could not load</h1>
+          <p>
+            The app may have been updated or the connection interrupted. Reload to fetch the current
+            page.
+          </p>
+          <button type="button" @click="reloadPage">Reload page</button
+          ><RouterLink class="button secondary" to="/">Back to DAO hub</RouterLink>
+        </section>
+        <RouterView v-else />
       </main>
       <footer class="page-footer">
         <span>Built for communities that make things happen.</span

@@ -1,26 +1,26 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue';
+import { onMounted, onUnmounted, ref, watch } from 'vue';
+import { EvmLinkedCredentialSchema, type Account } from '@daclify/core-protocol';
+import { z } from 'zod';
 import { api, friendlyError } from '../api/client';
 import { useWorkspace } from '../state/workspace';
-import {
-  browserEvmProvider,
-  messageHex,
-  providerCode,
-  TELOS_EVM,
-  type TelosEvmChainId,
-} from '../auth/telos-evm';
-
-interface LinkedAddress {
-  chainId: TelosEvmChainId;
-  address: string;
-}
-const state = useWorkspace();
-const chainId = ref<TelosEvmChainId>(41);
-const picked = ref(false);
-const links = ref<LinkedAddress[]>([]);
-const busy = ref(false);
-const error = ref('');
-const note = ref('');
+import { useRouter } from 'vue-router';
+import { acceptProviderSession, lockVault } from '../auth/session';
+import { selectedSigner } from '../auth/action-signer';
+import { connectEvm, signEvmMessage, TELOS_EVM, type TelosEvmChainId } from '../auth/telos-evm';
+const props = withDefaults(defineProps<{ mode?: 'enter' | 'manage' }>(), { mode: 'manage' }),
+  emit = defineEmits<{ authenticated: [account: Account] }>();
+const router = useRouter();
+const state = useWorkspace(),
+  chainId = ref<TelosEvmChainId>(41),
+  picked = ref(false),
+  links = ref<z.infer<typeof EvmLinkedCredentialSchema>[]>([]),
+  busy = ref(false),
+  error = ref(''),
+  notice = ref('');
+let disposed = false,
+  revision = 0;
+const context = () => JSON.stringify([props.mode, state.account?.id]);
 watch(
   () => state.network?.environment,
   (environment) => {
@@ -28,130 +28,197 @@ watch(
   },
   { immediate: true },
 );
-function problem(cause: unknown): string {
-  if (providerCode(cause) === 4001) return 'The wallet request was cancelled.';
-  if (cause instanceof Error && cause.message === 'EVM_WALLET_MISSING') {
-    return 'No EVM wallet was found in this browser.';
-  }
-  if (cause instanceof Error && cause.message === 'EVM_ACCOUNT_UNAVAILABLE') {
-    return 'The wallet did not provide a Telos EVM address.';
-  }
-  return friendlyError(cause);
-}
+watch(context, () => {
+  revision++;
+  busy.value = false;
+  links.value = [];
+  error.value = '';
+  notice.value = '';
+  if (props.mode === 'manage') void load().catch(() => {});
+});
 async function load() {
-  links.value = (await api.evmLinks()).links;
+  const generation = revision,
+    current = context();
+  try {
+    const result = await api.evmLinks();
+    if (!disposed && generation === revision && context() === current) links.value = result.links;
+  } catch (cause) {
+    if (!disposed && generation === revision) error.value = friendlyError(cause);
+    throw cause;
+  }
 }
 onMounted(() => {
-  void load().catch((cause: unknown) => {
-    error.value = problem(cause);
-  });
+  if (props.mode === 'manage') void load().catch(() => {});
 });
-async function ensureChain(chain: TelosEvmChainId): Promise<void> {
-  const provider = browserEvmProvider();
-  if (!provider) throw new Error('EVM_WALLET_MISSING');
-  const network = TELOS_EVM[chain];
-  try {
-    await provider.request({
-      method: 'wallet_switchEthereumChain',
-      params: [{ chainId: network.hex }],
-    });
-  } catch (cause) {
-    if (providerCode(cause) !== 4902) throw cause;
-    await provider.request({
-      method: 'wallet_addEthereumChain',
-      params: [
-        {
-          chainId: network.hex,
-          chainName: network.name,
-          nativeCurrency: { name: 'Telos', symbol: 'TLOS', decimals: 18 },
-          rpcUrls: [network.rpc],
-          blockExplorerUrls: [network.explorer],
-        },
-      ],
-    });
-  }
-}
-async function link() {
+onUnmounted(() => {
+  disposed = true;
+  revision++;
+});
+async function useWallet() {
+  if (
+    props.mode === 'manage' &&
+    !window.confirm(
+      'Pair the selected Telos EVM wallet with this Daclify account? DAO governance requires separate activation; private documents still need encryption keys.',
+    )
+  )
+    return;
+  const current = context(),
+    generation = revision;
   busy.value = true;
   error.value = '';
-  note.value = '';
+  notice.value = '';
   try {
-    const provider = browserEvmProvider();
-    if (!provider) throw new Error('EVM_WALLET_MISSING');
-    await ensureChain(chainId.value);
-    const accounts = await provider.request({ method: 'eth_requestAccounts' });
-    const address = Array.isArray(accounts) ? accounts[0] : undefined;
-    if (typeof address !== 'string' || !/^0x[0-9a-fA-F]{40}$/.test(address)) {
-      throw new Error('EVM_ACCOUNT_UNAVAILABLE');
+    const wallet = await connectEvm(chainId.value);
+    if (disposed || context() !== current || generation !== revision)
+      throw new Error('WALLET_CONTEXT_CHANGED');
+    const purpose = props.mode === 'enter' ? 'login' : 'pair',
+      challenge = await api.evmSignInChallenge(purpose, wallet.chainId, wallet.address);
+    if (
+      challenge.chainId !== wallet.chainId ||
+      challenge.address.toLowerCase() !== wallet.address.toLowerCase() ||
+      !challenge.message.startsWith(
+        `${window.location.origin} wants you to sign in with your Ethereum account:\n`,
+      ) ||
+      !challenge.message.includes(`\nURI: ${window.location.origin}/account\n`)
+    )
+      throw new Error('EVM_CHALLENGE_INVALID');
+    const signature = await signEvmMessage(challenge.message);
+    if (disposed || context() !== current || generation !== revision)
+      throw new Error('WALLET_CONTEXT_CHANGED');
+    if (purpose === 'login') {
+      const result = await api.loginEvm(challenge.id, signature);
+      if (disposed || context() !== current || generation !== revision)
+        throw new Error('WALLET_CONTEXT_CHANGED');
+      selectedSigner.value = 'evm';
+      emit('authenticated', acceptProviderSession(result.account, result.csrfToken));
+    } else {
+      await api.pairEvm(challenge.id, signature);
+      if (disposed || context() !== current || generation !== revision)
+        throw new Error('WALLET_CONTEXT_CHANGED');
+      await load();
+      if (disposed || context() !== current || generation !== revision)
+        throw new Error('WALLET_CONTEXT_CHANGED');
+      notice.value =
+        'Wallet paired for sign-in. DAO governance authorization is activated separately in each workspace.';
     }
-    const challenge = await api.evmChallenge(chainId.value);
-    const signature = await provider.request({
-      method: 'personal_sign',
-      params: [messageHex(challenge.message), address],
-    });
-    if (typeof signature !== 'string' || !/^0x[0-9a-fA-F]{130}$/.test(signature)) {
-      throw new Error('EVM_SIGNATURE_INVALID');
-    }
-    const linked = await api.linkEvm({ chainId: chainId.value, address, signature });
-    links.value = [...links.value.filter((item) => item.chainId !== linked.chainId), linked].sort(
-      (left, right) => left.chainId - right.chainId,
-    );
-    note.value = 'Telos EVM address linked.';
   } catch (cause) {
-    error.value = problem(cause);
+    if (!disposed && generation === revision) error.value = friendlyError(cause);
   } finally {
-    busy.value = false;
+    if (!disposed && generation === revision) busy.value = false;
   }
 }
-async function unlink(chain: TelosEvmChainId) {
+async function remove(chain: TelosEvmChainId) {
+  const current = context(),
+    generation = revision;
+  const link = links.value.find((l) => l.chainId === chain);
+  if (
+    !link ||
+    !window.confirm(
+      'Remove sign-in pairing ' +
+        link.address +
+        '? Its sessions will be revoked. Revoke DAO governance bindings separately.',
+    )
+  )
+    return;
   busy.value = true;
   error.value = '';
-  note.value = '';
   try {
     await api.unlinkEvm(chain);
-    links.value = links.value.filter((item) => item.chainId !== chain);
-    note.value = 'Telos EVM address unlinked.';
+    if (disposed || generation !== revision || context() !== current)
+      throw new Error('WALLET_CONTEXT_CHANGED');
+    try {
+      links.value = (await api.evmLinks()).links;
+    } catch (cause) {
+      if (cause instanceof Error && cause.message === 'AUTH_REQUIRED') {
+        lockVault();
+        await state.refresh();
+        await router.replace({ path: '/account', query: { notice: 'signin-removed' } });
+        return;
+      }
+      throw cause;
+    }
+    if (disposed || generation !== revision || context() !== current)
+      throw new Error('WALLET_CONTEXT_CHANGED');
+    notice.value =
+      'Sign-in pairing removed and its sessions revoked. Remove DAO wallet authorizations separately in each workspace.';
   } catch (cause) {
-    error.value = problem(cause);
+    if (!disposed && generation === revision) error.value = friendlyError(cause);
   } finally {
-    busy.value = false;
+    if (!disposed && generation === revision) busy.value = false;
   }
 }
-function networkName(chain: TelosEvmChainId): string {
-  return TELOS_EVM[chain].name;
+async function useControl() {
+  const current = context(),
+    generation = revision;
+  busy.value = true;
+  error.value = '';
+  try {
+    const wallet = await connectEvm(chainId.value);
+    if (disposed || generation !== revision || context() !== current)
+      throw new Error('WALLET_CONTEXT_CHANGED');
+    if (
+      !links.value.some(
+        (link) =>
+          link.controlVerified &&
+          link.chainId === wallet.chainId &&
+          link.address.toLowerCase() === wallet.address.toLowerCase(),
+      )
+    )
+      throw new Error('EVM_LINKED_REQUIRED');
+    selectedSigner.value = 'evm';
+    notice.value = 'Paired EVM wallet selected for account-control proofs.';
+  } catch (cause) {
+    if (!disposed && generation === revision) error.value = friendlyError(cause);
+  } finally {
+    if (!disposed && generation === revision) busy.value = false;
+  }
 }
 </script>
 <template>
-  <section class="panel narrow" aria-label="Linked Telos EVM addresses">
-    <h2>Linked accounts</h2>
+  <section :class="mode === 'manage' ? 'panel narrow' : ''" aria-label="Telos EVM sign-in">
+    <h2 v-if="mode === 'manage'">Linked accounts</h2>
+    <h3 v-else>Telos EVM</h3>
     <p>
-      Link a Telos EVM address you control, the same way a Telos account can hold a linked EVM
-      address. The signature proves control of that address. It does not unlock the vault, create a
-      Telos account, or grant DAO membership.
+      Sign in with a paired Telos EVM wallet. Signing in preserves your Daclify identity; it does
+      not create membership or unlock private documents. EOA signing is supported; ERC-1271
+      contract-wallet signatures are unavailable.
     </p>
     <p v-if="error" class="alert" role="alert">{{ error }}</p>
-    <p v-if="note" class="notice" role="status">{{ note }}</p>
-    <ul v-if="links.length" class="method-list">
-      <li v-for="item in links" :key="item.chainId" class="method-row">
-        <span class="evm-link">
-          <strong>{{ networkName(item.chainId) }}</strong>
-          <span class="mono wrap">{{ item.address }}</span>
-        </span>
-        <button type="button" class="secondary" :disabled="busy" @click="unlink(item.chainId)">
-          Unlink
+    <p v-if="notice" class="notice" role="status">{{ notice }}</p>
+    <ul v-if="mode === 'manage' && links.length" class="method-list">
+      <li v-for="link in links" :key="link.chainId" class="method-row">
+        <span class="evm-link"
+          ><strong>{{ TELOS_EVM[link.chainId].name }}</strong
+          ><span class="mono wrap">{{ link.address }}</span
+          ><span v-if="!link.controlVerified">Pair again to enable secure sign-in.</span></span
+        ><button type="button" class="secondary" :disabled="busy" @click="remove(link.chainId)">
+          Remove sign-in pairing
         </button>
       </li>
     </ul>
-    <p v-else class="muted">No Telos EVM address is linked to this account.</p>
-    <form @submit.prevent="link">
-      <label for="evm-chain">Telos EVM network</label>
-      <select id="evm-chain" v-model.number="chainId" :disabled="busy" @change="picked = true">
+    <form @submit.prevent="useWallet">
+      <label for="evm-chain">Telos EVM network</label
+      ><select id="evm-chain" v-model.number="chainId" :disabled="busy" @change="picked = true">
         <option :value="40">Telos EVM</option>
-        <option :value="41">Telos EVM Testnet</option>
-      </select>
-      <button :disabled="busy">
-        {{ busy ? 'Waiting for the wallet…' : 'Link Telos EVM address' }}
+        <option :value="41">Telos EVM Testnet</option></select
+      ><button :disabled="busy">
+        {{
+          busy
+            ? 'Waiting for wallet…'
+            : mode === 'enter'
+              ? 'Continue with Telos EVM'
+              : 'Pair Telos EVM wallet'
+        }}
       </button>
     </form>
+    <button
+      v-if="mode === 'manage' && links.some((link) => link.controlVerified)"
+      type="button"
+      class="secondary"
+      :disabled="busy"
+      @click="useControl"
+    >
+      Use paired EVM wallet for account control
+    </button>
   </section>
 </template>

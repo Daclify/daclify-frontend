@@ -18,7 +18,9 @@ import {
   RuntimeActionSchemas,
 } from '@daclify/core-protocol/sdk';
 import { api, friendlyError } from '../api/client';
-import { relayInstruction, vaultUnlocked } from '../auth/session';
+import { relayInstruction } from '../auth/session';
+import { canSignMember } from '../auth/action-signer';
+const signerReady = computed(() => canSignMember(props.member));
 import { useWorkspace } from '../state/workspace';
 const props = defineProps<{ dao: DaoSummary; member: UserMembership | undefined }>();
 const workspace = useWorkspace();
@@ -39,7 +41,7 @@ const guardMember = ref('1'),
   reason = ref('');
 const policy = computed(() => state.value?.policy);
 const agents = computed(() => state.value?.actors.filter((actor) => actor.kind === 1) ?? []);
-const canSign = computed(() => props.member?.active && vaultUnlocked.value && !busy.value);
+const canSign = computed(() => props.member?.active && signerReady.value && !busy.value);
 function amount(units: string) {
   return formatUnits(BigInt(units), props.dao.token.precision);
 }

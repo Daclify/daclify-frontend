@@ -17,12 +17,14 @@ import { api, friendlyError } from '../api/client';
 import { encryptDaoFile, relayInstruction, vaultUnlocked } from '../auth/session';
 import { preparePublicFile } from '../content/files';
 import { useWorkspace } from '../state/workspace';
+import { canSignMember } from '../auth/action-signer';
 
 const props = defineProps<{
   dao: DaoSummary;
   member: UserMembership | undefined;
   content: DaoContent | undefined;
 }>();
+const signerReady = computed(() => canSignMember(props.member));
 const emit = defineEmits<{ published: [] }>();
 const workspace = useWorkspace();
 const configured = ref(false);
@@ -53,7 +55,8 @@ const currentKey = computed(() =>
 const mayUpload = computed(
   () =>
     !!props.member?.active &&
-    vaultUnlocked.value &&
+    signerReady.value &&
+    (!privateDao.value || vaultUnlocked.value) &&
     configured.value &&
     !!props.content &&
     (!privateDao.value || currentKey.value) &&
@@ -169,7 +172,8 @@ async function send() {
           )
         : await preparePublicFile(bytes, metadata);
       if (!current()) return;
-      if (!vaultUnlocked.value) throw new Error('VAULT_LOCKED');
+      if (!signerReady.value || (privateDao.value && !vaultUnlocked.value))
+        throw new Error('SIGNER_UNAVAILABLE');
       upload.value = HostedUploadSchema.parse({
         ...prepared,
         schemaVersion: 1,
@@ -216,7 +220,7 @@ async function check() {
 }
 async function publish() {
   const document = receipt.value;
-  if (!document || busy.value || disposed || !props.member?.active || !vaultUnlocked.value) return;
+  if (!document || busy.value || disposed || !props.member?.active || !signerReady.value) return;
   const domain = pendingKey.value;
   const current = () => !disposed && domain === pendingKey.value;
   busy.value = true;
@@ -242,7 +246,7 @@ async function publish() {
         throw new Error('DOCUMENT_VERSION');
     } else {
       await workspace.refresh();
-      if (!current() || !vaultUnlocked.value) return;
+      if (!current() || !signerReady.value) return;
       const member = workspace.memberships.find(
         (row) =>
           row.dao.chainId === document.dao.chainId &&
@@ -308,7 +312,13 @@ async function publish() {
         timing remain public.
       </p>
       <form
-        v-if="member?.active && vaultUnlocked && !storedRequestId && !receipt"
+        v-if="
+          member?.active &&
+          signerReady &&
+          (!privateDao || vaultUnlocked) &&
+          !storedRequestId &&
+          !receipt
+        "
         @submit.prevent="send"
       >
         <label for="file-document-id">File document ID</label
@@ -334,7 +344,7 @@ async function publish() {
       <p v-if="!member?.active" class="field-help">
         An active DAO membership is required for a new upload.
       </p>
-      <p v-else-if="!vaultUnlocked" class="field-help">
+      <p v-else-if="!signerReady || (privateDao && !vaultUnlocked)" class="field-help">
         Unlock your vault before uploading or publishing.
       </p>
       <p v-else-if="privateDao && !currentKey" class="field-help">
@@ -370,7 +380,7 @@ async function publish() {
           <dt>IPFS</dt>
           <dd class="mono wrap">{{ receipt.cid }}</dd>
         </dl>
-        <button :disabled="busy || !member?.active || !vaultUnlocked" @click="publish">
+        <button :disabled="busy || !member?.active || !signerReady" @click="publish">
           Sign and publish file record
         </button>
         <p class="field-help">

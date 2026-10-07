@@ -38,10 +38,27 @@ export function mountTelegramWidget(
   script.dataset.telegramLogin = username;
   script.dataset.size = 'medium';
   script.dataset.onauth = `${callback}(user)`;
-  script.dataset.requestAccess = 'write';
   host.replaceChildren(script);
   return () => {
     Reflect.deleteProperty(window, callback);
     host.replaceChildren();
   };
+}
+export function telegramMiniAppProof(host: unknown, fragment: string): string | undefined {
+  let proof: unknown;
+  if (typeof host === 'object' && host !== null && 'Telegram' in host) {
+    const telegram = host.Telegram;
+    if (typeof telegram === 'object' && telegram !== null && 'WebApp' in telegram) {
+      const app = telegram.WebApp;
+      if (typeof app === 'object' && app !== null && 'initData' in app) proof = app.initData;
+    }
+  }
+  if (proof === undefined)
+    proof = new URLSearchParams(fragment.startsWith('#') ? fragment.slice(1) : fragment).get(
+      'tgWebAppData',
+    );
+  if (typeof proof !== 'string' || proof.length === 0 || proof.length > 16384) return;
+  const fields = new URLSearchParams(proof);
+  if (!fields.has('user') || !fields.has('hash')) return;
+  return proof; // Untrusted launch data. Only the backend verifies bot HMAC/freshness.
 }

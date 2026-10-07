@@ -3,7 +3,10 @@ import { computed, onMounted, ref, watch } from 'vue';
 import type { PlatformStatus } from '@daclify/core-protocol';
 import { encodeAction, makeInstruction, RuntimeActionSchemas } from '@daclify/core-protocol/sdk';
 import { api, friendlyError } from '../api/client';
-import { vaultUnlocked, relayInstruction } from '../auth/session';
+import { relayInstruction } from '../auth/session';
+import { canSignMember } from '../auth/action-signer';
+import ActionSigner from '../components/ActionSigner.vue';
+const signerReady = computed(() => canSignMember(member.value));
 import { useWorkspace } from '../state/workspace';
 const workspace = useWorkspace();
 const status = ref<PlatformStatus>(),
@@ -38,7 +41,7 @@ const member = computed(() =>
   ),
 );
 const canSign = computed(
-  () => !!member.value && vaultUnlocked.value && !busy.value && status.value?.chain?.chainMatches,
+  () => !!member.value && signerReady.value && !busy.value && status.value?.chain?.chainMatches,
 );
 let sequence = 0;
 async function load() {
@@ -183,6 +186,7 @@ async function describe() {
 }
 </script>
 <template>
+  <ActionSigner :member="member" />
   <div class="page-heading">
     <div>
       <p class="eyebrow">PLATFORM GOVERNANCE</p>
@@ -209,7 +213,7 @@ async function describe() {
             ? 'You are an active platform administrator.'
             : 'Fee and catalogue changes require an active administrator of this linked DAO.'
         }}
-        {{ vaultUnlocked ? '' : 'Unlock your vault to sign.' }}
+        {{ signerReady ? '' : 'Choose an authorized signer.' }}
       </p></template
     >
     <p v-else>

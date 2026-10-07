@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import SpendingReportPanel from './SpendingReportPanel.vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
   formatUnits,
   type DaoSummary,
@@ -8,7 +9,9 @@ import {
 } from '@daclify/core-protocol';
 import { encodeAction, makeInstruction } from '@daclify/core-protocol/sdk';
 import { api, friendlyError } from '../api/client';
-import { vaultUnlocked, relayInstruction } from '../auth/session';
+import { relayInstruction } from '../auth/session';
+import { canSignMember } from '../auth/action-signer';
+const signerReady = computed(() => canSignMember(props.member));
 import { prepareExit, prepareExternalEvidence } from '../content/treasury';
 import { useWorkspace } from '../state/workspace';
 const props = defineProps<{ dao: DaoSummary; member: UserMembership | undefined }>();
@@ -216,7 +219,7 @@ async function exit() {
       /><label for="exit-amount">Withdrawal amount ({{ dao.token.symbol }})</label
       ><input id="exit-amount" v-model="amount" inputmode="decimal" required /><button
         :disabled="
-          busy || !vaultUnlocked || (kind === 'withdraw' ? member.claim : member.stake) === '0'
+          busy || !signerReady || (kind === 'withdraw' ? member.claim : member.stake) === '0'
         "
       >
         Sign withdrawal
@@ -293,7 +296,7 @@ async function exit() {
           spellcheck="false"
           @input="setDraft(draftReference, record.id, $event)"
         />
-        <button :disabled="busy || !vaultUnlocked">Record external statement</button>
+        <button :disabled="busy || !signerReady">Record external statement</button>
       </form>
     </article>
   </div>
@@ -306,4 +309,5 @@ async function exit() {
       </li>
     </ul>
   </section>
+  <SpendingReportPanel :dao="dao" />
 </template>

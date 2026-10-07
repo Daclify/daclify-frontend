@@ -11,7 +11,9 @@ import {
   profileJson,
   type ProfileDraft,
 } from '../auth/profile';
-import { relayInstruction, vaultUnlocked } from '../auth/session';
+import { relayInstruction } from '../auth/session';
+import { canSignMember } from '../auth/action-signer';
+const signerReady = computed(() => canSignMember(membership.value));
 import { useWorkspace } from '../state/workspace';
 
 const state = useWorkspace();
@@ -31,8 +33,8 @@ const daoTitle = (item: UserMembership) =>
   state.daos.find((dao) => dao.reference.daoId === item.dao.daoId)?.title ??
   `DAO ${item.dao.daoId}`;
 
-watch([selected, vaultUnlocked], () => {
-  if (!vaultUnlocked.value) {
+watch([selected, signerReady], () => {
+  if (!signerReady.value) {
     draft.value = emptyProfile();
     savedName.value = '';
     edited.value = false;
@@ -114,7 +116,7 @@ async function publish() {
       background are IPFS CIDs, the same identifier a document uses. The image file stays on IPFS.
       Email and links are public on the chain.
     </p>
-    <p v-if="!vaultUnlocked" class="notice">Unlock your vault to edit this profile.</p>
+    <p v-if="!signerReady" class="notice">Connect an authorized signer to edit this profile.</p>
     <p v-else-if="state.memberships.length === 0" class="notice">
       Create or join a DAO to publish. The contract accepts a profile only from a member.
     </p>
@@ -187,7 +189,7 @@ async function publish() {
       </p>
       <p v-if="error" class="alert" role="alert">{{ error }}</p>
       <p v-if="notice" class="notice" role="status">{{ notice }}</p>
-      <button :disabled="busy || !vaultUnlocked">
+      <button :disabled="busy || !signerReady">
         {{ busy ? 'Publishing…' : 'Publish profile' }}
       </button>
     </form>
