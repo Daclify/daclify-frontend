@@ -29,7 +29,7 @@ const visible = computed(() =>
   <div class="stats-grid">
     <article class="stat-card">
       <span>Connected DAOs</span><strong>{{ state.daos.length }}</strong
-      ><small>Shared and independent deployments</small>
+      ><small>Current configured runtime</small>
     </article>
     <article class="stat-card">
       <span>Your memberships</span><strong>{{ state.memberships.length }}</strong
@@ -65,7 +65,7 @@ const visible = computed(() =>
       {{
         search
           ? 'Try another name or clear the filter.'
-          : 'Create your first DAO, or connect an independently deployed community through the hub.'
+          : 'Create your first DAO on this runtime. Independent deployment discovery in this application is still being completed.'
       }}
     </p>
     <RouterLink class="button secondary" to="/create">Create your first DAO</RouterLink>

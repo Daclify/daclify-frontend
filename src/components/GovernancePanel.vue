@@ -3,7 +3,6 @@ import { computed, ref, watch } from 'vue';
 import { Checksum256 } from '@wharfkit/antelope';
 import {
   DaoSetupSchema,
-  EncryptionPublicKeySchema,
   SigningPublicKeySchema,
   formatUnits,
   parseUnits,
@@ -30,10 +29,6 @@ const maximum = ref('0'),
 const error = ref(''),
   success = ref(''),
   busy = ref(false);
-const publicKey = ref(''),
-  encryptionKey = ref(''),
-  operator = ref('');
-const kind = ref(0);
 const sessionId = ref('1'),
   sessionKey = ref(''),
   sessionHours = ref(24);
@@ -66,7 +61,6 @@ async function load() {
       };
       maximum.value = amount(config.max_commitment);
       daily.value = amount(config.daily_commitment);
-      kind.value = config.participant_mode === 2 ? 1 : 0;
     }
   } catch (cause) {
     error.value = friendlyError(cause);
@@ -134,29 +128,6 @@ async function updatePolicy() {
       }),
       'Policy updated. Pending funding execution under the previous revision is invalid.',
     );
-  } catch (cause) {
-    error.value = friendlyError(cause);
-  }
-}
-async function enrol() {
-  try {
-    const signing = SigningPublicKeySchema.parse(publicKey.value);
-    const encryption = EncryptionPublicKeySchema.parse(JSON.parse(encryptionKey.value));
-    await run(
-      'addmember',
-      encodeAction('addmember', {
-        ...actor(),
-        signing_key: signing,
-        encryption_key: JSON.stringify(encryption),
-        custody: 0,
-        kind: kind.value,
-        operator_label: kind.value === 1 ? operator.value : '',
-      }),
-      'Participant admitted. Credits and review permissions are separate grants.',
-    );
-    publicKey.value = '';
-    encryptionKey.value = '';
-    operator.value = '';
   } catch (cause) {
     error.value = friendlyError(cause);
   }
@@ -326,7 +297,7 @@ function prepareGuardian() {
         Last pause expires at {{ new Date(state.guardian.paused_until * 1000).toISOString() }}.
         Pauses preserve existing obligations; expiry permits settlement again.
       </p>
-      <details v-if="member?.admin && draft">
+      <details v-if="member?.active && member.admin && draft">
         <summary>Edit ballot policy and commitment limits</summary>
         <form @submit.prevent="updatePolicy">
           <label for="policy-weight">Policy voting weight</label
@@ -378,34 +349,6 @@ function prepareGuardian() {
             execution; members must vote again. Participant mode and guardian identity remain fixed.
           </p>
           <button :disabled="!canSign">Sign policy update</button>
-        </form>
-      </details>
-      <details v-if="member?.admin">
-        <summary>Admit a participant</summary>
-        <form @submit.prevent="enrol">
-          <label for="participant-kind">Participant kind</label
-          ><select id="participant-kind" v-model.number="kind">
-            <option v-if="policy.config.participant_mode !== 2" :value="0">Human</option>
-            <option v-if="policy.config.participant_mode !== 0" :value="1">Declared agent</option>
-          </select>
-          <label for="participant-public">Participant signing public key</label
-          ><input id="participant-public" v-model="publicKey" required maxlength="128" />
-          <label for="participant-encryption">Participant encryption public key (JWK)</label
-          ><textarea
-            id="participant-encryption"
-            v-model="encryptionKey"
-            required
-            rows="3"
-          ></textarea>
-          <template v-if="kind === 1"
-            ><label for="participant-operator">Declared operator label</label
-            ><input id="participant-operator" v-model="operator" required maxlength="64"
-          /></template>
-          <p class="field-help">
-            Public keys only. This admits a user-controlled participant. Operator labels are
-            declarations, not proof of independence.
-          </p>
-          <button :disabled="!canSign">Sign participant admission</button>
         </form>
       </details>
       <h3>Registered agents</h3>

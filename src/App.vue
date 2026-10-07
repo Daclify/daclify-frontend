@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
+import { useRoute } from 'vue-router';
 import {
   Activity,
   Shield,
@@ -15,6 +16,7 @@ import { useWorkspace } from './state/workspace';
 import { lockVault, vaultUnlocked } from './auth/session';
 import { chooseNetwork, selectedNetwork, type DeployedNetwork } from './api/networks';
 const state = useWorkspace();
+const route = useRoute();
 const mobileOpen = ref(false);
 function storedFold(): boolean {
   try {
@@ -147,9 +149,14 @@ onMounted(() => {
             vaultUnlocked ? 'Vault unlocked' : 'Vault locked'
           }}</span
           ><button v-if="vaultUnlocked" class="text-button" @click="lockVault">Lock keys</button
-          ><RouterLink class="account-link" to="/account">{{
-            state.account ? 'Your account' : 'Set up account'
-          }}</RouterLink>
+          ><RouterLink
+            class="account-link"
+            :to="{
+              path: '/account',
+              query: route.path === '/account' ? {} : { returnTo: route.fullPath },
+            }"
+            >{{ state.account ? 'Your account' : 'Set up account' }}</RouterLink
+          >
         </div>
       </header>
       <main id="main" tabindex="-1">

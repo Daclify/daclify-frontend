@@ -990,7 +990,7 @@ legend {
 }
 .workspace-tabs {
   display: flex;
-  overflow: auto;
+  flex-wrap: wrap;
   gap: 4px;
   border-bottom: 1px solid var(--line);
   margin-bottom: 30px;

@@ -2,25 +2,72 @@
 import ContentPanel from '../components/ContentPanel.vue';
 import ModulesPanel from '../components/ModulesPanel.vue';
 import TreasuryPanel from '../components/TreasuryPanel.vue';
-import { computed, ref } from 'vue';
+import { computed, ref, watch, onBeforeUnmount } from 'vue';
 import { useRoute } from 'vue-router';
 import { formatUnits, DaoPresets } from '@daclify/core-protocol';
 import GovernancePanel from '../components/GovernancePanel.vue';
 import { encodeAction, makeInstruction } from '@daclify/core-protocol/sdk';
 import { useWorkspace } from '../state/workspace';
 import { vaultUnlocked, relayInstruction } from '../auth/session';
-import { friendlyError } from '../api/client';
+import { api, friendlyError } from '../api/client';
 const route = useRoute();
 const state = useWorkspace();
-const dao = computed(() => state.daos.find((d) => d.reference.daoId === route.params.id));
-const membership = computed(() => state.memberships.find((m) => m.dao.daoId === route.params.id));
+const dao = computed(() =>
+  state.daos.find(
+    (d) =>
+      d.reference.daoId === route.params.id &&
+      d.reference.chainId === state.network?.chainId &&
+      d.reference.contract === state.network.runtime,
+  ),
+);
+const membership = computed(() =>
+  state.memberships.find(
+    (m) => dao.value && JSON.stringify(m.dao) === JSON.stringify(dao.value.reference),
+  ),
+);
+const panelKey = computed(() =>
+  JSON.stringify([
+    dao.value?.reference,
+    state.account?.id,
+    membership.value?.memberId,
+    dao.value?.privacy,
+  ]),
+);
 const preset = computed(() =>
   DaoPresets.find((preset) => preset.id === (dao.value?.purpose ?? 'custom')),
 );
 const section = computed(() =>
   typeof route.params.section === 'string' ? route.params.section : 'overview',
 );
-const tabs: ReadonlyArray<readonly [string, string]> = [
+const enabledModules = ref<string[]>([]);
+let tabRequest = 0;
+watch(
+  [panelKey, dao],
+  async () => {
+    const request = ++tabRequest;
+    enabledModules.value = [];
+    const d = dao.value;
+    if (!d) return;
+    try {
+      const modules = await api.moduleState(d.reference.daoId, {
+        ballots: 'done',
+        projects: 'done',
+        schedules: 'done',
+      });
+      if (request === tabRequest)
+        enabledModules.value = modules.modules
+          .filter((module) => module.enabled || module.installed)
+          .map((module) => module.deployment.id);
+    } catch {
+      /* The module panel explains unavailable deployments. */
+    }
+  },
+  { immediate: true },
+);
+onBeforeUnmount(() => {
+  tabRequest++;
+});
+const allTabs: ReadonlyArray<readonly [string, string]> = [
   ['overview', 'Overview'],
   ['decide', 'Decide'],
   ['works', 'Works'],
@@ -31,9 +78,18 @@ const tabs: ReadonlyArray<readonly [string, string]> = [
   ['modules', 'Modules'],
   ['settings', 'Settings'],
 ];
+const tabs = computed(() =>
+  allTabs.filter(
+    ([id]) => !['decide', 'works', 'payroll'].includes(id) || enabledModules.value.includes(id),
+  ),
+);
 const error = ref('');
 const busy = ref(false);
 const newTitle = ref('');
+watch(panelKey, () => {
+  newTitle.value = '';
+  error.value = '';
+});
 function amount(units: string) {
   return dao.value ? formatUnits(BigInt(units), dao.value.token.precision) : '0';
 }
@@ -101,6 +157,27 @@ async function rename() {
         >{{ label }}</RouterLink
       >
     </nav>
+    <aside v-if="!membership?.active || !vaultUnlocked" class="notice" aria-label="Account access">
+      <template v-if="!state.account"
+        >Sign in to request membership or use your DAO permissions.</template
+      >
+      <template v-else-if="!membership"
+        >You can browse this DAO. Share your public join identity with an administrator to become a
+        member.
+        <RouterLink :to="`/dao/${dao.reference.daoId}/members`">Join instructions</RouterLink
+        >.</template
+      >
+      <template v-else-if="!membership.active"
+        >Your membership is inactive. Existing claim and stake exits remain available in
+        Treasury.</template
+      >
+      <template v-else>Unlock your account to sign actions and decrypt documents.</template>
+      <RouterLink
+        v-if="!state.account || (membership?.active && !vaultUnlocked)"
+        :to="{ path: '/account', query: { returnTo: route.fullPath } }"
+        >{{ state.account ? 'Unlock account' : 'Sign in' }}</RouterLink
+      >
+    </aside>
     <p v-if="error" class="alert" role="alert">{{ error }}</p>
     <template v-if="section === 'overview'"
       ><h2>Workspace overview</h2>
@@ -113,7 +190,13 @@ async function rename() {
         <article class="stat-card">
           <span>Members</span><strong>{{ dao.members }}</strong
           ><small>{{
-            membership?.admin ? 'Administrator' : membership ? 'Member' : 'Visitor'
+            membership && !membership.active
+              ? 'Inactive member'
+              : membership?.admin
+                ? 'Administrator'
+                : membership
+                  ? 'Member'
+                  : 'Visitor'
           }}</small>
         </article>
         <article class="stat-card">
@@ -152,7 +235,7 @@ async function rename() {
     >
     <TreasuryPanel
       v-else-if="section === 'treasury'"
-      :key="JSON.stringify(dao.reference)"
+      :key="panelKey"
       :dao="dao"
       :member="membership"
     />
@@ -160,7 +243,7 @@ async function rename() {
       ><h2>DAO settings</h2>
       <section class="panel narrow">
         <h3>Public identity</h3>
-        <form v-if="membership?.admin" @submit.prevent="rename">
+        <form v-if="membership?.active && membership.admin" @submit.prevent="rename">
           <label for="rename">New DAO name</label
           ><input id="rename" v-model="newTitle" maxlength="160" required /><button
             :disabled="busy || !vaultUnlocked"
@@ -181,15 +264,17 @@ async function rename() {
           <dd>{{ dao.keyEpoch }}</dd>
         </dl>
       </section>
-      <GovernancePanel :key="JSON.stringify(dao.reference)" :dao="dao" :member="membership" />
+      <GovernancePanel :key="panelKey" :dao="dao" :member="membership" />
     </template>
     <ContentPanel
       v-else-if="['documents', 'members'].includes(section)"
+      :key="panelKey"
       :dao="dao"
       :member="membership"
       :section="section"
     /><ModulesPanel
       v-else-if="['modules', 'decide', 'works', 'payroll'].includes(section)"
+      :key="panelKey"
       :dao="dao"
       :member="membership"
       :section="section"
@@ -234,7 +319,7 @@ async function rename() {
         <RouterLink class="button secondary" :to="`/docs/${section}`">Open the guide</RouterLink>
       </section></template
     >
-    <aside class="deployment-note">
+    <aside class="deployment-note" aria-label="DAO deployment">
       <span class="mono">{{ dao.reference.contract }} / {{ dao.reference.daoId }}</span
       ><span
         >Core interface {{ dao.reference.interfaceVersion }} ·

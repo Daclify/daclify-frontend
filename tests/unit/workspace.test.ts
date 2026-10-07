@@ -2,7 +2,12 @@ import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { PrivateKey } from '@wharfkit/antelope';
 import { generateKeyPairSync, randomUUID } from 'node:crypto';
-import { AccountSchema, NetworkSchema, type Account } from '@daclify/core-protocol';
+import {
+  AccountSchema,
+  NetworkSchema,
+  UserMembershipSchema,
+  type Account,
+} from '@daclify/core-protocol';
 import { api, ApiFailure } from '../../src/api/client';
 import { useWorkspace } from '../../src/state/workspace';
 const jwk = generateKeyPairSync('ec', { namedCurve: 'prime256v1' }).publicKey.export({
@@ -33,6 +38,39 @@ beforeEach(() => {
 });
 afterEach(() => vi.restoreAllMocks());
 describe('workspace refresh availability', () => {
+  it('keeps the current domain and membership mounted during a routine refresh', async () => {
+    const state = useWorkspace();
+    state.account = account;
+    state.network = network;
+    const member = UserMembershipSchema.parse({
+      dao: { chainId: network.chainId, contract: network.runtime, daoId: '7', interfaceVersion: 1 },
+      memberId: '1',
+      nonce: '0',
+      active: true,
+      admin: true,
+      reviewer: false,
+      credits: '0',
+      claim: '0',
+      stake: '0',
+      nativeAccount: '',
+      custody: 'user-controlled',
+    });
+    state.memberships = [member];
+    let release: (value: typeof network) => void = () => {
+      throw new Error('Not ready');
+    };
+    vi.mocked(api.network).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    const refresh = state.refresh();
+    expect(state.network).toEqual(network);
+    expect(state.memberships).toEqual([member]);
+    release(network);
+    await refresh;
+  });
   it('does not leave a failed connection labelled as a verified network', async () => {
     const state = useWorkspace();
     state.network = network;

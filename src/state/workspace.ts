@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import type { Account, DaoSummary, Network, UserMembership } from '@daclify/core-protocol';
 import { api, ApiFailure, friendlyError } from '../api/client';
 
@@ -10,16 +10,28 @@ export const useWorkspace = defineStore('workspace', () => {
   const account = ref<Account>();
   const loading = ref(false);
   const error = ref('');
+  watch(
+    () => account.value?.id,
+    () => {
+      memberships.value = [];
+    },
+    { flush: 'sync' },
+  );
   let sequence = 0;
   async function refresh() {
     const current = ++sequence;
     loading.value = true;
     error.value = '';
-    network.value = undefined;
-    memberships.value = [];
+    let networkRead = false;
     try {
       const [info, summaries] = await Promise.all([api.network(), api.daos()]);
       if (current !== sequence) return;
+      if (
+        network.value &&
+        (network.value.chainId !== info.chainId || network.value.runtime !== info.runtime)
+      )
+        memberships.value = [];
+      networkRead = true;
       network.value = info;
       daos.value = summaries;
       try {
@@ -38,7 +50,11 @@ export const useWorkspace = defineStore('workspace', () => {
       }
     } catch (cause) {
       if (current === sequence) {
-        if (!network.value) daos.value = [];
+        if (!networkRead) {
+          network.value = undefined;
+          daos.value = [];
+          memberships.value = [];
+        }
         error.value = friendlyError(cause);
       }
     } finally {

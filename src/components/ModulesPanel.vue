@@ -5,6 +5,7 @@ import {
   parseUnits,
   formatUnits,
   type Treasury,
+  type DaoContent,
   type DaoSummary,
   type UserMembership,
   type GovernanceState,
@@ -23,7 +24,18 @@ const props = defineProps<{
 const workspace = useWorkspace();
 const data = ref<ModuleState>();
 const governance = ref<GovernanceState>();
+const content = ref<DaoContent>();
 const governedWorks = computed(() => governance.value?.policy?.config.governed_works === true);
+let generation = 0;
+let disposed = false;
+const context = computed(() =>
+  JSON.stringify([
+    props.dao.reference,
+    workspace.account?.id,
+    props.member?.memberId,
+    props.dao.privacy,
+  ]),
+);
 const loading = ref(false);
 const busy = ref(false);
 const error = ref('');
@@ -44,7 +56,11 @@ const now = ref(Math.floor(Date.now() / 1000));
 const clock = setInterval(() => {
   now.value = Math.floor(Date.now() / 1000);
 }, 1000);
-onBeforeUnmount(() => clearInterval(clock));
+onBeforeUnmount(() => {
+  disposed = true;
+  generation++;
+  clearInterval(clock);
+});
 const submissionDoc = ref('');
 const submissionVersion = ref(1);
 const reviewDoc = ref('');
@@ -58,6 +74,13 @@ const draftPaused = ref<Record<string, boolean>>({});
 const names = { decide: 'Decide', works: 'Works', payroll: 'Payroll' };
 const canSign = computed(() => !!props.member?.active && vaultUnlocked.value && !busy.value);
 const current = computed(() => data.value?.modules.find((m) => m.deployment.id === props.section));
+const limitedActions = computed(() => {
+  const module = current.value;
+  if (!module?.enabled) return false;
+  return ModulePermissions[module.deployment.id].actions.some(
+    (action) => !module.actions.includes(action),
+  );
+});
 const canAct = computed(
   () =>
     canSign.value &&
@@ -65,6 +88,19 @@ const canAct = computed(
     current.value.compatible &&
     current.value.codeVerified,
 );
+function fundAllowed() {
+  const decide = data.value?.modules.find((module) => module.deployment.id === 'decide');
+  return (
+    canAct.value &&
+    !!decide?.enabled &&
+    decide.compatible &&
+    decide.codeVerified &&
+    decide.actions.includes('openwork')
+  );
+}
+function allowed(action: string) {
+  return canAct.value && !!current.value?.actions.includes(action);
+}
 const canSettle = computed(() => !!workspace.account && !busy.value);
 function helpLink(topic: string) {
   return { path: `/docs/${topic}`, query: { dao: props.dao.reference.daoId } };
@@ -81,19 +117,64 @@ function actor() {
     member_id: props.member.memberId,
   };
 }
-async function load() {
+async function load(more = false) {
+  const request = ++generation;
+  const domain = context.value;
   loading.value = true;
   try {
-    const [modules, records, policy] = await Promise.all([
-      api.moduleState(props.dao.reference.daoId),
+    const [modules, records, policy, documents] = await Promise.all([
+      api.moduleState(props.dao.reference.daoId, {
+        ...(props.member ? { memberId: props.member.memberId } : {}),
+        ...(more && data.value
+          ? {
+              ballots: props.section === 'decide' ? (data.value.next.ballots ?? 'done') : 'done',
+              projects: props.section === 'works' ? (data.value.next.projects ?? 'done') : 'done',
+              schedules:
+                props.section === 'payroll' ? (data.value.next.schedules ?? 'done') : 'done',
+            }
+          : {}),
+      }),
       api.treasury(props.dao.reference.daoId),
       workspace.network?.capabilities.includes('governance-policy')
         ? api.governance(props.dao.reference.daoId)
         : Promise.resolve(undefined),
+      ['works', 'payroll'].includes(props.section)
+        ? api.content(props.dao.reference.daoId)
+        : Promise.resolve(undefined),
     ]);
+    if (disposed || request !== generation || domain !== context.value) return;
+    if (
+      [
+        modules.dao,
+        records.dao,
+        ...(policy ? [policy.dao] : []),
+        ...(documents ? [documents.dao] : []),
+      ].some((reference) => JSON.stringify(reference) !== JSON.stringify(props.dao.reference))
+    )
+      throw new Error('DAO_REFERENCE');
+    if (more && data.value) {
+      const previous = data.value;
+      modules.ballots.unshift(...previous.ballots);
+      modules.votes.unshift(...previous.votes);
+      modules.executions.unshift(...previous.executions);
+      modules.projects.unshift(...previous.projects);
+      modules.milestones.unshift(...previous.milestones);
+      modules.schedules.unshift(...previous.schedules);
+      modules.entries.unshift(...previous.entries);
+      modules.controls.unshift(...previous.controls);
+      modules.next = {
+        ...previous.next,
+        ...(props.section === 'decide'
+          ? { ballots: modules.next.ballots }
+          : props.section === 'works'
+            ? { projects: modules.next.projects }
+            : { schedules: modules.next.schedules }),
+      };
+    }
     data.value = modules;
     treasury.value = records;
     governance.value = policy;
+    content.value = documents;
     if (policy?.policy) {
       const saved = policy.policy.config;
       weight.value = saved.kind === 0 ? 'member' : saved.kind === 1 ? 'credit' : 'native-stake';
@@ -111,20 +192,54 @@ async function load() {
     draftLabel.value = labels;
     draftPaused.value = pauses;
   } catch (cause) {
-    error.value = friendlyError(cause);
+    if (!disposed && request === generation && domain === context.value)
+      error.value = friendlyError(cause);
   } finally {
-    loading.value = false;
+    if (!disposed && request === generation) loading.value = false;
   }
 }
 watch(
-  () => props.dao.reference.daoId,
+  context,
+  () => {
+    generation++;
+    data.value = undefined;
+    treasury.value = undefined;
+    governance.value = undefined;
+    content.value = undefined;
+    title.value = '';
+    contributor.value = '';
+    documentId.value = '';
+    submissionDoc.value = '';
+    reviewDoc.value = '';
+    selectedMilestone.value = '';
+    draftLabel.value = {};
+    draftPaused.value = {};
+    error.value = '';
+    success.value = '';
+    void load();
+  },
+  { immediate: true, flush: 'sync' },
+);
+watch(
+  () => props.section,
   () => {
     void load();
   },
-  { immediate: true },
 );
 async function run(target: string, action: string, payload: Uint8Array, message: string) {
-  if (!props.member) return;
+  if (disposed || !props.member || !canSign.value) return;
+  if (
+    target !== props.dao.reference.contract &&
+    !data.value?.modules.some(
+      (module) =>
+        module.deployment.account === target &&
+        module.enabled &&
+        module.compatible &&
+        module.codeVerified &&
+        module.actions.includes(action),
+    )
+  )
+    return;
   busy.value = true;
   error.value = '';
   success.value = '';
@@ -495,6 +610,21 @@ const selectedProject = computed(() =>
 );
 </script>
 <template>
+  <datalist id="work-members">
+    <option
+      v-for="person in content?.members.filter((person) => person.active)"
+      :key="person.id"
+      :value="person.id"
+    >
+      Member {{ person.id }} {{ person.native_account }}
+    </option>
+  </datalist>
+  <datalist id="work-documents">
+    <option v-for="document in content?.documents" :key="document.id" :value="document.document_id">
+      Document {{ document.document_id }} · version {{ document.version }}
+    </option>
+  </datalist>
+
   <p v-if="error" class="alert" role="alert">{{ error }}</p>
   <p v-if="success" class="notice" role="status">{{ success }}</p>
   <p v-if="loading" role="status">Reading contract state…</p>
@@ -534,8 +664,12 @@ const selectedProject = computed(() =>
           <dd>{{ module.compatible ? 'Compatible' : 'Incompatible release' }}</dd>
         </dl>
         <p class="field-help">
-          Grants: {{ ModulePermissions[module.deployment.id].grants.join(', ') }}. The contract’s
-          upgrade authority can change its behavior.
+          {{ module.enabled ? 'Installed grants' : 'Enabling requests' }}:
+          {{
+            module.enabled
+              ? module.grants.join(', ') || 'None'
+              : ModulePermissions[module.deployment.id].grants.join(', ')
+          }}. The contract’s upgrade authority can change its behavior.
         </p>
         <button
           v-if="!module.enabled && member?.admin"
@@ -565,6 +699,10 @@ const selectedProject = computed(() =>
       <h2>{{ section === 'decide' ? 'Decide' : section === 'works' ? 'Works' : 'Payroll' }}</h2>
       <RouterLink :to="helpLink(section)">Rules &amp; help ↗</RouterLink>
     </div>
+    <p v-if="limitedActions" class="notice">
+      This DAO has limited this module’s actions. An administrator can review the permissions in
+      Modules; unavailable actions remain disabled.
+    </p>
     <section v-if="!current?.enabled" class="panel">
       <h3>Enable this module</h3>
       <p>
@@ -634,7 +772,7 @@ const selectedProject = computed(() =>
         <p class="field-help">
           5000 = 50%. Weight is frozen at opening. New members cannot vote in an existing ballot.
         </p>
-        <button :disabled="!canAct">Open ballot</button>
+        <button :disabled="!allowed('open')">Open ballot</button>
       </form>
       <div v-if="!data?.ballots.length" class="empty-state">
         <h3>No ballots yet</h3>
@@ -664,9 +802,9 @@ const selectedProject = computed(() =>
           v-else-if="ballot.status === 0 && ballot.closes > now && current?.enabled"
           class="button-row"
         >
-          <button class="secondary" :disabled="!canAct" @click="vote(ballot.id, 0)">
+          <button class="secondary" :disabled="!allowed('vote')" @click="vote(ballot.id, 0)">
             Vote Reject</button
-          ><button :disabled="!canAct" @click="vote(ballot.id, 1)">Vote Approve</button>
+          ><button :disabled="!allowed('vote')" @click="vote(ballot.id, 1)">Vote Approve</button>
         </div>
         <button
           v-if="ballot.status === 0 && ballot.closes <= now"
@@ -707,12 +845,29 @@ const selectedProject = computed(() =>
         @submit.prevent="propose"
       >
         <h3>Propose milestone work</h3>
+        <p>
+          1. Publish the proposal document. 2. Choose a contributor and request funding. 3. Submit
+          evidence. 4. An independent reviewer approves payment.
+        </p>
+        <RouterLink :to="`/dao/${dao.reference.daoId}/documents`">Open DAO documents</RouterLink>
         <label for="contributor">Contributor member ID</label
-        ><input id="contributor" v-model="contributor" inputmode="numeric" required />
+        ><input
+          id="contributor"
+          v-model="contributor"
+          list="work-members"
+          inputmode="numeric"
+          required
+        />
         <div class="two-column">
           <div>
             <label for="work-document">Proposal document ID</label
-            ><input id="work-document" v-model="documentId" inputmode="numeric" required />
+            ><input
+              id="work-document"
+              v-model="documentId"
+              list="work-documents"
+              inputmode="numeric"
+              required
+            />
           </div>
           <div>
             <label for="work-version">Document version</label
@@ -731,7 +886,7 @@ const selectedProject = computed(() =>
           Use an existing durable document. Acceptance reserves the full project amount; review
           approves each payment.
         </p>
-        <button :disabled="!canAct">Propose work</button>
+        <button :disabled="!allowed('propose')">Propose work</button>
       </form>
       <article v-for="project in data?.projects" :key="project.id" class="panel">
         <h3>Project {{ project.id }}</h3>
@@ -743,21 +898,21 @@ const selectedProject = computed(() =>
           {{ project.status === 0 ? 'Proposed' : project.status === 1 ? 'Accepted' : 'Cancelled' }}
         </p>
         <button
-          v-if="project.status === 0 && !governedWorks && member?.admin"
-          :disabled="!canAct"
+          v-if="project.status === 0 && !governedWorks && member?.active && member.admin"
+          :disabled="!allowed('accept')"
           @click="accept(project.id)"
         >
           Accept and reserve funds</button
         ><button
           v-if="project.status === 0 && governedWorks && member?.active"
-          :disabled="!canAct"
+          :disabled="!fundAllowed()"
           @click="fund(project.id)"
         >
           Propose funding vote</button
         ><button
-          v-if="project.status <= 1 && member?.admin"
+          v-if="project.status <= 1 && member?.active && member.admin"
           class="secondary"
-          :disabled="!canAct"
+          :disabled="!allowed('cancel')"
           @click="cancelWork(project.id)"
         >
           Cancel project {{ project.id }}
@@ -794,12 +949,13 @@ const selectedProject = computed(() =>
               v-if="
                 project.status === 1 &&
                 ((project.contributor === member?.memberId && [1, 3].includes(milestone.status)) ||
-                  (member?.reviewer &&
+                  (member?.active &&
+                    (member.admin || member.reviewer) &&
                     member.memberId !== project.contributor &&
                     milestone.status === 2))
               "
               class="secondary"
-              :disabled="!canAct"
+              :disabled="!allowed(milestone.status === 2 ? 'review' : 'submitwork')"
               @click="selectedMilestone = milestone.id"
             >
               {{ milestone.status === 2 ? 'Review' : 'Submit evidence for' }} milestone
@@ -828,6 +984,7 @@ const selectedProject = computed(() =>
           <label for="submission-doc">Submission document ID</label
           ><input
             id="submission-doc"
+            list="work-documents"
             v-model="submissionDoc"
             inputmode="numeric"
             pattern="[1-9][0-9]*"
@@ -839,11 +996,12 @@ const selectedProject = computed(() =>
             type="number"
             min="1"
             required
-          /><button :disabled="!canAct">Submit milestone evidence</button>
+          /><button :disabled="!allowed('submitwork')">Submit milestone evidence</button>
         </form>
         <form
           v-else-if="
-            member?.reviewer &&
+            member?.active &&
+            (member.admin || member.reviewer) &&
             member.memberId !== selectedProject.contributor &&
             selectedWork.status === 2
           "
@@ -852,6 +1010,7 @@ const selectedProject = computed(() =>
           <label for="review-doc">Review document ID</label
           ><input
             id="review-doc"
+            list="work-documents"
             v-model="reviewDoc"
             inputmode="numeric"
             pattern="[1-9][0-9]*"
@@ -865,11 +1024,11 @@ const selectedProject = computed(() =>
             required
           />
           <div class="button-row">
-            <button :disabled="!canAct">Approve milestone</button
+            <button :disabled="!allowed('review')">Approve milestone</button
             ><button
               type="button"
               class="secondary"
-              :disabled="!canAct || !reviewDoc"
+              :disabled="!allowed('review') || !reviewDoc"
               @click="reviewWork(false)"
             >
               Request changes
@@ -883,7 +1042,7 @@ const selectedProject = computed(() =>
     >
     <template v-else
       ><form
-        v-if="member?.admin && current?.enabled"
+        v-if="member?.active && member.admin && current?.enabled"
         class="panel form-panel"
         @submit.prevent="commit"
       >
@@ -929,7 +1088,7 @@ const selectedProject = computed(() =>
           type="datetime-local"
           step="1"
           required
-        /><button :disabled="!canAct">Commit funded payroll</button>
+        /><button :disabled="!allowed('commit')">Commit funded payroll</button>
       </form>
       <form class="panel form-panel" @submit.prevent>
         <label for="pay-search">Search payrolls</label
@@ -958,10 +1117,13 @@ const selectedProject = computed(() =>
           {{ schedule.interval / 86400 }} days · Last payout {{ lastPayout(schedule.id) }}.
         </p>
         <p v-if="pausedSchedule(schedule.id)">
-          Paused. Settlement pays nothing until an administrator resumes it.
+          Schedule settlement is paused. Approved, due installments remain payable directly through
+          the treasury. A DAO-wide guardian pause is a separate emergency control.
         </p>
         <form
-          v-if="member?.admin && current?.enabled && current.actions.includes('edit')"
+          v-if="
+            member?.active && member.admin && current?.enabled && current.actions.includes('edit')
+          "
           class="form-panel"
           @submit.prevent="editSchedule(schedule.id)"
         >
@@ -972,8 +1134,9 @@ const selectedProject = computed(() =>
             maxlength="80"
           />
           <label class="choice"
-            ><input v-model="draftPaused[schedule.id]" type="checkbox" /> Paused</label
-          ><button :disabled="!canAct">Save payroll settings</button>
+            ><input v-model="draftPaused[schedule.id]" type="checkbox" /> Pause schedule
+            settlement</label
+          ><button :disabled="!allowed('edit')">Save payroll settings</button>
         </form>
         <button
           v-if="outstandingEntry(schedule.id)"
@@ -993,4 +1156,18 @@ const selectedProject = computed(() =>
       </article></template
     ></template
   >
+  <button
+    v-if="
+      data &&
+      ((section === 'decide' && data.next.ballots) ||
+        (section === 'works' && data.next.projects) ||
+        (section === 'payroll' && data.next.schedules))
+    "
+    class="secondary"
+    :disabled="loading || busy"
+    @click="load(true)"
+  >
+    Load more
+    {{ names[section === 'decide' ? 'decide' : section === 'works' ? 'works' : 'payroll'] }} records
+  </button>
 </template>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import {
   FileMetadataSchema,
   IdSchema,
@@ -20,6 +20,7 @@ import {
 } from '../auth/session';
 import { decodeStoredBytes, verifyStoredFile, downloadFile } from '../content/files';
 import FilePanel from './FilePanel.vue';
+import AdmissionPanel from './AdmissionPanel.vue';
 import { useWorkspace } from '../state/workspace';
 const props = defineProps<{
   dao: DaoSummary;
@@ -38,6 +39,17 @@ const target = ref('');
 const quantity = ref('0');
 const admin = ref(false);
 const reviewer = ref(false);
+let generation = 0;
+let disposed = false;
+const context = computed(() =>
+  JSON.stringify([
+    props.dao.reference,
+    state.account?.id,
+    props.member?.memberId,
+    props.dao.privacy,
+  ]),
+);
+const isAdmin = computed(() => !!props.member?.active && props.member.admin);
 const privateDao = computed(() => props.dao.privacy !== 'public');
 const epochReady = computed(() =>
   content.value?.epochs.some((e) => e.epoch === props.dao.keyEpoch),
@@ -57,10 +69,20 @@ const latest = computed(() => {
   return Array.from(records.values());
 });
 async function refresh() {
+  const request = ++generation;
+  const domain = context.value;
   try {
-    content.value = await api.content(props.dao.reference.daoId);
+    const records = await api.content(props.dao.reference.daoId);
+    if (
+      !disposed &&
+      request === generation &&
+      domain === context.value &&
+      JSON.stringify(records.dao) === JSON.stringify(props.dao.reference)
+    )
+      content.value = records;
   } catch (cause) {
-    error.value = friendlyError(cause);
+    if (!disposed && request === generation && domain === context.value)
+      error.value = friendlyError(cause);
   }
 }
 watch(vaultUnlocked, (unlocked) => {
@@ -69,21 +91,40 @@ watch(vaultUnlocked, (unlocked) => {
     if (privateDao.value) value.value = '';
   }
 });
-onBeforeUnmount(() => decrypted.value.clear());
+onBeforeUnmount(() => {
+  disposed = true;
+  generation++;
+  decrypted.value.clear();
+  value.value = '';
+});
 watch(
   () => props.member?.active,
   (active) => {
-    if (!active) decrypted.value.clear();
+    if (!active) {
+      decrypted.value.clear();
+      if (privateDao.value) value.value = '';
+    }
   },
+  { flush: 'sync' },
 );
-onMounted(refresh);
 watch(
-  () => props.dao.reference.daoId,
+  context,
   () => {
+    generation++;
     content.value = undefined;
     decrypted.value.clear();
+    value.value = '';
+    documentId.value = '';
+    target.value = '';
+    quantity.value = '0';
+    admin.value = false;
+    reviewer.value = false;
+    error.value = '';
+    busy.value = false;
+    epochChoice.value = props.dao.keyEpoch;
     void refresh();
   },
+  { immediate: true, flush: 'sync' },
 );
 watch(selected, (m) => {
   quantity.value = m?.credits ?? '0';
@@ -92,7 +133,7 @@ watch(selected, (m) => {
 });
 async function transact<K extends keyof RuntimeActions>(action: K, args: RuntimeActions[K]) {
   const member = props.member;
-  if (!member) return;
+  if (disposed || !member?.active || !vaultUnlocked.value) return;
   await relayInstruction(
     makeInstruction(
       props.dao.reference,
@@ -109,7 +150,8 @@ async function transact<K extends keyof RuntimeActions>(action: K, args: Runtime
 }
 async function publish() {
   const m = props.member;
-  if (!m || !content.value) return;
+  if (!m?.active || !content.value || !vaultUnlocked.value) return;
+  const domain = context.value;
   busy.value = true;
   error.value = '';
   try {
@@ -139,6 +181,7 @@ async function publish() {
         'The stored JSON or encrypted envelope exceeds 4096 bytes. Use an IPFS document for larger content.';
       return;
     }
+    if (disposed || domain !== context.value || !vaultUnlocked.value) return;
     await transact('putjson', {
       runtime: props.dao.reference.contract,
       dao_id: props.dao.reference.daoId,
@@ -184,9 +227,18 @@ async function decrypt(document: DaoContent['documents'][number]) {
   if (!m || !records) return;
   busy.value = true;
   error.value = '';
+  const domain = context.value;
+  const request = generation;
   try {
     const text = await decryptDaoJson(props.dao.reference, m.memberId, document, records);
-    if (vaultUnlocked.value && props.member?.active) decrypted.value.set(document.id, text);
+    if (
+      !disposed &&
+      domain === context.value &&
+      request === generation &&
+      vaultUnlocked.value &&
+      props.member?.active
+    )
+      decrypted.value.set(document.id, text);
   } catch (cause) {
     error.value = friendlyError(cause);
   } finally {
@@ -299,6 +351,9 @@ async function credits() {
   }
 }
 async function retrieve(document: DaoContent['documents'][number]) {
+  const domain = context.value,
+    request = generation;
+  const current = () => !disposed && domain === context.value && request === generation;
   busy.value = true;
   error.value = '';
   try {
@@ -316,7 +371,8 @@ async function retrieve(document: DaoContent['documents'][number]) {
         content.value,
         stored,
       );
-      downloadFile(opened.bytes, opened.metadata);
+      if (current() && vaultUnlocked.value && props.member?.active)
+        downloadFile(opened.bytes, opened.metadata);
     } else {
       const metadata =
         document.metadata === '{}'
@@ -326,7 +382,7 @@ async function retrieve(document: DaoContent['documents'][number]) {
               mediaType: 'application/octet-stream',
             }
           : JSON.parse(document.metadata);
-      downloadFile(stored, FileMetadataSchema.parse(metadata));
+      if (current()) downloadFile(stored, FileMetadataSchema.parse(metadata));
     }
   } catch (cause) {
     error.value = friendlyError(cause);
@@ -345,8 +401,13 @@ async function retrieve(document: DaoContent['documents'][number]) {
     ><section v-if="privateDao" class="panel narrow">
       <h3>Encryption epoch {{ dao.keyEpoch }}</h3>
       <p v-if="hasCurrentKey">Encryption epoch ready</p>
+      <p v-else-if="!member?.active">
+        First obtain an active membership through Members, then ask an administrator for document
+        access.
+      </p>
+      <p v-else-if="!vaultUnlocked">Unlock your account to decrypt documents.</p>
       <p v-else-if="epochReady">Ask an administrator for a key grant for this epoch.</p>
-      <button v-else-if="member?.admin" :disabled="busy || !vaultUnlocked" @click="initialize">
+      <button v-else-if="isAdmin" :disabled="busy || !vaultUnlocked" @click="initialize">
         Initialize encryption epoch
       </button>
       <p>
@@ -354,7 +415,7 @@ async function retrieve(document: DaoContent['documents'][number]) {
         future content; old access remains possible.
       </p>
       <button
-        v-if="member?.admin && epochReady"
+        v-if="isAdmin && epochReady"
         class="secondary"
         :disabled="busy || !vaultUnlocked"
         @click="rotate"
@@ -362,7 +423,10 @@ async function retrieve(document: DaoContent['documents'][number]) {
         Rotate future document key
       </button>
     </section>
-    <section v-if="member?.active && (!privateDao || hasCurrentKey)" class="panel narrow">
+    <section
+      v-if="member?.active && vaultUnlocked && (!privateDao || hasCurrentKey)"
+      class="panel narrow"
+    >
       <h3>{{ privateDao ? 'Publish encrypted JSON' : 'Publish small JSON' }}</h3>
       <p>
         Up to 4096 bytes live directly in the contract. Publishing a new version preserves the
@@ -388,7 +452,8 @@ async function retrieve(document: DaoContent['documents'][number]) {
       record remain publicly visible.
     </p>
     <FilePanel
-      :key="JSON.stringify(dao.reference)"
+      v-if="member"
+      :key="context"
       :dao="dao"
       :member="member"
       :content="content"
@@ -447,7 +512,8 @@ async function retrieve(document: DaoContent['documents'][number]) {
     <p v-if="content && !latest.length" class="muted">No documents published yet.</p></template
   >
   <template v-else
-    ><div class="dao-grid">
+    ><AdmissionPanel :key="context" :dao="dao" :member="member" @admitted="refresh" />
+    <div class="dao-grid">
       <article v-for="memberRow in content?.members" :key="memberRow.id" class="panel">
         <h3>Member {{ memberRow.id }}</h3>
         <p>{{ memberRow.native_account || 'Internal account' }}</p>
@@ -462,7 +528,7 @@ async function retrieve(document: DaoContent['documents'][number]) {
         <p>{{ memberRow.credits }} governance credits</p>
       </article>
     </div>
-    <section v-if="member?.admin" class="panel narrow">
+    <section v-if="isAdmin" class="panel narrow">
       <h3>Manage roles and governance credits</h3>
       <label for="member-target">Member</label
       ><select id="member-target" v-model="target">

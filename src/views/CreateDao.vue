@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import {
   DaoPresets,
@@ -23,6 +23,8 @@ const order = ref<CreationOrderView>();
 const method = ref<z.infer<typeof CreationMethodSchema>>('tlos');
 const orderId = ref(typeof route.query.order === 'string' ? route.query.order : '');
 const resumeId = ref(orderId.value);
+const previousOrders = ref<string[]>([]);
+let orderSequence = 0;
 const quotedInput = ref<Parameters<typeof api.creationOrder>[0]>();
 const sharedPrice = computed(() => platform.value?.chain?.creation?.shared_usd ?? 2000);
 const independentPrice = computed(() => platform.value?.chain?.creation?.independent_usd ?? 5000);
@@ -44,21 +46,6 @@ async function loadPlatform() {
   }
 }
 onMounted(loadPlatform);
-let displayedChain: string | undefined;
-watch(
-  () => state.network?.chainId,
-  (chain) => {
-    if (!chain) return;
-    if (displayedChain && displayedChain !== chain) {
-      platform.value = undefined;
-      order.value = undefined;
-      quotedInput.value = undefined;
-    }
-    displayedChain = chain;
-    void loadPlatform();
-    if (state.account && orderId.value && !busy.value && !order.value) void checkOrder();
-  },
-);
 function acceptOrder(result: CreationOrderView) {
   if (
     result.network.chainId !== state.network?.chainId ||
@@ -82,6 +69,18 @@ const dailyAmount = ref('');
 const agentSigningKey = ref('');
 const agentEncryptionKey = ref('');
 const agentOperator = ref('');
+const quorumPercent = computed({
+  get: () => setup.value.governance.quorumBasisPoints / 100,
+  set: (value: number) => {
+    setup.value.governance.quorumBasisPoints = Math.round(value * 100);
+  },
+});
+const approvalPercent = computed({
+  get: () => setup.value.governance.approvalBasisPoints / 100,
+  set: (value: number) => {
+    setup.value.governance.approvalBasisPoints = Math.round(value * 100);
+  },
+});
 const preset = computed(() => DaoPresets.find((preset) => preset.id === setup.value.presetId));
 watch(
   () => setup.value.presetId,
@@ -140,6 +139,8 @@ const available = computed(
 );
 async function create() {
   if (!state.network || !resolved.value || deployment.value !== 'shared') return;
+  const request = ++orderSequence;
+  const accountId = state.account?.id;
   busy.value = true;
   error.value = '';
   try {
@@ -166,36 +167,65 @@ async function create() {
       };
       await router.replace({ path: '/create', query: { order: orderId.value } });
     }
-    acceptOrder(await api.creationOrder(quotedInput.value));
+    const input = quotedInput.value;
+    if (request !== orderSequence || accountId !== state.account?.id || !input) return;
+    const result = await api.creationOrder(input);
+    if (request !== orderSequence || accountId !== state.account?.id) return;
+    acceptOrder(result);
   } catch (cause) {
-    error.value = friendlyError(cause);
+    if (request === orderSequence) error.value = friendlyError(cause);
   } finally {
-    busy.value = false;
+    if (request === orderSequence) busy.value = false;
   }
 }
 async function checkOrder() {
   if (!orderId.value) return;
+  const request = ++orderSequence;
+  const accountId = state.account?.id;
   busy.value = true;
   error.value = '';
   try {
-    acceptOrder(await api.creationOrderStatus(orderId.value));
-    if (order.value?.state === 'paid') acceptOrder(await api.creationFulfill(orderId.value));
+    const result = await api.creationOrderStatus(orderId.value);
+    if (request !== orderSequence || accountId !== state.account?.id) return;
+    acceptOrder(result);
     if (order.value?.state === 'created' && order.value.dao) {
       const dao = order.value.dao;
       await state.refresh();
-      await router.push('/dao/' + dao.daoId);
+      if (request === orderSequence) await router.push('/dao/' + dao.daoId);
     }
   } catch (cause) {
-    error.value = friendlyError(cause);
+    if (request === orderSequence) error.value = friendlyError(cause);
   } finally {
-    busy.value = false;
+    if (request === orderSequence) busy.value = false;
+  }
+}
+async function completeOrder() {
+  if (order.value?.state !== 'paid') return;
+  busy.value = true;
+  error.value = '';
+  const request = ++orderSequence,
+    accountId = state.account?.id;
+  try {
+    const result = await api.creationFulfill(orderId.value);
+    if (request !== orderSequence || accountId !== state.account?.id) return;
+    acceptOrder(result);
+    if (result.dao) {
+      await state.refresh();
+      if (request === orderSequence) await router.push('/dao/' + result.dao.daoId);
+    }
+  } catch (cause) {
+    if (request === orderSequence) error.value = friendlyError(cause);
+  } finally {
+    if (request === orderSequence) busy.value = false;
   }
 }
 async function checkout() {
+  const request = ++orderSequence;
   busy.value = true;
   error.value = '';
   try {
     const result = await api.creationCheckout(orderId.value);
+    if (request !== orderSequence) return;
     const url = new URL(result.url);
     if (
       url.protocol !== 'https:' ||
@@ -206,9 +236,9 @@ async function checkout() {
       throw new Error('CHECKOUT_URL');
     window.location.assign(url.toString());
   } catch (cause) {
-    error.value = friendlyError(cause);
+    if (request === orderSequence) error.value = friendlyError(cause);
   } finally {
-    busy.value = false;
+    if (request === orderSequence) busy.value = false;
   }
 }
 async function resume() {
@@ -217,19 +247,48 @@ async function resume() {
   await checkOrder();
 }
 function newOrder() {
+  if (orderId.value) previousOrders.value = [...new Set([...previousOrders.value, orderId.value])];
+  orderSequence++;
+  busy.value = false;
+  error.value = '';
   order.value = undefined;
   quotedInput.value = undefined;
   orderId.value = '';
   void router.replace('/create');
 }
 watch(
-  () => state.account?.id,
+  () => JSON.stringify([state.account?.id, state.network?.chainId, state.network?.runtime]),
   () => {
+    orderSequence++;
+    busy.value = false;
+    error.value = '';
+    platform.value = undefined;
+    order.value = undefined;
+    previousOrders.value = [];
+    quotedInput.value = undefined;
+    void loadPlatform();
+    if (state.account && state.network && orderId.value) void checkOrder();
+  },
+  { flush: 'sync' },
+);
+watch(
+  () => route.query.order,
+  (value) => {
+    const id = typeof value === 'string' ? value : '';
+    if (id === orderId.value) return;
+    orderSequence++;
+    busy.value = false;
     order.value = undefined;
     quotedInput.value = undefined;
-    if (state.account && orderId.value && !busy.value) void checkOrder();
+    orderId.value = id;
+    resumeId.value = id;
+    if (state.account && state.network && id) void checkOrder();
   },
 );
+onBeforeUnmount(() => {
+  orderSequence++;
+  loadSequence++;
+});
 </script>
 <template>
   <div class="page-heading">
@@ -244,10 +303,61 @@ watch(
   <div v-if="!state.account" class="panel narrow">
     <h2>Set up your account first</h2>
     <p>Your internal account becomes the first administrator of this DAO.</p>
-    <RouterLink class="button" to="/account">Set up account</RouterLink>
+    <RouterLink class="button" :to="{ path: '/account', query: { returnTo: route.fullPath } }"
+      >Set up account</RouterLink
+    >
   </div>
   <section v-else-if="order" class="panel narrow">
-    <h2>DAO setup payment</h2>
+    <h2>{{ order.setup.metadata.title }}</h2>
+    <p>{{ order.setup.metadata.description }}</p>
+    <h3>Review this saved setup</h3>
+    <dl class="fact-list">
+      <dt>Deployment</dt>
+      <dd>{{ order.deployment }}</dd>
+      <dt>Purpose / participants</dt>
+      <dd>
+        {{ order.setup.setup?.presetId ?? 'custom' }} ·
+        {{ order.setup.setup?.participantMode ?? 'humans' }}
+      </dd>
+      <dt>Document privacy</dt>
+      <dd>{{ order.setup.privacy }}</dd>
+      <dt>Treasury asset</dt>
+      <dd>
+        {{ order.setup.token.symbol }} · {{ order.setup.token.contract }} ·
+        {{ order.setup.token.precision }} decimals
+      </dd>
+      <template v-if="order.setup.setup"
+        ><dt>Voting</dt>
+        <dd>
+          {{ order.setup.setup.governance.weight }} · quorum
+          {{ order.setup.setup.governance.quorumBasisPoints / 100 }}% · approval
+          {{ order.setup.setup.governance.approvalBasisPoints / 100 }}% ·
+          {{ order.setup.setup.governance.duration }} seconds
+        </dd>
+        <dt>Funding policy</dt>
+        <dd>
+          {{
+            order.setup.setup.governance.governedWorks
+              ? 'Member vote required'
+              : 'Administrator approval'
+          }}
+        </dd>
+        <dt>Guardian</dt>
+        <dd>{{ order.setup.setup.governance.guardian || 'None' }}</dd></template
+      >
+      <dt>Founding participant</dt>
+      <dd class="mono wrap">{{ order.creator.signingKey }} · {{ order.creator.custody }}</dd>
+    </dl>
+    <details>
+      <summary>Complete immutable setup and public keys</summary>
+      <pre class="wrap">{{
+        JSON.stringify({ setup: order.setup, creator: order.creator }, null, 2)
+      }}</pre>
+    </details>
+    <p>
+      This order cannot be edited. Verify its name, rules, privacy and public keys before paying.
+    </p>
+    <h3>DAO setup payment</h3>
     <p>
       Network: <strong>{{ order.network.environment }}</strong> · {{ order.network.runtime }}
     </p>
@@ -283,12 +393,22 @@ watch(
         Pay {{ usd(order.usdCents) }} by card
       </button>
     </template>
-    <p v-else>Payment verified. Creation can be resumed if the chain response is interrupted.</p>
+    <p v-else-if="order.state === 'expired'">
+      This unpaid order has expired. Do not send payment; start a new order.
+    </p>
+    <p v-else-if="order.state === 'paid'">
+      Payment verified; setup execution is pending. Review the saved setup, then create your DAO. A
+      failed attempt preserves this payment for retry.
+    </p>
+    <p v-else>DAO created. This receipt has been used and cannot create a second DAO.</p>
+    <button v-if="order.state === 'paid'" :disabled="busy" @click="completeOrder">
+      Create this paid DAO
+    </button>
     <button class="secondary" :disabled="busy" @click="checkOrder">
-      {{ busy ? 'Checking…' : 'Check payment and create DAO' }}
+      {{ busy ? 'Checking…' : 'Check payment status' }}
     </button>
     <button
-      v-if="order.state === 'awaiting-payment'"
+      v-if="order.state === 'awaiting-payment' || order.state === 'expired'"
       class="text-button"
       :disabled="busy"
       @click="newOrder"
@@ -296,12 +416,62 @@ watch(
       Start a different order
     </button>
     <p class="field-help">
-      Keep this order ID. A browser return or a transaction ID you enter is not accepted as payment
-      proof.
+      Starting a different order does not cancel or refund this saved request. Bookmark
+      <RouterLink :to="{ path: '/create', query: { order: order.requestId } }"
+        >this order</RouterLink
+      >. Keep this order ID. A browser return or a transaction ID you enter is not accepted as
+      payment proof.
     </p>
   </section>
   <form v-else class="panel form-panel" @submit.prevent="create">
-    <fieldset>
+    <div v-if="quotedInput" class="notice">
+      <p>
+        This saved request is immutable. Retry it after resolving the error, or start a different
+        order to change its setup. Keep the saved link in case the earlier quote completed.
+      </p>
+      <button type="button" class="secondary" :disabled="busy" @click="newOrder">
+        Start a different order
+      </button>
+    </div>
+    <fieldset :disabled="!!quotedInput">
+      <legend>02 · Public identity</legend>
+      <label for="dao-title">DAO name</label
+      ><input
+        id="dao-title"
+        v-model="title"
+        maxlength="160"
+        required
+        placeholder="e.g. Ocean Commons"
+      /><label for="dao-description">Description</label
+      ><textarea
+        id="dao-description"
+        v-model="description"
+        maxlength="1800"
+        rows="3"
+        placeholder="What is your community here to do?"
+      ></textarea>
+      <p class="field-help">
+        These fields are public on the blockchain, including for DAOs with encrypted documents.
+      </p>
+    </fieldset>
+    <fieldset :disabled="!!quotedInput">
+      <legend>03 · Document privacy</legend>
+      <label for="privacy">Privacy policy</label
+      ><select id="privacy" v-model="privacy">
+        <option value="public">Public content</option>
+        <option value="encrypted-managed-allowed">
+          Encrypted content · managed accounts allowed
+        </option>
+        <option value="encrypted-user-controlled">
+          Encrypted content · user-controlled keys required
+        </option>
+      </select>
+      <p class="field-help">
+        Encryption protects document contents. Memberships, votes, balances, and transaction
+        metadata remain public. <RouterLink to="/docs/privacy">Read the privacy limits</RouterLink>.
+      </p>
+    </fieldset>
+    <fieldset :disabled="!!quotedInput">
       <legend>Purpose and participants</legend>
       <label for="dao-purpose">DAO purpose</label>
       <select id="dao-purpose" v-model="setup.presetId">
@@ -350,7 +520,7 @@ watch(
         </p>
       </template>
     </fieldset>
-    <fieldset>
+    <fieldset :disabled="!!quotedInput">
       <legend>01 · Deployment</legend>
       <div class="choice-grid">
         <label class="choice"
@@ -372,88 +542,91 @@ watch(
         >
       </div>
     </fieldset>
-    <fieldset>
-      <legend>Governance and safeguards</legend>
-      <label for="weight">Voting weight</label
-      ><select id="weight" v-model="setup.governance.weight">
-        <option value="member">One approved member, one vote</option>
-        <option value="credit">Internal governance credits</option>
-        <option value="native-stake">Deposited native stake</option>
-      </select>
-      <p class="field-help">
-        Credit and stake voting require eligible balances before a ballot can open.
-      </p>
-      <label for="ballot-duration">Ballot duration (seconds)</label
-      ><input
-        id="ballot-duration"
-        v-model.number="setup.governance.duration"
-        type="number"
-        min="60"
-        max="2592000"
-        required
-      />
-      <label for="quorum">Quorum (basis points)</label
-      ><input
-        id="quorum"
-        v-model.number="setup.governance.quorumBasisPoints"
-        type="number"
-        min="1"
-        max="10000"
-        required
-      />
-      <label for="approval">Approval (basis points)</label
-      ><input
-        id="approval"
-        v-model.number="setup.governance.approvalBasisPoints"
-        type="number"
-        min="5001"
-        max="10000"
-        required
-      />
-      <p class="field-help">
-        5000 means 50%. Every ballot must use the saved weight, duration and thresholds.
-      </p>
-      <label class="choice"
+    <details :open="setup.participantMode === 'agents-guarded'">
+      <summary>Advanced governance and emergency safeguards</summary>
+      <fieldset :disabled="!!quotedInput">
+        <legend>Governance and safeguards</legend>
+        <label for="weight">Voting weight</label
+        ><select id="weight" v-model="setup.governance.weight">
+          <option value="member">One approved member, one vote</option>
+          <option value="credit">Internal governance credits</option>
+          <option value="native-stake">Deposited native stake</option>
+        </select>
+        <p class="field-help">
+          Credit and stake voting require eligible balances before a ballot can open.
+        </p>
+        <label for="ballot-duration">Ballot duration (seconds)</label
         ><input
-          v-model="setup.governance.governedWorks"
-          type="checkbox"
-          :disabled="setup.participantMode === 'agents-guarded'"
-        /><span>Require a member vote for Works funding</span></label
-      >
-      <label for="commitment-cap">Maximum per milestone / installment ({{ symbol }})</label
-      ><input
-        id="commitment-cap"
-        v-model="maxAmount"
-        inputmode="decimal"
-        placeholder="0 means unlimited"
-        :required="setup.participantMode === 'agents-guarded'"
-      />
-      <label for="daily-cap">Maximum commitments per UTC day ({{ symbol }})</label
-      ><input
-        id="daily-cap"
-        v-model="dailyAmount"
-        inputmode="decimal"
-        placeholder="0 means unlimited"
-        :required="setup.participantMode === 'agents-guarded'"
-      />
-      <label for="guardian">Human guardian account</label
-      ><input
-        id="guardian"
-        v-model="setup.governance.guardian"
-        maxlength="13"
-        :required="setup.participantMode === 'agents-guarded'"
-        placeholder="Native Antelope account; optional for human or mixed DAOs"
-      />
-      <p class="field-help">
-        A guardian can pause commitments and payouts for up to 24 hours per instruction, revoke
-        agents and recover their signing identity. Recovery can impersonate that agent. It does not
-        automatically grant votes or document keys.
-      </p>
-      <p class="field-help">
-        Daily limits apply when funds are committed, rather than when an existing obligation is
-        paid. Cancelling does not replenish that day's allowance.
-      </p>
-    </fieldset>
+          id="ballot-duration"
+          v-model.number="setup.governance.duration"
+          type="number"
+          min="60"
+          max="2592000"
+          required
+        />
+        <label for="quorum">Quorum (%)</label
+        ><input
+          id="quorum"
+          v-model.number="quorumPercent"
+          type="number"
+          min="0.01"
+          max="100"
+          step="0.01"
+          required
+        />
+        <label for="approval">Approval (%)</label
+        ><input
+          id="approval"
+          v-model.number="approvalPercent"
+          type="number"
+          min="50.01"
+          max="100"
+          step="0.01"
+          required
+        />
+        <p class="field-help">Every ballot must use the saved weight, duration and thresholds.</p>
+        <label class="choice"
+          ><input
+            v-model="setup.governance.governedWorks"
+            type="checkbox"
+            :disabled="setup.participantMode === 'agents-guarded'"
+          /><span>Require a member vote for Works funding</span></label
+        >
+        <label for="commitment-cap">Maximum per milestone / installment ({{ symbol }})</label
+        ><input
+          id="commitment-cap"
+          v-model="maxAmount"
+          inputmode="decimal"
+          placeholder="0 means unlimited"
+          :required="setup.participantMode === 'agents-guarded'"
+        />
+        <label for="daily-cap">Maximum commitments per UTC day ({{ symbol }})</label
+        ><input
+          id="daily-cap"
+          v-model="dailyAmount"
+          inputmode="decimal"
+          placeholder="0 means unlimited"
+          :required="setup.participantMode === 'agents-guarded'"
+        />
+        <label for="guardian">Human guardian account</label
+        ><input
+          id="guardian"
+          v-model="setup.governance.guardian"
+          maxlength="13"
+          :required="setup.participantMode === 'agents-guarded'"
+          placeholder="Native Antelope account; optional for human or mixed DAOs"
+        />
+        <p class="field-help">
+          A guardian can pause commitments and payouts for up to 24 hours per instruction, revoke
+          agents and recover their signing identity. Recovery can impersonate that agent. It does
+          not automatically grant votes or document keys.
+        </p>
+        <p class="field-help">
+          Daily limits apply when funds are committed, rather than when an existing obligation is
+          paid. Cancelling does not replenish that day's allowance.
+        </p>
+      </fieldset>
+    </details>
     <aside class="notice">
       Preset v{{ setup.presetVersion }} configures this DAO once. Administrators control admission,
       roles, credit issuance and later policy changes; active ballots block policy changes. A policy
@@ -465,73 +638,38 @@ watch(
       and RAM charged separately. Self-service deployment and checkout are not available yet. Use
       the deployment kit. <RouterLink to="/docs/deployments">Open the deployment guide</RouterLink>.
     </aside>
-    <fieldset>
-      <legend>02 · Public identity</legend>
-      <label for="dao-title">DAO name</label
-      ><input
-        id="dao-title"
-        v-model="title"
-        maxlength="160"
-        required
-        placeholder="e.g. Ocean Commons"
-      /><label for="dao-description">Description</label
-      ><textarea
-        id="dao-description"
-        v-model="description"
-        maxlength="1800"
-        rows="3"
-        placeholder="What is your community here to do?"
-      ></textarea>
-      <p class="field-help">
-        These fields are public on the blockchain, including for DAOs with encrypted documents.
-      </p>
-    </fieldset>
-    <fieldset>
-      <legend>03 · Document privacy</legend>
-      <label for="privacy">Privacy policy</label
-      ><select id="privacy" v-model="privacy">
-        <option value="public">Public content</option>
-        <option value="encrypted-managed-allowed">
-          Encrypted content · managed accounts allowed
-        </option>
-        <option value="encrypted-user-controlled">
-          Encrypted content · user-controlled keys required
-        </option>
-      </select>
-      <p class="field-help">
-        Encryption protects document contents. Memberships, votes, balances, and transaction
-        metadata remain public. <RouterLink to="/docs/privacy">Read the privacy limits</RouterLink>.
-      </p>
-    </fieldset>
-    <fieldset>
-      <legend>04 · Native treasury asset</legend>
-      <div class="three-column">
-        <div>
-          <label for="token">Token contract</label
-          ><input id="token" v-model="token" required maxlength="13" />
+    <details>
+      <summary>Advanced treasury asset · {{ symbol }}</summary>
+      <fieldset :disabled="!!quotedInput">
+        <legend>04 · Native treasury asset</legend>
+        <div class="three-column">
+          <div>
+            <label for="token">Token contract</label
+            ><input id="token" v-model="token" required maxlength="13" />
+          </div>
+          <div>
+            <label for="symbol">Symbol</label
+            ><input id="symbol" v-model="symbol" required pattern="[A-Z]{1,7}" maxlength="7" />
+          </div>
+          <div>
+            <label for="precision">Precision</label
+            ><input
+              id="precision"
+              v-model.number="precision"
+              type="number"
+              min="0"
+              max="18"
+              required
+            />
+          </div>
         </div>
-        <div>
-          <label for="symbol">Symbol</label
-          ><input id="symbol" v-model="symbol" required pattern="[A-Z]{1,7}" maxlength="7" />
-        </div>
-        <div>
-          <label for="precision">Precision</label
-          ><input
-            id="precision"
-            v-model.number="precision"
-            type="number"
-            min="0"
-            max="18"
-            required
-          />
-        </div>
-      </div>
-      <p class="field-help">
-        Use the exact token contract, symbol, and precision. Governance credits are separate,
-        nontransferable internal units.
-      </p>
-    </fieldset>
-    <fieldset>
+        <p class="field-help">
+          Use the exact token contract, symbol, and precision. Governance credits are separate,
+          nontransferable internal units.
+        </p>
+      </fieldset>
+    </details>
+    <fieldset :disabled="!!quotedInput">
       <legend>05 · Setup payment</legend>
       <label for="payment-method">Pay with</label
       ><select id="payment-method" v-model="method">
@@ -569,6 +707,15 @@ watch(
       </button>
     </div>
   </form>
+  <p v-if="previousOrders.length" class="notice">
+    Earlier saved requests: check their current status before paying again.
+    <RouterLink
+      v-for="id in previousOrders"
+      :key="id"
+      :to="{ path: '/create', query: { order: id } }"
+      >{{ id }}
+    </RouterLink>
+  </p>
   <form v-if="state.account && !order" class="panel narrow" @submit.prevent="resume">
     <h2>Resume a setup order</h2>
     <label for="resume-order">Order ID</label

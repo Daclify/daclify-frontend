@@ -10,6 +10,7 @@ export function fixtureAction(account: string, action: string, data: unknown[], 
         'daclify-v2-native',
         'daclify-dao-presets-native',
         'daclify-platform-native',
+        'daclify-access-native',
       ]),
       url: z.string().regex(/^http:\/\/127\.0\.0\.1:[0-9]{4,5}$/),
       chainId: z.string(),
@@ -43,6 +44,7 @@ export function fixtureAction(account: string, action: string, data: unknown[], 
 export async function payCreation(page: Page, preset?: 'custom') {
   if (preset) {
     await page.getByLabel('DAO purpose').selectOption(preset);
+    await page.getByText('Advanced governance and emergency safeguards', { exact: true }).click();
     await page.getByLabel('Ballot duration (seconds)').fill('60');
   }
   const response = page.waitForResponse(
@@ -63,7 +65,8 @@ export async function payCreation(page: Page, preset?: 'custom') {
     ['alice', order.recipient, order.tlosAmount, order.memo],
     'alice',
   );
-  await page.getByRole('button', { name: 'Check payment and create DAO', exact: true }).click();
+  await page.getByRole('button', { name: 'Check payment status', exact: true }).click();
+  await page.getByRole('button', { name: 'Create this paid DAO', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Workspace overview' })).toBeVisible();
   return order;
 }

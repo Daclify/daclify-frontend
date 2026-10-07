@@ -1,6 +1,26 @@
 import { ModuleApiRoutes } from '@daclify/modules';
 import { z } from 'zod';
 import {
+  ServiceCheckoutSchema,
+  ServiceReceiptSchema,
+  ServiceReceiptsSchema,
+  MemberProfileSchema,
+  SignInOptionsSchema,
+  SignInMethodsSchema,
+  EmailStartSchema,
+  EmailSubjectSchema,
+  PasskeyRegisterOptionsSchema,
+  PasskeyLoginOptionsSchema,
+  PasskeyRegisteredSchema,
+  EvmLinkSchema,
+  EvmLinksSchema,
+  EvmChallengeSchema,
+  MarketplaceSchema,
+  NamesServiceSchema,
+  NameQuoteSchema,
+  DocsAgentStatusSchema,
+  DocsAnswerSchema,
+  ContractFailureMessages,
   ApiRoutes,
   IdSchema,
   HostedUploadSchema,
@@ -20,158 +40,6 @@ export class ApiFailure extends Error {
     super(code);
   }
 }
-const ServiceCheckoutSchema = z.strictObject({ url: z.url() });
-const ServiceReceiptSchema = z.strictObject({
-  status: z.enum(['paid', 'failed']),
-  currency: z
-    .string()
-    .regex(/^[a-z]{3}$/)
-    .nullable(),
-  amountMinor: z.number().int().nonnegative().nullable(),
-  paymentStatus: z.string().min(1),
-});
-const ServiceReceiptsSchema = z.strictObject({ receipts: z.array(ServiceReceiptSchema) });
-const MemberProfileSchema = z.strictObject({
-  accountName: z.string().nullable(),
-  profile: z.string().nullable(),
-});
-const SignInDeliverySchema = z.enum(['local', 'mail', 'unavailable']);
-const SignInOptionsSchema = z.strictObject({
-  telegram: z.strictObject({ configured: z.boolean(), username: z.string().nullable() }),
-  email: z.strictObject({ delivery: SignInDeliverySchema }),
-  passkey: z.strictObject({ rpId: z.string().min(1) }),
-});
-const SignInMethodsSchema = z.strictObject({
-  telegram: z.strictObject({
-    configured: z.boolean(),
-    username: z.string().nullable(),
-    subjects: z.array(z.string()),
-  }),
-  email: z.strictObject({ delivery: SignInDeliverySchema, subjects: z.array(z.string()) }),
-  passkeys: z.array(z.strictObject({ id: z.string().min(1) })),
-});
-const EmailStartSchema = z.union([
-  z.strictObject({ delivery: z.literal('local'), code: z.string().regex(/^\d{8}$/) }),
-  z.strictObject({ delivery: z.literal('sent') }),
-]);
-const EmailSubjectSchema = z.strictObject({ subject: z.string().min(1) });
-const PasskeyRegisterOptionsSchema = z.strictObject({
-  challenge: z.string().regex(/^[A-Za-z0-9_-]+$/),
-  rp: z.strictObject({ name: z.string(), id: z.string() }),
-  user: z.strictObject({ id: z.string(), name: z.string(), displayName: z.string() }),
-  pubKeyCredParams: z.array(z.strictObject({ type: z.literal('public-key'), alg: z.literal(-7) })),
-  timeout: z.number().int().positive(),
-  attestation: z.literal('none'),
-  authenticatorSelection: z.strictObject({
-    residentKey: z.literal('required'),
-    requireResidentKey: z.literal(true),
-    userVerification: z.literal('required'),
-  }),
-  excludeCredentials: z.array(z.strictObject({ type: z.literal('public-key'), id: z.string() })),
-});
-const PasskeyLoginOptionsSchema = z.strictObject({
-  challenge: z.string().regex(/^[A-Za-z0-9_-]+$/),
-  timeout: z.number().int().positive(),
-  rpId: z.string().min(1),
-  userVerification: z.literal('required'),
-});
-const PasskeyRegisteredSchema = z.strictObject({ id: z.string().min(1) });
-const TelosChainSchema = z.union([z.literal(40), z.literal(41)]);
-const EvmLinkSchema = z.strictObject({
-  chainId: TelosChainSchema,
-  address: z.string().regex(/^0x[0-9a-fA-F]{40}$/),
-});
-const EvmLinksSchema = z.strictObject({ links: z.array(EvmLinkSchema) });
-const EvmChallengeSchema = z.strictObject({
-  chainId: TelosChainSchema,
-  message: z.string().min(1),
-  expiresAt: z.string().min(1),
-});
-const ListedModuleSchema = z.strictObject({
-  account: z.string(),
-  publisher: z.string(),
-  party: z.enum(['first-party', 'third-party']),
-  price: z.string(),
-  title: z.string(),
-  codeHash: z.string(),
-  summary: z.string(),
-  detail: z.string(),
-});
-const MarketplaceSchema = z.strictObject({
-  configured: z.boolean(),
-  reason: z.string().nullable(),
-  thirdPartyBps: z.number().int().nullable(),
-  firstPartyBps: z.number().int().nullable(),
-  treasury: z.string().nullable(),
-  modules: z.array(ListedModuleSchema),
-});
-const NameTierSchema = z.strictObject({
-  kind: z.enum(['basic', 'premium']),
-  price: z.string(),
-  usdCents: z.number().int().nonnegative(),
-  ramBytes: z.number().int().positive(),
-  netStake: z.string(),
-  cpuStake: z.string(),
-  tlosQuote: z.string().nullable(),
-});
-const NameListingSchema = z.strictObject({
-  accountName: z.string(),
-  seller: z.string(),
-  price: z.string(),
-  usdCents: z.number().int().nonnegative(),
-  sold: z.boolean(),
-});
-const NameSuffixSchema = z.strictObject({
-  suffix: z.string(),
-  seller: z.string(),
-  price: z.string(),
-  usdCents: z.number().int().nonnegative(),
-  sales: z.number().int().nonnegative(),
-});
-const NamesServiceSchema = z.strictObject({
-  configured: z.boolean(),
-  reason: z.string().nullable(),
-  cardPayments: z.boolean(),
-  thirdPartyBps: z.number().int().nullable(),
-  firstPartyBps: z.number().int().nullable(),
-  treasury: z.string().nullable(),
-  tiers: z.array(NameTierSchema),
-  listings: z.array(NameListingSchema),
-  suffixes: z.array(NameSuffixSchema),
-  bumpBps: z.number().int().nullable(),
-  quotePremiumBps: z.number().int().nullable(),
-  oracleMedian: z.string().nullable(),
-  oraclePrecision: z.number().int().nullable(),
-  oracleObservedAt: z.number().int().nullable(),
-  daoId: z.string().nullable(),
-});
-const NameQuoteSchema = z.strictObject({
-  accountName: z.string(),
-  kind: z.enum(['basic', 'premium']),
-  listed: z.boolean(),
-  seller: z.string(),
-  party: z.enum(['first-party', 'third-party']),
-  price: z.string(),
-  usdCents: z.number().int().nonnegative(),
-  platformBps: z.number().int().nonnegative(),
-  suffix: z.string().nullable(),
-  bumpBps: z.number().int().nonnegative(),
-  quotePremiumBps: z.number().int().nonnegative(),
-  ramBytes: z.number().int().nonnegative(),
-  netStake: z.string(),
-  cpuStake: z.string(),
-  priceFromOracle: z.boolean(),
-  sales: z.number().int().nonnegative(),
-  nextPrice: z.string().nullable(),
-  nextUsdCents: z.number().int().nullable(),
-});
-const DocsAgentStatusSchema = z.strictObject({ configured: z.boolean() });
-const DocsAnswerSchema = z.strictObject({
-  status: z.enum(['answered', 'outside']),
-  topicId: z.string().nullable(),
-  title: z.string().nullable(),
-  answer: z.string(),
-});
 export type SignInOptions = z.infer<typeof SignInOptionsSchema>;
 export type SignInMethods = z.infer<typeof SignInMethodsSchema>;
 export type PasskeyRegisterOptions = z.infer<typeof PasskeyRegisterOptionsSchema>;
@@ -201,11 +69,33 @@ async function request<T>(
   return schema.parse(body);
 }
 export const api = {
-  content: (daoId: string) =>
-    request(
-      ApiRoutes.content.path.replace(':id', IdSchema.parse(daoId)),
-      ApiRoutes.content.response,
-    ),
+  content: async (daoId: string) => {
+    const path = ApiRoutes.content.path.replace(':id', IdSchema.parse(daoId));
+    const all = await request(path, ApiRoutes.content.response);
+    while (Object.values(all.next).some((cursor) => cursor !== null)) {
+      const query = new URLSearchParams({
+        members: all.next.members ?? 'done',
+        documents: all.next.documents ?? 'done',
+        keyGrants: all.next.keyGrants ?? 'done',
+        epochs: all.next.epochs ?? 'done',
+      });
+      const page = await request(path + '?' + query.toString(), ApiRoutes.content.response);
+      if (JSON.stringify(page.dao) !== JSON.stringify(all.dao))
+        throw new ApiFailure('DAO_REFERENCE');
+      for (const key of ['members', 'documents', 'keyGrants', 'epochs'] as const) {
+        const previous = all.next[key],
+          next = page.next[key];
+        if (next !== null && (previous === null || BigInt(next) <= BigInt(previous)))
+          throw new ApiFailure('CHAIN_RESPONSE_INVALID');
+      }
+      all.members.push(...page.members);
+      all.documents.push(...page.documents);
+      all.keyGrants.push(...page.keyGrants);
+      all.epochs.push(...page.epochs);
+      all.next = page.next;
+    }
+    return all;
+  },
   storage: () => request(ApiRoutes.storage.path, ApiRoutes.storage.response),
   upload: (input: HostedUpload) =>
     request(
@@ -236,9 +126,15 @@ export const api = {
       undefined,
       30000,
     ),
-  moduleState: (daoId: string) =>
+  moduleState: (daoId: string, query: z.infer<typeof ModuleApiRoutes.state.query> = {}) =>
     request(
-      ModuleApiRoutes.state.path.replace(':id', IdSchema.parse(daoId)),
+      ModuleApiRoutes.state.path.replace(':id', IdSchema.parse(daoId)) +
+        '?' +
+        new URLSearchParams(
+          Object.entries(ModuleApiRoutes.state.query.parse(query)).flatMap(([key, value]) =>
+            value === undefined ? [] : [[key, value]],
+          ),
+        ).toString(),
       ModuleApiRoutes.state.response,
     ),
   treasury: (daoId: string) =>
@@ -255,8 +151,18 @@ export const api = {
       ModuleApiRoutes.finalize.input.parse(input),
     ),
   network: (): Promise<Network> => request(ApiRoutes.network.path, ApiRoutes.network.response),
-  daos: async (): Promise<DaoSummary[]> =>
-    (await request(ApiRoutes.daos.path, ApiRoutes.daos.response)).daos,
+  daos: async (): Promise<DaoSummary[]> => {
+    const page = await request(ApiRoutes.daos.path, ApiRoutes.daos.response);
+    let cursor = page.next;
+    while (cursor !== null) {
+      const next = await request(ApiRoutes.daos.path + '?after=' + cursor, ApiRoutes.daos.response);
+      if (next.next !== null && BigInt(next.next) <= BigInt(cursor))
+        throw new ApiFailure('CHAIN_RESPONSE_INVALID');
+      page.daos.push(...next.daos);
+      cursor = next.next;
+    }
+    return page.daos;
+  },
   challenge: (signingKey: string) =>
     request(ApiRoutes.challenge.path, ApiRoutes.challenge.response, { signingKey }),
   login: async (
@@ -378,6 +284,11 @@ export const api = {
 export function friendlyError(error: unknown): string {
   if (error instanceof ApiFailure) {
     const messages: Record<string, string> = {
+      ...ContractFailureMessages,
+      ASSET_UNAVAILABLE:
+        'The token contract, symbol or precision is not available on this chain. Correct the treasury asset before preparing payment.',
+      RESPONSE_INVALID:
+        'The service returned an incompatible response. Refresh after the operator verifies its version.',
       CREATION_RATE_UNAVAILABLE:
         'A fresh TLOS rate is unavailable. Try card payment or ask the operator to update the rate.',
       PRESET_MODULE_UNAVAILABLE:
@@ -450,6 +361,8 @@ export function friendlyError(error: unknown): string {
   }
   if (error instanceof Error) {
     const cryptoErrors: Record<string, string> = {
+      MANAGED_UNAVAILABLE: 'Managed admission is not available on this deployment.',
+      PARTICIPANT_MODE: 'This participant kind does not match the DAO admission policy.',
       VAULT_LOCKED: 'Unlock your vault to use your keys.',
       EPOCH_UNAVAILABLE: 'Ask a DAO administrator for a key grant for this epoch.',
       EPOCH_KEY_MISMATCH:

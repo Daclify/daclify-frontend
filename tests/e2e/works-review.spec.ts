@@ -3,7 +3,6 @@ import { test, expect, devices, type Page } from '@playwright/test';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
-import { RecoveryKitSchema } from '@daclify/core-protocol';
 const execute = promisify(execFile);
 const core = fileURLToPath(new URL('../../../daclify-backend-core/', import.meta.url));
 const password = 'contributor review fixture password';
@@ -53,24 +52,17 @@ test('hands work between two internal accounts, requests a revision, approves an
   try {
     const contributor = await context.newPage();
     await account(contributor);
+    await contributor.getByText('Public join identity', { exact: true }).click();
+    const identity = await contributor.getByLabel('Public join identity JSON').inputValue();
     const kitText = await contributor.evaluate(() => localStorage.getItem('daclify.vault.v1'));
     if (!kitText) throw new Error('Public fixture keys unavailable');
-    const kit = RecoveryKitSchema.parse(JSON.parse(kitText));
-    await execute(
-      process.execPath,
-      [
-        '--import',
-        'tsx',
-        'tools/native/enroll.ts',
-        JSON.stringify({
-          daoId,
-          memberId: '2',
-          signingKey: kit.signingPublicKey,
-          encryptionKey: kit.encryptionPublicKey,
-        }),
-      ],
-      { cwd: core },
-    );
+    await page.getByRole('link', { name: 'Members', exact: true }).click();
+    await page.getByLabel('Applicant public join identity (JSON)').fill(kitText);
+    await page.getByRole('button', { name: 'Sign participant admission', exact: true }).click();
+    await expect(page.getByRole('alert')).toBeVisible();
+    await page.getByLabel('Applicant public join identity (JSON)').fill(identity);
+    await page.getByRole('button', { name: 'Sign participant admission', exact: true }).click();
+    await expect(page.getByText(/^Membership admitted\./)).toBeVisible();
     await contributor.getByRole('button', { name: 'Lock vault', exact: true }).click();
     await contributor.getByLabel('Vault password', { exact: true }).fill(password);
     await contributor.getByRole('button', { name: 'Unlock and sign in' }).click();
@@ -94,6 +86,7 @@ test('hands work between two internal accounts, requests a revision, approves an
     await expect(page.getByText('Works enabled', { exact: true })).toBeVisible();
     await page.getByRole('link', { name: 'Works', exact: true }).click();
     await page.getByLabel('Contributor member ID').fill('2');
+    await page.getByLabel('Proposal document ID', { exact: true }).fill('1');
     await page.getByRole('button', { name: 'Propose work', exact: true }).click();
     await page.getByRole('button', { name: 'Accept and reserve funds', exact: true }).click();
     await expect(page.getByText('Milestone funds reserved', { exact: true })).toBeVisible();

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { useWorkspace } from '../state/workspace';
 import { api, friendlyError, type ServiceReceipt } from '../api/client';
 import { formatReceiptAmount, hostedCheckoutUrl } from '../api/billing';
@@ -19,7 +19,8 @@ import {
   downloadBackup,
   vaultUnlocked,
 } from '../auth/session';
-import type { Account } from '@daclify/core-protocol';
+import { JoinIdentitySchema, type Account } from '@daclify/core-protocol';
+import { accountDestination } from '../auth/destination';
 import ProfilePanel from '../components/ProfilePanel.vue';
 import SignInMethods from '../components/SignInMethods.vue';
 import LinkedAccounts from '../components/LinkedAccounts.vue';
@@ -39,7 +40,33 @@ const kitText = ref('');
 const recoveryCredential = ref('');
 const replacementAcknowledged = ref(false);
 const route = useRoute();
+const router = useRouter();
+const destination = computed(() => accountDestination(route.query.returnTo));
 const state = useWorkspace();
+const joinIdentity = computed(() =>
+  state.account
+    ? JSON.stringify(
+        JoinIdentitySchema.parse({
+          version: 1,
+          signingKey: state.account.signingKey,
+          encryptionKey: state.account.encryptionKey,
+          custody: state.account.custody,
+        }),
+        null,
+        2,
+      )
+    : '',
+);
+const joinCopied = ref(false);
+async function copyJoinIdentity() {
+  try {
+    await navigator.clipboard.writeText(joinIdentity.value);
+    joinCopied.value = true;
+  } catch {
+    joinCopied.value = false;
+  }
+}
+
 const tab = ref<AccountTab>(billingTab(route.query.billing) ? 'service' : 'keys');
 const opened = ref<Record<AccountTab, boolean>>({
   keys: true,
@@ -212,6 +239,7 @@ async function unlock() {
     state.account = await unlockAndLogin(password.value);
     password.value = '';
     await state.refresh();
+    if (destination.value) await router.push(destination.value);
   } catch (cause) {
     error.value = friendlyError(cause);
   } finally {
@@ -369,6 +397,20 @@ function backup() {
       </p>
       <p class="muted">Signing public key</p>
       <p class="mono wrap">{{ state.account.signingKey }}</p>
+      <details>
+        <summary>Public join identity</summary>
+        <p>
+          Share this JSON with the DAO administrator to request admission. It contains public
+          signing and encryption keys only. Keep your recovery kit private.
+        </p>
+        <label for="public-join-identity">Public join identity JSON</label>
+        <textarea id="public-join-identity" readonly rows="7" :value="joinIdentity"></textarea>
+        <button class="secondary" @click="copyJoinIdentity">Copy public join identity</button>
+        <p v-if="joinCopied" role="status">Public join identity copied.</p>
+      </details>
+      <RouterLink v-if="destination" class="button secondary" :to="destination"
+        >Return to your DAO or setup</RouterLink
+      >
       <form v-if="!vaultUnlocked && saved" @submit.prevent="unlock">
         <label for="unlock">Vault password</label
         ><input

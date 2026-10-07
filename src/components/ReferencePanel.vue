@@ -64,6 +64,10 @@ function json(value: unknown) {
         ><h4>Request schema</h4>
         <pre class="wrap">{{ json(endpoint.input) }}</pre>
       </template>
+      <template v-if="endpoint.query !== undefined"
+        ><h4>Query schema</h4>
+        <pre class="wrap">{{ json(endpoint.query) }}</pre>
+      </template>
       <h4>Response schema</h4>
       <pre class="wrap">{{ json(endpoint.response) }}</pre>
     </details>

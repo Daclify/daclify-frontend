@@ -15,6 +15,8 @@ test('shows safe platform setup and keeps module help in Documentation', async (
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/status');
+  await expect(page.getByRole('heading', { name: 'What you can use here' })).toBeVisible();
+  await page.getByText('Technical setup, versions and operating details', { exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Network and versions' })).toBeVisible();
   const menu = page.getByRole('button', { name: 'Menu', exact: true });
   if (await menu.isVisible()) await menu.click();

@@ -43,6 +43,8 @@ test('reserves and cancels work, then settles disabled payroll and withdraws the
   await page.getByRole('button', { name: 'Enable Works', exact: true }).click();
   await expect(page.getByText('Works enabled', { exact: true })).toBeVisible();
   await page.getByRole('link', { name: 'Works', exact: true }).click();
+  await page.getByLabel('Contributor member ID', { exact: true }).fill('1');
+  await page.getByLabel('Proposal document ID', { exact: true }).fill('1');
   await page.getByRole('button', { name: 'Propose work', exact: true }).click();
   await expect(page.getByRole('heading', { name: /^Project / })).toBeVisible();
   await page.getByRole('button', { name: 'Accept and reserve funds', exact: true }).click();
@@ -55,6 +57,7 @@ test('reserves and cancels work, then settles disabled payroll and withdraws the
   await page.getByRole('button', { name: 'Enable Payroll', exact: true }).click();
   await expect(page.getByText('Payroll enabled', { exact: true })).toBeVisible();
   await page.getByRole('link', { name: 'Payroll', exact: true }).click();
+  await page.getByLabel('Recipient member ID', { exact: true }).fill('1');
   await page.getByLabel('Amount per installment (TLOS)').fill('0.5000');
   await page.getByLabel('Installments', { exact: true }).fill('1');
   await page

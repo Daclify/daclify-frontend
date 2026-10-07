@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, shallowRef, watch } from 'vue';
+import { computed, onMounted, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
 import {
   HostedUploadSchema,
   HostedIntentSchema,
@@ -31,6 +31,12 @@ const loading = ref(true);
 const busy = ref(false);
 const error = ref('');
 const notice = ref('');
+let disposed = false;
+onBeforeUnmount(() => {
+  disposed = true;
+  file.value = undefined;
+  upload.value = undefined;
+});
 const documentId = ref('');
 const file = shallowRef<File>();
 const fileInput = ref<HTMLInputElement>();
@@ -127,7 +133,9 @@ function acceptReceipt(document: HostedDocument) {
   notice.value = 'File verified. Review its record, then sign to publish it.';
 }
 async function send() {
-  if (!props.member || !props.content) return;
+  if (!props.member || !props.content || !mayUpload.value || disposed) return;
+  const domain = pendingKey.value;
+  const current = () => !disposed && domain === pendingKey.value;
   busy.value = true;
   error.value = '';
   notice.value = '';
@@ -147,6 +155,7 @@ async function send() {
         mediaType: selected.type || 'application/octet-stream',
       });
       const bytes = new Uint8Array(await selected.arrayBuffer());
+      if (!current()) return;
       const prepared = privateDao.value
         ? await encryptDaoFile(
             props.dao.reference,
@@ -159,6 +168,7 @@ async function send() {
             metadata,
           )
         : await preparePublicFile(bytes, metadata);
+      if (!current()) return;
       if (!vaultUnlocked.value) throw new Error('VAULT_LOCKED');
       upload.value = HostedUploadSchema.parse({
         ...prepared,
@@ -173,19 +183,24 @@ async function send() {
       file.value = undefined;
       if (fileInput.value) fileInput.value.value = '';
     }
-    acceptReceipt(await api.upload(upload.value));
+    const result = await api.upload(upload.value);
+    if (current()) acceptReceipt(result);
   } catch (cause) {
-    error.value = friendlyError(cause);
+    if (current()) error.value = friendlyError(cause);
   } finally {
-    busy.value = false;
+    if (current()) busy.value = false;
   }
 }
 async function check() {
+  if (busy.value || disposed) return;
+  const domain = pendingKey.value;
+  const current = () => !disposed && domain === pendingKey.value;
   busy.value = true;
   error.value = '';
   notice.value = '';
   try {
     const status = await api.reconcileUpload(requestId.value);
+    if (!current()) return;
     remember(status.requestId);
     if (status.document) acceptReceipt(status.document);
     else
@@ -194,19 +209,24 @@ async function check() {
           ? 'This upload requires operator review. Its request record remains available.'
           : 'Upload completion is still uncertain. Check this request again; starting another upload may consume additional quota.';
   } catch (cause) {
-    error.value = friendlyError(cause);
+    if (current()) error.value = friendlyError(cause);
   } finally {
-    busy.value = false;
+    if (current()) busy.value = false;
   }
 }
 async function publish() {
   const document = receipt.value;
-  if (!document) return;
+  if (!document || busy.value || disposed || !props.member?.active || !vaultUnlocked.value) return;
+  const domain = pendingKey.value;
+  const current = () => !disposed && domain === pendingKey.value;
   busy.value = true;
   error.value = '';
   notice.value = '';
   try {
     const content = await api.content(props.dao.reference.daoId);
+    if (!current()) return;
+    if (JSON.stringify(content.dao) !== JSON.stringify(document.dao))
+      throw new Error('DAO_REFERENCE');
     const existing = content.documents.find(
       (row) => row.document_id === document.documentId && row.version === document.version,
     );
@@ -222,6 +242,7 @@ async function publish() {
         throw new Error('DOCUMENT_VERSION');
     } else {
       await workspace.refresh();
+      if (!current() || !vaultUnlocked.value) return;
       const member = workspace.memberships.find(
         (row) =>
           row.dao.chainId === document.dao.chainId &&
@@ -255,13 +276,14 @@ async function publish() {
       );
     }
     await workspace.refresh();
+    if (!current()) return;
     clearPending();
     notice.value = 'File document published.';
     emit('published');
   } catch (cause) {
-    error.value = friendlyError(cause);
+    if (current()) error.value = friendlyError(cause);
   } finally {
-    busy.value = false;
+    if (current()) busy.value = false;
   }
 }
 </script>
@@ -285,7 +307,10 @@ async function publish() {
         The filename and contents are encrypted in your browser. Document IDs, sizes, hashes and
         timing remain public.
       </p>
-      <form v-if="!storedRequestId && !receipt" @submit.prevent="send">
+      <form
+        v-if="member?.active && vaultUnlocked && !storedRequestId && !receipt"
+        @submit.prevent="send"
+      >
         <label for="file-document-id">File document ID</label
         ><input
           id="file-document-id"
