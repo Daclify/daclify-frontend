@@ -20,7 +20,7 @@ The browser owns user-controlled signing/decryption keys and keeps only encrypte
 
 `npm run verify` checks source lint, Vue templates/TypeScript and unit tests; `npm run build` creates the static app. Playwright is separate, with paid/research native fixture phases and explicit mock-only recovery/presentation selections described in the README. [Requirements](releases/requirements.json), [changelog](../CHANGELOG.md) and core's [recovery evidence](https://github.com/Daclify/daclify-backend-core/blob/main/docs/evidence/2026-10-07-wallet-recovery.md) record actual coverage.
 
-Real provider consent, Google browser login, real Anchor/EVM client qualification, independent operator cookie/CORS qualification, durable managed custody and hosted backup/proxy operations remain open. A successful local build or a configured provider does not close those gates. The current Vite build also reports a chunk-size warning; no measured bundling optimization is claimed.
+Real provider consent, Google browser login, real Anchor/EVM client qualification, independent operator cookie/CORS qualification, durable managed custody and hosted backup/proxy operations remain open. A successful local build or a configured provider does not close those gates. Bundle loading still needs measurement on target browsers; this update makes no performance claim.
 
 ## Connected payments and hosting
 
