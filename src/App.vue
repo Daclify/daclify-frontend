@@ -14,7 +14,19 @@ import {
 } from '@lucide/vue';
 import { useWorkspace } from './state/workspace';
 import { lockVault, vaultUnlocked } from './auth/session';
-import { chooseNetwork, selectedNetwork, type DeployedNetwork } from './api/networks';
+import {
+  chooseNetwork,
+  selectedNetwork,
+  currentOperator,
+  closeOperator,
+  type DeployedNetwork,
+} from './api/networks';
+const operator = currentOperator();
+function leaveOperator(destination = '/') {
+  lockVault();
+  closeOperator();
+  window.location.assign(destination);
+}
 const state = useWorkspace();
 const route = useRoute(),
   router = useRouter(),
@@ -53,6 +65,10 @@ const networkChoice = ref(selectedNetwork());
 function selectServiceNetwork(name: DeployedNetwork) {
   chooseNetwork(name);
   networkChoice.value = name;
+  if (operator) {
+    leaveOperator();
+    return;
+  }
   void state.refresh();
 }
 onMounted(() => {
@@ -89,7 +105,12 @@ onMounted(() => {
             >DAO hub</span
           ></RouterLink
         >
-        <RouterLink to="/daclify" @click="mobileOpen = false"
+        <a v-if="operator" href="/daclify" @click.prevent="leaveOperator('/daclify')"
+          ><Shield class="nav-icon" aria-hidden="true" /><span class="nav-text"
+            >Daclify DAO</span
+          ></a
+        >
+        <RouterLink v-else to="/daclify" @click="mobileOpen = false"
           ><Shield class="nav-icon" aria-hidden="true" /><span class="nav-text"
             >Daclify DAO</span
           ></RouterLink
@@ -164,6 +185,8 @@ onMounted(() => {
             vaultUnlocked ? 'Vault unlocked' : 'Vault locked'
           }}</span
           ><button v-if="vaultUnlocked" class="text-button" @click="lockVault">Lock keys</button
+          ><button v-if="operator" class="secondary" @click="leaveOperator()">
+            Return to Daclify Hub</button
           ><RouterLink
             class="account-link"
             :to="{
@@ -175,6 +198,11 @@ onMounted(() => {
         </div>
       </header>
       <main id="main" tabindex="-1">
+        <p v-if="operator" class="notice break-word">
+          <strong>Independent operator: {{ operator.operator }}</strong
+          ><span v-if="operator.portal.mode === 'daclify'"> · {{ operator.portal.apiOrigin }}</span
+          >. Your service account and sign-in pairings belong to this operator.
+        </p>
         <div v-if="state.error" class="alert" role="alert">
           {{ state.error }}
           <button class="text-button" @click="state.refresh">Retry connection</button>

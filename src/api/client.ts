@@ -23,6 +23,7 @@ import {
   ContractFailureMessages,
   ApiRoutes,
   IdSchema,
+  daoPaymentKey,
   HostedUploadSchema,
   HostedIntentSchema,
   ErrorSchema,
@@ -60,7 +61,9 @@ import {
   type EvmRelay,
 } from '@daclify/core-protocol';
 import type { instruction } from '@daclify/core-protocol/sdk';
-import { csrfStorageKey, resolveApiUrl } from './networks';
+import { csrfStorageKey, resolveApiUrl, currentOperator, assertOperatorDao } from './networks';
+import { AuthChallengePaths, validateAuthChallenge } from '../auth/audience';
+import { HostingRoutes, PaymentRoutes, DirectoryRoutes, type DaoRef } from '@daclify/core-protocol';
 export class ApiFailure extends Error {
   constructor(readonly code: string) {
     super(code);
@@ -90,6 +93,17 @@ async function request<T>(
     if (url !== resolveApiUrl(path) || csrfKey !== csrfStorageKey())
       throw new ApiFailure('WALLET_CONTEXT_CHANGED');
   };
+  const operator = currentOperator();
+  if (operator) {
+    const selected = new URL(url, window.location.origin);
+    const id =
+      selected.pathname.match(/^\/v1\/daos\/([^/]+)/)?.[1] ?? selected.searchParams.get('daoId');
+    if (id && id !== operator.reference.daoId) throw new ApiFailure('OPERATOR_DAO');
+    if (typeof input === 'object' && input !== null && 'dao' in input) {
+      const { DaoRefSchema } = await import('@daclify/core-protocol');
+      assertOperatorDao(DaoRefSchema.parse(input.dao));
+    }
+  }
   const csrf = sessionStorage.getItem(csrfKey) ?? '';
   const encoded = input === undefined ? undefined : JSON.stringify(input);
   const controlHeaders: Record<string, string> = {};
@@ -126,7 +140,45 @@ async function request<T>(
     const error = ErrorSchema.safeParse(body);
     throw new ApiFailure(error.success ? error.data.code : 'SERVICE_UNAVAILABLE');
   }
-  return schema.parse(body);
+  const result = schema.parse(body);
+  if (operator && path === ApiRoutes.network.path) {
+    const network = ApiRoutes.network.response.parse(result);
+    if (
+      network.chainId !== operator.reference.chainId ||
+      network.runtime !== operator.reference.contract
+    )
+      throw new ApiFailure('OPERATOR_DAO');
+  }
+  if (operator && typeof result === 'object' && result !== null && 'reference' in result) {
+    const { DaoRefSchema } = await import('@daclify/core-protocol');
+    const reference = DaoRefSchema.safeParse(result.reference);
+    if (reference.success) assertOperatorDao(reference.data);
+  }
+
+  if (path.startsWith('/v1/hosting/') || path.startsWith('/v1/payments/')) {
+    const requestDao =
+      typeof input === 'object' && input !== null && 'dao' in input
+        ? input.dao
+        : new URL(url, window.location.origin).searchParams.get('dao');
+    const expected = typeof requestDao === 'string' ? JSON.parse(requestDao) : requestDao;
+    if (expected && typeof result === 'object' && result !== null && 'dao' in result) {
+      const { DaoRefSchema } = await import('@daclify/core-protocol');
+      if (
+        daoPaymentKey(DaoRefSchema.parse(result.dao)) !==
+        daoPaymentKey(DaoRefSchema.parse(expected))
+      )
+        throw new ApiFailure('DAO_REFERENCE');
+    }
+  }
+  if (AuthChallengePaths.includes(path))
+    validateAuthChallenge(
+      path,
+      result,
+      input,
+      window.location.origin,
+      new URL(resolveApiUrl('/'), window.location.origin).origin,
+    );
+  return result;
 }
 export function verifiedModuleRelease(state: ModuleState): ModuleState {
   return {
@@ -141,6 +193,85 @@ export function verifiedModuleRelease(state: ModuleState): ModuleState {
   };
 }
 export const api = {
+  hubDirectory: async () => {
+    const all = await request(
+      DirectoryRoutes.hubDirectory.path,
+      DirectoryRoutes.hubDirectory.response,
+    );
+    let cursor = all.next;
+    while (cursor !== null) {
+      const page = await request(
+        DirectoryRoutes.hubDirectory.path + '?after=' + cursor,
+        DirectoryRoutes.hubDirectory.response,
+      );
+      if (page.next !== null && BigInt(page.next) <= BigInt(cursor))
+        throw new ApiFailure('CHAIN_RESPONSE_INVALID');
+      all.entries.push(...page.entries);
+      all.skipped += page.skipped;
+      cursor = page.next;
+    }
+    all.next = null;
+    return all;
+  },
+  hostingStatus: (dao: DaoRef) =>
+    request(
+      HostingRoutes.hostingStatus.path + '?dao=' + encodeURIComponent(JSON.stringify(dao)),
+      HostingRoutes.hostingStatus.response,
+    ),
+  hostingChange: (input: z.infer<typeof HostingRoutes.hostingChange.input>) =>
+    request(
+      HostingRoutes.hostingChange.path,
+      HostingRoutes.hostingChange.response,
+      HostingRoutes.hostingChange.input.parse(input),
+      60000,
+    ),
+  paymentStatus: (dao: DaoRef) =>
+    request(
+      PaymentRoutes.paymentStatus.path + '?dao=' + encodeURIComponent(JSON.stringify(dao)),
+      PaymentRoutes.paymentStatus.response,
+    ),
+  paymentCatalogue: (dao: DaoRef) =>
+    request(
+      PaymentRoutes.paymentCatalogue.path + '?dao=' + encodeURIComponent(JSON.stringify(dao)),
+      PaymentRoutes.paymentCatalogue.response,
+    ),
+  paymentOnboard: (input: z.infer<typeof PaymentRoutes.paymentOnboard.input>) =>
+    request(
+      PaymentRoutes.paymentOnboard.path,
+      PaymentRoutes.paymentOnboard.response,
+      PaymentRoutes.paymentOnboard.input.parse(input),
+      60000,
+    ),
+  paymentProduct: (input: z.infer<typeof PaymentRoutes.paymentProduct.input>) =>
+    request(
+      PaymentRoutes.paymentProduct.path,
+      PaymentRoutes.paymentProduct.response,
+      PaymentRoutes.paymentProduct.input.parse(input),
+    ),
+  paymentCheckout: (input: z.infer<typeof PaymentRoutes.paymentCheckout.input>) =>
+    request(
+      PaymentRoutes.paymentCheckout.path,
+      PaymentRoutes.paymentCheckout.response,
+      PaymentRoutes.paymentCheckout.input.parse(input),
+    ),
+  paymentOrder: (id: string) =>
+    request(
+      PaymentRoutes.paymentOrder.path.replace(':id', z.uuid().parse(id)),
+      PaymentRoutes.paymentOrder.response,
+    ),
+  paymentRefund: (input: z.infer<typeof PaymentRoutes.paymentRefund.input>) =>
+    request(
+      PaymentRoutes.paymentRefund.path,
+      PaymentRoutes.paymentRefund.response,
+      PaymentRoutes.paymentRefund.input.parse(input),
+      60000,
+    ),
+  paymentCredential: (dao: DaoRef) =>
+    request(PaymentRoutes.paymentCredential.path, PaymentRoutes.paymentCredential.response, {
+      dao,
+    }),
+  paymentRevoke: (dao: DaoRef) =>
+    request(PaymentRoutes.paymentRevoke.path, PaymentRoutes.paymentRevoke.response, { dao }),
   vaultAttachChallenge: (input: z.infer<typeof ApiRoutes.vaultAttachChallenge.input>) =>
     request(
       ApiRoutes.vaultAttachChallenge.path,
@@ -264,7 +395,10 @@ export const api = {
       page.daos.push(...next.daos);
       cursor = next.next;
     }
-    return page.daos;
+    const operator = currentOperator();
+    return operator
+      ? page.daos.filter((d) => daoPaymentKey(d.reference) === daoPaymentKey(operator.reference))
+      : page.daos;
   },
   challenge: (signingKey: string) =>
     request(ApiRoutes.challenge.path, ApiRoutes.challenge.response, { signingKey }),
@@ -283,8 +417,14 @@ export const api = {
   },
   me: async (): Promise<Account> =>
     (await request(ApiRoutes.me.path, ApiRoutes.me.response)).account,
-  memberships: async (): Promise<UserMembership[]> =>
-    (await request(ApiRoutes.memberships.path, ApiRoutes.memberships.response)).memberships,
+  memberships: async (): Promise<UserMembership[]> => {
+    const memberships = (await request(ApiRoutes.memberships.path, ApiRoutes.memberships.response))
+        .memberships,
+      operator = currentOperator();
+    return operator
+      ? memberships.filter((m) => daoPaymentKey(m.dao) === daoPaymentKey(operator.reference))
+      : memberships;
+  },
   memberProfile: (daoId: string, memberId: string) =>
     request(
       `/v1/profile?daoId=${IdSchema.parse(daoId)}&memberId=${IdSchema.parse(memberId)}`,
@@ -499,6 +639,13 @@ export function friendlyError(error: unknown): string {
       FEE_RULE: 'That listing does not accept the platform fee rule.',
       SUFFIX: 'Connect the suffix account before this name can be sold.',
       CHECKOUT_URL: 'The card checkout address was not accepted.',
+      AUTH_AUDIENCE:
+        'The signing challenge does not match this app and selected API. Stop and verify the operator connection.',
+      OPERATOR_DAO: 'Return to the Hub and explicitly connect to the DAO you want to use.',
+      OPERATOR_INCOMPATIBLE:
+        'This operator does not match the registered DAO and the app’s reviewed release.',
+      OPERATOR_UNAVAILABLE:
+        'The operator API could not be verified. Check its HTTPS endpoint and allowed frontend origins.',
       STORAGE_QUOTA: 'The DAO storage allowance is full. Existing documents remain available.',
       UPLOAD_PENDING:
         'Upload completion is uncertain. Keep the request ID and check completion before starting another upload.',
@@ -561,6 +708,13 @@ export function friendlyError(error: unknown): string {
       INSUFFICIENT_EXIT_BALANCE: 'The amount exceeds the selected claim or stake balance.',
       PAYOUT_DESTINATION: 'Choose an existing native account other than this runtime.',
       CHECKOUT_URL: 'The card checkout address was not accepted.',
+      AUTH_AUDIENCE:
+        'The signing challenge does not match this app and selected API. Stop and verify the operator connection.',
+      OPERATOR_DAO: 'Return to the Hub and explicitly connect to the DAO you want to use.',
+      OPERATOR_INCOMPATIBLE:
+        'This operator does not match the registered DAO and the app’s reviewed release.',
+      OPERATOR_UNAVAILABLE:
+        'The operator API could not be verified. Check its HTTPS endpoint and allowed frontend origins.',
       DAO_REFERENCE: 'The account and DAO deployment references do not match.',
     };
     const cryptoMessage = cryptoErrors[error.message];

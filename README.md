@@ -4,7 +4,7 @@ Vue 3 application for account onboarding, DAO creation, governance, works, payro
 
 The screen consumes the packed protocol from [daclify-backend-core](https://github.com/Daclify/daclify-backend-core) and the packed module SDK from [daclify-backend-modules](https://github.com/Daclify/daclify-backend-modules). Check those out as siblings and follow core’s [development bootstrap](https://github.com/Daclify/daclify-backend-core/blob/main/docs/development.md) before `npm ci` here. Deploy names, Stripe, and the API origins are specified in core’s operations guide. Locally that file is `../daclify-backend-core/docs/operations.md`.
 
-Current development version: **0.6.0-alpha.1**, consuming matching core/module protocol, SDK and help packages. This is an incomplete development application, not a qualified production launch. Follow the [0.6 upgrade guide](https://github.com/Daclify/daclify-backend-core/blob/main/docs/operations/upgrade-0.6.md) when updating an existing API/frontend pair.
+Current development version: **0.7.0-alpha.1**, consuming matching core/module protocol, SDK and help packages. Shared creation is free for 10 active-member slots, with administrator-approved graduated monthly capacity above that. Independent contract/server and own-portal choices say Contact for pricing. Optional DAO Connect merchant payments and hosting are separate. Review [upgrade 0.7](../daclify-backend-core/docs/operations/upgrade-0.7.md) and [payment operations](../daclify-backend-core/docs/operations/connected-payments.md). Development checks do not establish live provider/client qualification.
 
 DAO creation now offers community, NGO / grants, gaming guild, team / cooperative and custom presets, independently of human, mixed or guarded-agent participation. Policy and participant controls are in workspace settings; Works funding can require an executable member vote. Native guardian actions are prepared for external signing. See core's [authority and merge notes](../daclify-backend-core/docs/dao-presets.md).
 
@@ -14,7 +14,9 @@ DAO creation now offers community, NGO / grants, gaming guild, team / cooperativ
 | ---------------------------------- | -------------------------------------------------------------------------- |
 | `/`                                | DAO hub for the configured runtime                                         |
 | `/daclify`                         | Daclify DAO, platform fees and module catalogue administration             |
-| `/create`                          | DAO setup, deployment/preset choices and creation payment                  |
+| `/create`                          | DAO setup, deployment/preset choices and free shared creation              |
+| `/hosting?dao=…`                   | Approved monthly shared member capacity                                    |
+| `/payments?dao=…`                  | DAO merchant setup, module-product payments and receipts                   |
 | `/marketplace`                     | Modules, names and public service listings                                 |
 | `/dao/:id` and `/dao/:id/:section` | Members, ballots, works, grants, payroll, treasury, settings and documents |
 | `/account`                         | Sign-in methods, wallet bindings, encrypted vault/kit and payment receipts |
@@ -90,3 +92,5 @@ DACLIFY_TEST_UI_PORT=5208 npx playwright test tests/e2e/wallet-recovery.spec.ts
 These desktop/mobile tests use provider/HTTP fixtures and client cryptography. They do not qualify a real Anchor or EVM wallet client. See [frontend documentation](docs/README.md) for ownership, help routes and remaining limits.
 
 Use core’s [execution ledger](../daclify-backend-core/docs/evidence/2026-10-07-research-execution.md) and [0.5 upgrade runbook](../daclify-backend-core/docs/operations/upgrade-0.5.md). Local fixtures do not qualify real provider credentials, wallet clients, durable custody or production deployment.
+
+`npm run test:e2e:payments` starts an owned Vite server on 5218 and checks deployment choices and subscription consent on desktop/mobile with HTTP fixtures and axe. It performs no live Stripe or chain writes. Existing paid/research fixture suites require matching native/API releases; new shared-creation tests use the free path.

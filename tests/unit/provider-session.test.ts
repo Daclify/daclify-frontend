@@ -129,8 +129,9 @@ it('does not unlock keys or replace CSRF state when the account changes while va
     id,
     expires,
     message: JSON.stringify({
-      domain: 'daclify.vault-attach.v1',
+      domain: 'daclify.vault-attach.v2',
       origin: 'http://localhost:5208',
+      audience: 'http://localhost:5208',
       accountId: recovered.id,
       signingKey: created.signingPublicKey,
       encryptionKey: created.encryptionPublicKey,

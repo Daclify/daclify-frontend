@@ -7,6 +7,7 @@ export function fixtureAction(account: string, action: string, data: unknown[], 
   const network = z
     .object({
       container: z.enum([
+        'daclify-payments-native',
         'daclify-v2-native',
         'daclify-dao-presets-native',
         'daclify-platform-native',
@@ -52,23 +53,14 @@ export async function payCreation(page: Page, preset?: 'custom') {
   const response = page.waitForResponse(
     (r) => r.url().endsWith('/v1/dao-orders') && r.request().method() === 'POST',
   );
-  await page.getByRole('button', { name: 'Review setup payment', exact: true }).click();
+  await page.getByRole('button', { name: 'Review free DAO setup', exact: true }).click();
   const result = await response;
   expect(result.status()).toBe(200);
   const order = ApiRoutes.creationOrder.response.parse(await result.json());
-  expect(order.state).toBe('awaiting-payment');
-  expect(order.usdCents).toBe(2000);
-  expect(order.method).toBe('tlos');
-  await expect(page.getByRole('heading', { name: 'DAO setup payment' })).toBeVisible();
-  if (!order.tlosAmount) throw new Error('Missing quote');
-  fixtureAction(
-    order.tokenContract,
-    'transfer',
-    ['alice', order.recipient, order.tlosAmount, order.memo],
-    'alice',
-  );
-  await page.getByRole('button', { name: 'Check payment status', exact: true }).click();
-  await page.getByRole('button', { name: 'Create this paid DAO', exact: true }).click();
+  expect(order.state).toBe('paid');
+  expect(order.usdCents).toBe(0);
+  expect(order.method).toBe('free');
+  await page.getByRole('button', { name: 'Create this DAO', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Workspace overview' })).toBeVisible();
   return order;
 }

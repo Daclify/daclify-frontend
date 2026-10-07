@@ -32,7 +32,7 @@ test('shows safe platform setup and keeps module help in Documentation', async (
   expect(status.services.find((s) => s.id === 'card')?.configured).toBe(false);
   expect(status.database.migrations.some((m) => m.name === '006_creation_orders.sql')).toBe(true);
   await nav.getByRole('link', { name: 'Daclify DAO', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Sign setup fee policy' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Sign hosting policy update' })).toBeDisabled();
   await page.goto('/docs/modules');
   await expect(
     page.getByRole('heading', { name: 'Configure modules, keep core rights', exact: true }),
@@ -42,23 +42,21 @@ test('shows safe platform setup and keeps module help in Documentation', async (
     path: '.artifacts/browser/platform-status-' + test.info().project.name + '.png',
   });
 });
-test('pays shared setup and administers only the linked platform DAO', async ({ page }) => {
+test('creates free shared setup and administers only the linked platform DAO', async ({ page }) => {
   test.setTimeout(60000);
   await account(page);
   await page.goto('/create');
   await page.getByLabel('DAO name').fill('Browser Daclify DAO ' + Date.now());
-  await expect(page.getByText('Shared contract · $20.00', { exact: true })).toBeVisible();
-  await expect(
-    page.getByText('Independent contract · $50.00 + resources', { exact: true }),
-  ).toBeVisible();
-  await page.getByRole('radio', { name: /Independent contract/ }).check();
-  await expect(page.getByRole('button', { name: 'Review setup payment' })).toBeDisabled();
-  await page.getByRole('radio', { name: /Shared contract/ }).check();
+  await expect(page.getByText('Free · up to 10 active members', { exact: true })).toBeVisible();
+  await expect(page.getByText('Your contracts and server', { exact: true })).toBeVisible();
+  await page.getByRole('radio', { name: /Your contracts and server/ }).check();
+  await expect(page.getByRole('link', { name: 'Contact for pricing', exact: true })).toBeVisible();
+  await page.getByRole('radio', { name: /Shared contracts and hosting/ }).check();
   const order = await payCreation(page);
   const daoId = new URL(page.url()).pathname.split('/')[2];
   if (!daoId) throw new Error('Missing DAO');
   await page.goto('/daclify');
-  await expect(page.getByRole('button', { name: 'Sign setup fee policy' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Sign hosting policy update' })).toBeDisabled();
   fixtureAction('daclifycore', 'setgov', [daoId], 'daclifycore');
   await page.goto('/account');
   await page.getByLabel('Vault password', { exact: true }).fill('synthetic-platform-password-2026');
@@ -70,9 +68,9 @@ test('pays shared setup and administers only the linked platform DAO', async ({ 
     .getByRole('navigation')
     .getByRole('link', { name: 'Daclify DAO', exact: true })
     .click();
-  await expect(page.getByRole('button', { name: 'Sign setup fee policy' })).toBeEnabled();
-  await page.getByLabel('Shared fee (USD cents)').fill('2000');
-  await page.getByRole('button', { name: 'Sign setup fee policy' }).click();
+  await expect(page.getByRole('button', { name: 'Sign hosting policy update' })).toBeEnabled();
+  await page.getByLabel('Included active member slots').fill('10');
+  await page.getByRole('button', { name: 'Sign hosting policy update' }).click();
   await expect(
     page.getByText('Platform configuration updated on chain.', { exact: true }),
   ).toBeVisible();

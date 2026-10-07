@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
-import type { PlatformStatus } from '@daclify/core-protocol';
-import { encodeAction, makeInstruction, RuntimeActionSchemas } from '@daclify/core-protocol/sdk';
+import { parseUnits, type PlatformStatus } from '@daclify/core-protocol';
+import {
+  encodeAction,
+  makeInstruction,
+  RuntimeActionSchemas,
+  RuntimeCodeHash,
+} from '@daclify/core-protocol/sdk';
 import { api, friendlyError } from '../api/client';
 import { relayInstruction } from '../auth/session';
 import { canSignMember } from '../auth/action-signer';
@@ -14,10 +19,12 @@ const status = ref<PlatformStatus>(),
 const error = ref(''),
   success = ref(''),
   busy = ref(false);
-const shared = ref(2000),
-  independent = ref(5000),
-  premium = ref(2000),
-  settler = ref('');
+const freeSlots = ref(10),
+  settler = ref(''),
+  connectPercent = ref(5),
+  firstRate = ref('1.00'),
+  nextRate = ref('0.50'),
+  restRate = ref('0.20');
 const thirdParty = ref(500),
   firstParty = ref(10000),
   bump = ref(2000),
@@ -43,6 +50,11 @@ const member = computed(() =>
 const canSign = computed(
   () => !!member.value && signerReady.value && !busy.value && status.value?.chain?.chainMatches,
 );
+const newPoliciesReady = computed(() =>
+  status.value?.chain?.contracts.some(
+    (c) => c.account === workspace.network?.runtime && c.codeHash === RuntimeCodeHash,
+  ),
+);
 let sequence = 0;
 async function load() {
   const current = ++sequence;
@@ -55,10 +67,12 @@ async function load() {
     status.value = s;
     catalogue.value = c;
     const cfg = s.chain?.creation;
-    shared.value = cfg?.shared_usd ?? 2000;
-    independent.value = cfg?.independent_usd ?? 5000;
-    premium.value = cfg?.premium_bps ?? 2000;
+    freeSlots.value = s.chain?.hosting?.free_members ?? 10;
     settler.value = cfg?.settler ?? '';
+    connectPercent.value = (s.chain?.paymentPolicy?.bps ?? 500) / 100;
+    firstRate.value = ((s.chain?.seatPricing?.first_usd ?? 100) / 100).toFixed(2);
+    nextRate.value = ((s.chain?.seatPricing?.next_usd ?? 50) / 100).toFixed(2);
+    restRate.value = ((s.chain?.seatPricing?.rest_usd ?? 20) / 100).toFixed(2);
     thirdParty.value = s.chain?.fees?.third_party_bps ?? 500;
     firstParty.value = s.chain?.fees?.first_party_bps ?? 10000;
     bump.value = s.chain?.market?.bump_bps ?? 2000;
@@ -102,17 +116,40 @@ async function sign(action: string, data: Uint8Array) {
 async function fees() {
   try {
     await sign(
-      'govcreate',
-      encodeAction(
-        'govcreate',
-        RuntimeActionSchemas.govcreate.parse({
-          ...actor(),
-          shared_usd: shared.value,
-          independent_usd: independent.value,
-          premium_bps: premium.value,
-          settler: settler.value,
-        }),
-      ),
+      'govhosted',
+      encodeAction('govhosted', {
+        ...actor(),
+        free_members: freeSlots.value,
+        settler: settler.value,
+      }),
+    );
+  } catch (cause) {
+    error.value = friendlyError(cause);
+  }
+}
+async function hostingPrices() {
+  try {
+    await sign(
+      'govseatfee',
+      encodeAction('govseatfee', {
+        ...actor(),
+        first_usd: Number(parseUnits(firstRate.value, 2)),
+        next_usd: Number(parseUnits(nextRate.value, 2)),
+        rest_usd: Number(parseUnits(restRate.value, 2)),
+      }),
+    );
+  } catch (cause) {
+    error.value = friendlyError(cause);
+  }
+}
+async function connectFees() {
+  try {
+    await sign(
+      'govpayfees',
+      encodeAction('govpayfees', {
+        ...actor(),
+        bps: Number(parseUnits(String(connectPercent.value), 2)),
+      }),
     );
   } catch (cause) {
     error.value = friendlyError(cause);
@@ -226,47 +263,69 @@ async function describe() {
       <RouterLink to="/docs/platform">Authority guide ↗</RouterLink>
     </p>
   </section>
+  <p v-if="!newPoliciesReady" class="notice">
+    New hosting and Connect controls require the matching reviewed runtime deployment.
+  </p>
   <form class="panel form-panel" @submit.prevent="fees">
-    <h2>DAO setup fees</h2>
+    <h2>Shared hosting policy</h2>
     <p>
-      Shared ${{ (shared / 100).toFixed(2) }} USD · independent ${{
-        (independent / 100).toFixed(2)
-      }}
-      USD plus blockchain resources. TLOS premium {{ premium / 100 }}%.
+      DAO creation is free. Existing members retain their rights when paid capacity expires.
+      Changing the settler requires matching server configuration.
     </p>
-    <fieldset :disabled="!canSign">
-      <label for="fee-shared">Shared fee (USD cents)</label
+    <fieldset :disabled="!canSign || !newPoliciesReady">
+      <label for="free-slots">Included active member slots</label
       ><input
-        id="fee-shared"
-        v-model.number="shared"
+        id="free-slots"
+        v-model.number="freeSlots"
         type="number"
         min="1"
-        max="100000000"
+        max="5000"
         required
-      /><label for="fee-independent">Independent fee (USD cents)</label
+      /><label for="hosting-settler">Trusted payment settler account</label
+      ><input id="hosting-settler" v-model="settler" required maxlength="13" /><button>
+        Sign hosting policy update
+      </button>
+    </fieldset>
+    <RouterLink to="/docs/shared-hosting">Hosting guide ↗</RouterLink>
+  </form>
+  <form class="panel form-panel" @submit.prevent="hostingPrices">
+    <h2>Graduated monthly capacity prices</h2>
+    <p>
+      Rates apply to new subscriptions or an explicit administrator-approved switch. Existing
+      agreements retain their accepted schedule. Each lower rate applies only to slots in that band.
+    </p>
+    <fieldset :disabled="!canSign || !newPoliciesReady">
+      <label for="rate-first">First 40 paid slots · USD per slot/month</label
+      ><input id="rate-first" v-model="firstRate" inputmode="decimal" required /><label
+        for="rate-next"
+        >Next 200 paid slots · USD per slot/month</label
+      ><input id="rate-next" v-model="nextRate" inputmode="decimal" required /><label
+        for="rate-rest"
+        >Further paid slots · USD per slot/month</label
+      ><input id="rate-rest" v-model="restRate" inputmode="decimal" required /><button>
+        Sign new subscription pricing
+      </button>
+    </fieldset>
+  </form>
+  <form class="panel form-panel" @submit.prevent="connectFees">
+    <h2>Daclify Connect commission</h2>
+    <p>
+      Default 5%. Applies only to eligible DAO module card checkouts processed through Connect.
+      Existing orders retain their captured fee; Stripe processing fees are separate.
+    </p>
+    <fieldset :disabled="!canSign || !newPoliciesReady">
+      <label for="connect-percent">Connect commission (%)</label
       ><input
-        id="fee-independent"
-        v-model.number="independent"
-        type="number"
-        min="1"
-        max="100000000"
-        required
-      /><label for="fee-premium">TLOS conversion premium (basis points)</label
-      ><input
-        id="fee-premium"
-        v-model.number="premium"
+        id="connect-percent"
+        v-model.number="connectPercent"
         type="number"
         min="0"
-        max="10000"
+        max="99.99"
+        step="0.01"
         required
-      /><label for="fee-settler">Native payment settler account</label
-      ><input id="fee-settler" v-model="settler" required maxlength="13" />
-      <p class="field-help">
-        The settler attests off-chain card payments. Changing it can interrupt pending checkout and
-        creation. 2000 basis points means 20%.
-      </p>
-      <button>Sign setup fee policy</button>
+      /><button>Sign Connect commission update</button>
     </fieldset>
+    <RouterLink to="/docs/payments">Payment guide ↗</RouterLink>
   </form>
   <form class="panel form-panel" @submit.prevent="commissions">
     <h2>Module commissions and names</h2>

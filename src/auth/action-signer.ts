@@ -4,7 +4,7 @@ import type { UserMembership } from '@daclify/core-protocol';
 import type { instruction } from '@daclify/core-protocol/sdk';
 import { api } from '../api/client';
 import { canUseVaultKey, relayWithVault } from './session';
-import { resolveApiUrl } from '../api/networks';
+import { resolveApiUrl, assertOperatorDao } from '../api/networks';
 import { nativeWallet, nativeGovernance } from './telos-zero';
 import { evmWallet, signEvmGovernance } from './telos-evm';
 export const selectedSigner = ref<'vault' | 'native' | 'evm'>('vault');
@@ -63,6 +63,12 @@ export function canSignMember(member: UserMembership | undefined): boolean {
   );
 }
 export async function dispatchInstruction(request: instruction): Promise<string> {
+  assertOperatorDao({
+    chainId: request.chain_id,
+    contract: request.deployment,
+    daoId: request.dao_id,
+    interfaceVersion: 1,
+  });
   const mode = selectedSigner.value,
     state = useWorkspace(),
     account = state.account?.id,

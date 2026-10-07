@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { currentOperator } from '../api/networks';
 import DaoBrandingPanel from '../components/DaoBrandingPanel.vue';
 import ContentPanel from '../components/ContentPanel.vue';
 import ModulesPanel from '../components/ModulesPanel.vue';
@@ -260,6 +261,24 @@ async function rename() {
     />
     <template v-else-if="section === 'settings'"
       ><h2>DAO settings</h2>
+      <section class="panel narrow">
+        <h3>Hosting and payments</h3>
+        <RouterLink
+          v-if="membership?.active && membership.admin && !currentOperator()"
+          class="button secondary"
+          :to="{ path: '/hosting', query: { dao: JSON.stringify(dao.reference) } }"
+          >Manage member capacity</RouterLink
+        >
+        <RouterLink
+          class="button secondary"
+          :to="{ path: '/payments', query: { dao: JSON.stringify(dao.reference) } }"
+          >DAO payments and merchant setup</RouterLink
+        >
+        <p class="field-help">
+          Hosting subscriptions pay Daclify for approved capacity. Module payments go to your DAO’s
+          own merchant account.
+        </p>
+      </section>
       <DaoBrandingPanel :key="panelKey" :dao="dao" :member="membership" @updated="state.refresh" />
       <section class="panel narrow">
         <h3>Public identity</h3>

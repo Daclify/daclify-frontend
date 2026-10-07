@@ -3,16 +3,15 @@ import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import {
   DaoPresets,
+  DeploymentOptions,
   DaoSetupSchema,
   FoundingAgentSchema,
   defaultDaoSetup,
   parseUnits,
   type Privacy,
-  type CreationMethodSchema,
   type CreationOrderView,
   type PlatformStatus,
 } from '@daclify/core-protocol';
-import type { z } from 'zod';
 import { useWorkspace } from '../state/workspace';
 import { api, friendlyError } from '../api/client';
 const state = useWorkspace();
@@ -20,18 +19,11 @@ const router = useRouter();
 const route = useRoute();
 const platform = ref<PlatformStatus>();
 const order = ref<CreationOrderView>();
-const method = ref<z.infer<typeof CreationMethodSchema>>('tlos');
 const orderId = ref(typeof route.query.order === 'string' ? route.query.order : '');
 const resumeId = ref(orderId.value);
 const previousOrders = ref<string[]>([]);
 let orderSequence = 0;
 const quotedInput = ref<Parameters<typeof api.creationOrder>[0]>();
-const sharedPrice = computed(() => platform.value?.chain?.creation?.shared_usd ?? 2000);
-const independentPrice = computed(() => platform.value?.chain?.creation?.independent_usd ?? 5000);
-const premium = computed(() => (platform.value?.chain?.creation?.premium_bps ?? 2000) / 100);
-const cardAvailable = computed(
-  () => platform.value?.services.find((s) => s.id === 'card')?.configured ?? false,
-);
 function usd(cents: number) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
 }
@@ -133,6 +125,8 @@ const ready = computed(
 const available = computed(
   () =>
     platform.value?.chain?.sharedAvailable &&
+    platform.value.chain.creation?.shared_usd === 0 &&
+    !!platform.value.chain.hosting &&
     platform.value.chain.network.chainId === state.network?.chainId &&
     state.network?.capabilities.includes('shared-dao-create') &&
     state.network.capabilities.includes('dao-presets'),
@@ -155,7 +149,7 @@ async function create() {
       quotedInput.value = {
         requestId: orderId.value,
         deployment: 'shared',
-        method: method.value,
+        method: 'free',
         request: {
           metadata: { schemaVersion: 1, title: title.value, description: description.value },
           privacy: privacy.value,
@@ -306,7 +300,40 @@ onBeforeUnmount(() => {
     <RouterLink class="help-link" to="/docs/deployments">Deployment guide ↗</RouterLink>
   </div>
   <p v-if="error" class="alert" role="alert">{{ error }}</p>
-  <div v-if="!state.account" class="panel narrow">
+  <section class="panel deployment-options" aria-label="Deployment options">
+    <h2>01 · Choose your deployment</h2>
+    <div class="choice-grid">
+      <label v-for="option in DeploymentOptions" :key="option.id" class="choice"
+        ><input
+          v-model="deployment"
+          type="radio"
+          name="deployment"
+          :value="option.id"
+          :disabled="!!order || !!quotedInput"
+        /><span
+          ><strong>{{ option.title }}</strong
+          ><small>{{ option.price }}</small
+          ><small>{{ option.description }}</small></span
+        ></label
+      >
+    </div>
+  </section>
+  <section v-if="deployment !== 'shared'" class="panel narrow">
+    <h2>Operate your own DAO</h2>
+    <p>
+      Your DAO owns its contracts, upgrade keys and server. Choose the Daclify app or your own
+      portal. Blockchain resources and operation are your responsibility.
+    </p>
+    <p>
+      Use your own merchant account through Daclify Connect, or run standalone Stripe with your own
+      backend and frontend.
+    </p>
+    <a class="button" href="https://t.me/daclify" target="_blank" rel="noopener noreferrer"
+      >Contact for pricing</a
+    >
+    <RouterLink class="help-link" to="/docs/independent-operators">Operator guide ↗</RouterLink>
+  </section>
+  <div v-else-if="!state.account" class="panel narrow">
     <h2>Set up your account first</h2>
     <p>Your internal account becomes the first administrator of this DAO.</p>
     <RouterLink class="button" :to="{ path: '/account', query: { returnTo: route.fullPath } }"
@@ -372,9 +399,10 @@ onBeforeUnmount(() => {
       }}</pre>
     </details>
     <p>
-      This order cannot be edited. Verify its name, rules, privacy and public keys before paying.
+      This order cannot be edited. Verify its name, rules, privacy and public keys before creating
+      this DAO.
     </p>
-    <h3>DAO setup payment</h3>
+    <h3>{{ order.method === 'free' ? 'Free DAO setup' : 'Previously quoted setup payment' }}</h3>
     <p>
       Network: <strong>{{ order.network.environment }}</strong> · {{ order.network.runtime }}
     </p>
@@ -414,15 +442,20 @@ onBeforeUnmount(() => {
       This unpaid order has expired. Do not send payment; start a new order.
     </p>
     <p v-else-if="order.state === 'paid'">
-      Payment verified; setup execution is pending. Review the saved setup, then create your DAO. A
-      failed attempt preserves this payment for retry.
+      {{
+        order.method === 'free'
+          ? 'Free setup is ready. Your DAO includes 10 active member slots.'
+          : 'Payment verified; setup execution is pending.'
+      }}
+      Review the saved setup, then create your DAO. A failed attempt preserves this request for
+      retry.
     </p>
     <p v-else>DAO created. This receipt has been used and cannot create a second DAO.</p>
     <button v-if="order.state === 'paid'" :disabled="busy" @click="completeOrder">
-      Create this paid DAO
+      Create this DAO
     </button>
     <button class="secondary" :disabled="busy" @click="checkOrder">
-      {{ busy ? 'Checking…' : 'Check payment status' }}
+      {{ busy ? 'Checking…' : 'Refresh setup status' }}
     </button>
     <button
       v-if="order.state === 'awaiting-payment' || order.state === 'expired'"
@@ -537,28 +570,6 @@ onBeforeUnmount(() => {
         </p>
       </template>
     </fieldset>
-    <fieldset :disabled="!!quotedInput">
-      <legend>01 · Deployment</legend>
-      <div class="choice-grid">
-        <label class="choice"
-          ><input v-model="deployment" type="radio" value="shared" name="deployment" /><span
-            ><strong>Shared contract · {{ usd(sharedPrice) }}</strong
-            ><small
-              >Start with a managed runtime. The deployment operator controls contract
-              upgrades.</small
-            ></span
-          ></label
-        ><label class="choice"
-          ><input v-model="deployment" type="radio" value="independent" name="deployment" /><span
-            ><strong>Independent contract · {{ usd(independentPrice) }} + resources</strong
-            ><small
-              >Your DAO controls its deployment and upgrade permissions. Connect it to the hub
-              afterward.</small
-            ></span
-          ></label
-        >
-      </div>
-    </fieldset>
     <details :open="setup.participantMode === 'agents-guarded'">
       <summary>Advanced governance and emergency safeguards</summary>
       <fieldset :disabled="!!quotedInput">
@@ -650,11 +661,6 @@ onBeforeUnmount(() => {
       revision invalidates pending funding execution. The shared operator retains native owner and
       contract upgrade powers. <RouterLink to="/docs/dao-presets">Read the setup guide</RouterLink>.
     </aside>
-    <aside v-if="deployment === 'independent'" class="notice">
-      Independent setup is {{ usd(independentPrice) }} USD, plus native account creation, CPU, NET
-      and RAM charged separately. Self-service deployment and checkout are not available yet. Use
-      the deployment kit. <RouterLink to="/docs/deployments">Open the deployment guide</RouterLink>.
-    </aside>
     <details>
       <summary>Advanced treasury asset · {{ symbol }}</summary>
       <fieldset :disabled="!!quotedInput">
@@ -686,41 +692,19 @@ onBeforeUnmount(() => {
         </p>
       </fieldset>
     </details>
-    <fieldset :disabled="!!quotedInput">
-      <legend>05 · Setup payment</legend>
-      <label for="payment-method">Pay with</label
-      ><select id="payment-method" v-model="method">
-        <option value="tlos" :disabled="!platform?.chain?.rateFresh">
-          TLOS · {{ premium }}% conversion premium
-        </option>
-        <option value="card" :disabled="!cardAvailable">
-          Card · USD{{ cardAvailable ? '' : ' (unconfigured)' }}
-        </option>
-      </select>
-      <p v-if="!platform?.chain?.rateFresh" class="notice">
-        A fresh TLOS conversion rate is unavailable. The operator must publish a current observation
-        before a TLOS quote can be prepared.
+    <aside class="notice">
+      <strong>Free creation · 10 active member slots included</strong>
+      <p>
+        For approved extra capacity: the next 40 slots cost $1 each/month, the next 200 cost $0.50
+        each, then $0.20 each. Your administrator chooses capacity before any subscription charge.
+        Storage, AI and blockchain resources are separate.
       </p>
-      <p class="field-help">
-        Shared setup: {{ usd(sharedPrice) }} USD. TLOS converts this fee with a {{ premium }}%
-        premium using a fresh quote. Independent setup: {{ usd(independentPrice) }} USD plus
-        blockchain resources. Prices are captured when your order is prepared.
-      </p>
-      <RouterLink to="/docs/creation-fees">Payment guide ↗</RouterLink>
-    </fieldset>
+      <RouterLink to="/docs/shared-hosting">Hosting and pricing guide ↗</RouterLink>
+    </aside>
     <div class="form-footer">
       <span v-if="!available" class="muted">Shared creation is unavailable on this deployment.</span
-      ><button
-        :disabled="
-          busy ||
-          !available ||
-          !ready ||
-          deployment !== 'shared' ||
-          (method === 'tlos' && !platform?.chain?.rateFresh) ||
-          (method === 'card' && !cardAvailable)
-        "
-      >
-        {{ busy ? 'Preparing order…' : 'Review setup payment' }}
+      ><button :disabled="busy || !available || !ready || deployment !== 'shared'">
+        {{ busy ? 'Preparing order…' : 'Review free DAO setup' }}
       </button>
     </div>
   </form>

@@ -1,6 +1,6 @@
 # Frontend documentation
 
-Current application: **0.6.0-alpha.1**, with matching packed core/module help and SDK packages. See the [repository README](../README.md) for routes, local development, Netlify uploads, account recovery and test phases.
+Current application: **0.7.0-alpha.1**, with matching packed core/module help and SDK packages. See the [repository README](../README.md) for routes, local development, Netlify uploads, account recovery and test phases.
 
 ## Help inside the application
 
@@ -20,4 +20,8 @@ The browser owns user-controlled signing/decryption keys and keeps only encrypte
 
 `npm run verify` checks source lint, Vue templates/TypeScript and unit tests; `npm run build` creates the static app. Playwright is separate, with paid/research native fixture phases and explicit mock-only recovery/presentation selections described in the README. [Requirements](releases/requirements.json), [changelog](../CHANGELOG.md) and core's [recovery evidence](https://github.com/Daclify/daclify-backend-core/blob/main/docs/evidence/2026-10-07-wallet-recovery.md) record actual coverage.
 
-Real provider consent, Google browser login, real Anchor/EVM client qualification, independent multi-runtime routing, durable managed custody and hosted backup/proxy operations remain open. A successful local build or a configured provider does not close those gates. The current Vite build also reports a chunk-size warning; no measured bundling optimization is claimed.
+Real provider consent, Google browser login, real Anchor/EVM client qualification, independent operator cookie/CORS qualification, durable managed custody and hosted backup/proxy operations remain open. A successful local build or a configured provider does not close those gates. The current Vite build also reports a chunk-size warning; no measured bundling optimization is claimed.
+
+## Connected payments and hosting
+
+See core [payment operations](../../daclify-backend-core/docs/operations/connected-payments.md) and app `/docs/shared-hosting`, `/docs/payments`, `/docs/independent-operators`. Independent API discovery now has issuer/code/ABI and current-registration checks; actual operator browser cookies and external providers still need qualification.

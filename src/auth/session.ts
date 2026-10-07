@@ -1,3 +1,4 @@
+import { assertOperatorDao } from '../api/networks';
 import { ref } from 'vue';
 import { csrfStorageKey } from '../api/networks';
 import { PrivateKey } from '@wharfkit/antelope';
@@ -211,6 +212,12 @@ export function canUseVaultKey(signingKey: string | undefined): boolean {
   );
 }
 export function signInstruction(request: instruction): string {
+  assertOperatorDao({
+    chainId: request.chain_id,
+    contract: request.deployment,
+    daoId: request.dao_id,
+    interfaceVersion: 1,
+  });
   if (!secrets) throw new Error('VAULT_LOCKED');
   touch();
   return PrivateKey.from(secrets.signingKey).signDigest(instructionDigest(request)).toString();
@@ -218,12 +225,7 @@ export function signInstruction(request: instruction): string {
 export async function relayWithVault(request: instruction): Promise<string> {
   if (!secrets) throw new Error('VAULT_LOCKED');
   touch();
-  return (
-    await api.relay(
-      request,
-      PrivateKey.from(secrets.signingKey).signDigest(instructionDigest(request)).toString(),
-    )
-  ).transactionId;
+  return (await api.relay(request, signInstruction(request))).transactionId;
 }
 export function downloadBackup(record: SavedVault): void {
   const url = URL.createObjectURL(
