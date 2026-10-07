@@ -179,9 +179,9 @@ async function useControl() {
     <h2 v-if="mode === 'manage'">Linked accounts</h2>
     <h3 v-else>Telos EVM</h3>
     <p>
-      Sign in with a paired Telos EVM wallet. Signing in preserves your Daclify identity; it does
-      not create membership or unlock private documents. EOA signing is supported; ERC-1271
-      contract-wallet signatures are unavailable.
+      Sign in with a paired Telos EVM wallet or recover its current on-chain DAO access after a
+      service failure. Recovery creates no new DAO membership and does not restore decryption keys.
+      EOA signing is supported; ERC-1271 contract-wallet signatures are unavailable.
     </p>
     <p v-if="error" class="alert" role="alert">{{ error }}</p>
     <p v-if="notice" class="notice" role="status">{{ notice }}</p>

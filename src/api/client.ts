@@ -141,6 +141,18 @@ export function verifiedModuleRelease(state: ModuleState): ModuleState {
   };
 }
 export const api = {
+  vaultAttachChallenge: (input: z.infer<typeof ApiRoutes.vaultAttachChallenge.input>) =>
+    request(
+      ApiRoutes.vaultAttachChallenge.path,
+      ApiRoutes.vaultAttachChallenge.response,
+      ApiRoutes.vaultAttachChallenge.input.parse(input),
+    ),
+  attachVault: (id: string, signature: string) =>
+    request(
+      ApiRoutes.vaultAttach.path,
+      ApiRoutes.vaultAttach.response,
+      ApiRoutes.vaultAttach.input.parse({ id, signature }),
+    ),
   spendingReport: (daoId: string) =>
     request(
       ApiRoutes.spendingReport.path.replace(':id', IdSchema.parse(daoId)),
@@ -453,6 +465,18 @@ export function friendlyError(error: unknown): string {
       AUTH_REQUIRED: 'Sign in to continue.',
       ACCOUNT_CONTROL_REQUIRED:
         'Prove control with your Daclify keys or an authorized linked wallet before changing sign-in methods.',
+      VAULT_IDENTITY_REQUIRED:
+        'Set up or restore your Daclify keys before creating a DAO. Wallet recovery alone does not restore document decryption keys.',
+      LAST_CONTROL_CREDENTIAL:
+        'Pair another blockchain wallet before removing your last account-control method.',
+      WALLET_MEMBERSHIP_CONFLICT:
+        'Your credentials point to different members in this DAO. Use a separate account for each member.',
+      VAULT_ALREADY_REGISTERED:
+        'These keys belong to an existing service account. Sign out and sign in with that vault; accounts are not merged automatically.',
+      VAULT_ALREADY_CONFIGURED:
+        'This account already has Daclify keys. Unlock its original vault instead.',
+      VAULT_PROOF_INVALID:
+        'The key setup proof expired or was rejected. Unlock your vault and try again.',
       AUTH_INVALID: 'The login proof expired or was already used. Try again.',
       KEY_CHANGE_REQUIRED:
         'This account uses a different encryption key. Use its original recovery kit.',

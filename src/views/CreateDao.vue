@@ -138,7 +138,13 @@ const available = computed(
     state.network.capabilities.includes('dao-presets'),
 );
 async function create() {
-  if (!state.network || !resolved.value || deployment.value !== 'shared') return;
+  if (
+    !state.network ||
+    !resolved.value ||
+    deployment.value !== 'shared' ||
+    state.account?.signingKey === null
+  )
+    return;
   const request = ++orderSequence;
   const accountId = state.account?.id;
   busy.value = true;
@@ -305,6 +311,17 @@ onBeforeUnmount(() => {
     <p>Your internal account becomes the first administrator of this DAO.</p>
     <RouterLink class="button" :to="{ path: '/account', query: { returnTo: route.fullPath } }"
       >Set up account</RouterLink
+    >
+  </div>
+  <div v-else-if="state.account.signingKey === null" class="panel narrow">
+    <h2>Set up your Daclify keys</h2>
+    <p>
+      Your wallet can manage its existing DAOs. Creating a DAO also needs a signing and encryption
+      identity. Restore your original recovery kit or create keys from your Account page; wallet
+      access stays on the same service profile.
+    </p>
+    <RouterLink class="button" :to="{ path: '/account', query: { returnTo: route.fullPath } }"
+      >Set up or restore keys</RouterLink
     >
   </div>
   <section v-else-if="order" class="panel narrow">

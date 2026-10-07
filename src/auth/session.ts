@@ -14,6 +14,7 @@ import {
   type VaultSecrets,
   type Account,
   AccountControlMessageSchema,
+  VaultAttachMessageSchema,
 } from '@daclify/core-protocol';
 import { instructionDigest, type instruction } from '@daclify/core-protocol/sdk';
 import { api, setAccountControlSigner } from '../api/client';
@@ -135,7 +136,7 @@ export function acceptProviderSession(account: Account, csrfToken: string): Acco
     lockVault();
   return account;
 }
-export async function unlockAndLogin(password: string): Promise<Account> {
+export async function unlockAndLogin(password: string, current?: Account): Promise<Account> {
   const started = generation;
   const vault = savedVault();
   if (!vault) throw new Error('VAULT_UNLOCK_FAILED');
@@ -152,12 +153,46 @@ export async function unlockAndLogin(password: string): Promise<Account> {
     JSON.stringify(encryption) !== JSON.stringify(vault.encryptionPublicKey)
   )
     throw new Error('VAULT_UNLOCK_FAILED');
-  const challenge = await api.challenge(vault.signingPublicKey);
-  const account = await api.login(
-    challenge.id,
-    signing.signMessage(new TextEncoder().encode(challenge.message)).toString(),
-    vault.encryptionPublicKey,
-  );
+  let account: Account;
+  if (current?.signingKey === null) {
+    const { useWorkspace } = await import('../state/workspace');
+    const challenge = await api.vaultAttachChallenge({
+      signingKey: vault.signingPublicKey,
+      encryptionKey: vault.encryptionPublicKey,
+    });
+    const message = VaultAttachMessageSchema.parse(JSON.parse(challenge.message));
+    if (
+      message.origin !== window.location.origin ||
+      message.accountId !== current.id ||
+      message.signingKey !== vault.signingPublicKey ||
+      JSON.stringify(message.encryptionKey) !== JSON.stringify(vault.encryptionPublicKey) ||
+      message.id !== challenge.id ||
+      message.expires !== challenge.expires ||
+      useWorkspace().account?.id !== current.id ||
+      started !== generation
+    )
+      throw new Error('ACCOUNT_KEY_MISMATCH');
+    const session = await api.attachVault(
+      challenge.id,
+      signing.signMessage(new TextEncoder().encode(challenge.message)).toString(),
+    );
+    if (
+      useWorkspace().account?.id !== current.id ||
+      started !== generation ||
+      session.account.id !== current.id ||
+      session.account.signingKey !== vault.signingPublicKey ||
+      JSON.stringify(session.account.encryptionKey) !== JSON.stringify(vault.encryptionPublicKey)
+    )
+      throw new Error('ACCOUNT_KEY_MISMATCH');
+    account = acceptProviderSession(session.account, session.csrfToken);
+  } else {
+    const challenge = await api.challenge(vault.signingPublicKey);
+    account = await api.login(
+      challenge.id,
+      signing.signMessage(new TextEncoder().encode(challenge.message)).toString(),
+      vault.encryptionPublicKey,
+    );
+  }
   if (started !== generation) throw new Error('VAULT_LOCKED');
   secrets = opened;
   (await import('./action-signer')).selectedSigner.value = 'vault';

@@ -47,6 +47,7 @@ afterEach(() => {
   localStorage.clear();
   sessionStorage.clear();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 describe('provider sessions leave the user-controlled vault locked', () => {
   it.each(['removed', 'replaced'] as const)(
@@ -105,4 +106,61 @@ describe('provider sessions leave the user-controlled vault locked', () => {
     acceptProviderSession(owned, csrf);
     expect(vaultUnlocked.value).toBe(true);
   });
+});
+
+it('does not unlock keys or replace CSRF state when the account changes while vault attachment is pending', async () => {
+  const { createPinia, setActivePinia } = await import('pinia');
+  const { useWorkspace } = await import('../../src/state/workspace');
+  setActivePinia(createPinia());
+  vi.stubGlobal('window', { location: { origin: 'http://localhost:5208' } });
+  const created = await createVault(password);
+  saveVault(created);
+  const recovered = AccountSchema.parse({
+    id: randomUUID(),
+    custody: 'user-controlled',
+    signingKey: null,
+    encryptionKey: null,
+  });
+  const workspace = useWorkspace();
+  workspace.account = recovered;
+  const id = randomUUID(),
+    expires = new Date(Date.now() + 60000).toISOString();
+  vi.spyOn(api, 'vaultAttachChallenge').mockResolvedValue({
+    id,
+    expires,
+    message: JSON.stringify({
+      domain: 'daclify.vault-attach.v1',
+      origin: 'http://localhost:5208',
+      accountId: recovered.id,
+      signingKey: created.signingPublicKey,
+      encryptionKey: created.encryptionPublicKey,
+      id,
+      expires,
+    }),
+  });
+  let complete: ((value: { account: Account; csrfToken: string }) => void) | undefined;
+  const attach = vi.spyOn(api, 'attachVault').mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        complete = resolve;
+      }),
+  );
+  const operation = unlockAndLogin(password, recovered);
+  await vi.waitFor(() => expect(attach).toHaveBeenCalledOnce());
+  workspace.account = AccountSchema.parse({ ...recovered, id: randomUUID() });
+  sessionStorage.setItem('daclify.csrf', 'b'.repeat(43));
+  if (!complete) throw new Error('Missing fixture completion');
+  complete({
+    account: AccountSchema.parse({
+      id: recovered.id,
+      custody: 'user-controlled',
+      signingKey: created.signingPublicKey,
+      encryptionKey: created.encryptionPublicKey,
+    }),
+    csrfToken: csrf,
+  });
+  await expect(operation).rejects.toThrow('ACCOUNT_KEY_MISMATCH');
+  expect(vaultUnlocked.value).toBe(false);
+  expect(sessionStorage.getItem('daclify.csrf')).toBe('b'.repeat(43));
+  setActivePinia(undefined);
 });

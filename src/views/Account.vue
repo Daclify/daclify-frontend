@@ -45,7 +45,7 @@ const router = useRouter();
 const destination = computed(() => accountDestination(route.query.returnTo));
 const state = useWorkspace();
 const joinIdentity = computed(() =>
-  state.account
+  state.account && state.account.signingKey !== null
     ? JSON.stringify(
         JoinIdentitySchema.parse({
           version: 1,
@@ -247,7 +247,7 @@ async function unlock() {
   busy.value = true;
   error.value = '';
   try {
-    state.account = await unlockAndLogin(password.value);
+    state.account = await unlockAndLogin(password.value, state.account);
     password.value = '';
     await state.refresh();
     if (destination.value) await router.push(destination.value);
@@ -407,12 +407,16 @@ function backup() {
       <div class="panel-heading">
         <h2>
           {{
-            state.account.custody === 'user-controlled'
-              ? 'User-controlled account'
-              : 'Managed account'
+            state.account.signingKey === null
+              ? 'Blockchain wallet access'
+              : state.account.custody === 'user-controlled'
+                ? 'User-controlled account'
+                : 'Managed account'
           }}
         </h2>
-        <span class="pill">{{ state.account.custody }}</span>
+        <span class="pill">{{
+          state.account.signingKey === null ? 'Wallet only' : state.account.custody
+        }}</span>
       </div>
       <p class="muted">Server login id</p>
       <p class="mono wrap">{{ state.account.id }}</p>
@@ -420,9 +424,16 @@ function backup() {
         This service ID connects your paired sign-in methods. DAO membership and permissions are
         verified separately.
       </p>
-      <p class="muted">Signing public key</p>
-      <p class="mono wrap">{{ state.account.signingKey }}</p>
-      <details>
+      <p v-if="state.account.signingKey === null" class="notice" role="status">
+        Your wallet restores access to its current on-chain memberships and permissions. Your
+        original document-decryption keys and lost social-login pairings have not been restored. To
+        recover private content, import your original encrypted kit and confirm with your wallet.
+      </p>
+      <template v-else
+        ><p class="muted">Signing public key</p>
+        <p class="mono wrap">{{ state.account.signingKey }}</p></template
+      >
+      <details v-if="state.account.signingKey !== null">
         <summary>Public join identity</summary>
         <p>
           Share this JSON with the DAO administrator to request admission. It contains public
@@ -462,6 +473,26 @@ function backup() {
       >
         Recover from an encrypted kit
       </button>
+      <details v-if="state.account.signingKey === null && !saved">
+        <summary>Create Daclify keys for a new DAO</summary>
+        <p>
+          New keys support new DAOs and content. They cannot decrypt your existing private
+          documents. Keep your wallet connected: attaching keys requires both your wallet approval
+          and proof of the new keys.
+        </p>
+        <form @submit.prevent="create">
+          <label for="wallet-vault-password">New vault password</label>
+          <input
+            id="wallet-vault-password"
+            v-model="password"
+            type="password"
+            minlength="12"
+            autocomplete="new-password"
+            required
+          />
+          <button :disabled="busy">Create encrypted vault</button>
+        </form>
+      </details>
       <button class="text-button danger" :disabled="busy" @click="logout">Sign out</button>
       <p class="muted">
         Keys lock after ten minutes without a signing action. Signing keys are separate from

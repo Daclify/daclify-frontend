@@ -23,6 +23,14 @@
     {
       "id": "PLATFORM-PAID-CREATION-AND-ADMIN",
       "tests": ["tests/e2e/platform.spec.ts"]
+    },
+    {
+      "id": "WALLET-DISASTER-RECOVERY",
+      "tests": [
+        "tests/unit/wallet-recovery.test.ts",
+        "tests/unit/vault.test.ts",
+        "tests/e2e/wallet-recovery.spec.ts"
+      ]
     }
   ]
 }

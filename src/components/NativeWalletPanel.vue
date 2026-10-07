@@ -165,8 +165,9 @@ async function useControl() {
   <section aria-label="Telos Zero sign-in">
     <h3>Telos Zero</h3>
     <p>
-      Use a paired native account with an Anchor wallet. Sign-in preserves your Daclify identity; it
-      does not create membership or decrypt documents.
+      Use an Anchor wallet to sign in with a paired account or recover its existing on-chain DAO
+      access after a service failure. Recovery uses the current blockchain binding; it creates no
+      new DAO membership and does not restore document-decryption keys.
     </p>
     <p v-if="error" class="alert" role="alert">{{ error }}</p>
     <p v-if="notice" class="notice" role="status">{{ notice }}</p>

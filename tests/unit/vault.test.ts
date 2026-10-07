@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
+import { EpochGrantSchema, ContentEnvelopeSchema } from '@daclify/core-protocol';
 import { PrivateKey } from '@wharfkit/antelope';
 import {
   createVault,
@@ -186,4 +188,36 @@ describe('committed DAO epoch keys', () => {
       ),
     ).rejects.toThrow('EPOCH_KEY_MISMATCH');
   });
+});
+
+it('opens surviving DAO ciphertext on a fresh device using the original encrypted kit and on-chain encrypted key grant', async () => {
+  const original = await createVault(password);
+  const epoch = crypto.getRandomValues(new Uint8Array(32));
+  const grantDomain = 'dao-1:epoch-1:member-1',
+    documentDomain = 'dao-1:document-1:version-1';
+  const grant = await createEpochGrant(original.encryptionPublicKey, epoch, grantDomain);
+  const ciphertext = await sealContent(
+    new TextEncoder().encode('surviving private DAO record'),
+    epoch,
+    documentDomain,
+  );
+  const surviving = z
+    .object({ grant: EpochGrantSchema, ciphertext: ContentEnvelopeSchema })
+    .parse(JSON.parse(JSON.stringify({ grant, ciphertext })));
+  const keys = await recoverVault(original.recoveryEnvelope, original.recoveryCredential);
+  const restoredEpoch = await openEpochGrant(
+    keys.encryptionPrivateKey,
+    surviving.grant,
+    grantDomain,
+  );
+  expect(
+    new TextDecoder().decode(
+      await openContent(surviving.ciphertext, restoredEpoch, documentDomain),
+    ),
+  ).toBe('surviving private DAO record');
+  const replacement = await createVault(password);
+  const replacementKeys = await unlockVault(replacement.localEnvelope, password);
+  await expect(
+    openEpochGrant(replacementKeys.encryptionPrivateKey, surviving.grant, grantDomain),
+  ).rejects.toThrow();
 });

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.0-alpha.1 — Wallet disaster recovery
+
+Wallet-only account and creation flows explain recovery/decryption boundaries. Recover or create an encrypted vault and attach it to the same profile with separate wallet approval. Updated core/modules 0.6 development artifacts and browser/crypto regressions.
+
+Development prerelease; production release gates remain in force.
+
 ## 0.2.0-alpha.1 — Purpose presets and participant modes
 
 - DAO preset onboarding, purpose filtering and contextual workspace descriptions.
