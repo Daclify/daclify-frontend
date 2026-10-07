@@ -82,7 +82,7 @@ async function save() {
   const dao = props.dao,
     member = props.member,
     generation = revision;
-  if (!member || !ready.value) return;
+  if (!member || !ready.value || busy.value) return;
   busy.value = true;
   error.value = '';
   try {
@@ -119,7 +119,7 @@ async function save() {
   } catch (cause) {
     if (generation === revision) error.value = friendlyError(cause);
   } finally {
-    if (generation === revision) busy.value = false;
+    busy.value = false;
   }
 }
 </script>

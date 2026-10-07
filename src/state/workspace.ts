@@ -10,9 +10,11 @@ export const useWorkspace = defineStore('workspace', () => {
   const account = ref<Account>();
   const loading = ref(false);
   const error = ref('');
+  let accountRevision = 0;
   watch(
     () => account.value?.id,
     () => {
+      accountRevision++;
       memberships.value = [];
     },
     { flush: 'sync' },
@@ -20,12 +22,14 @@ export const useWorkspace = defineStore('workspace', () => {
   let sequence = 0;
   async function refresh() {
     const current = ++sequence;
+    let identityRevision = accountRevision;
+    const stale = () => current !== sequence || identityRevision !== accountRevision;
     loading.value = true;
     error.value = '';
     let networkRead = false;
     try {
       const [info, summaries] = await Promise.all([api.network(), api.daos()]);
-      if (current !== sequence) return;
+      if (stale()) return;
       if (
         network.value &&
         (network.value.chainId !== info.chainId || network.value.runtime !== info.runtime)
@@ -36,20 +40,21 @@ export const useWorkspace = defineStore('workspace', () => {
       daos.value = summaries;
       try {
         const identity = await api.me();
-        if (current !== sequence) return;
+        if (stale()) return;
         account.value = identity;
+        identityRevision = accountRevision;
         const memberRecords = await api.memberships();
-        if (current !== sequence) return;
+        if (stale()) return;
         memberships.value = memberRecords;
       } catch (cause) {
-        if (current !== sequence) return;
+        if (stale()) return;
         memberships.value = [];
         if (cause instanceof ApiFailure && cause.code === 'AUTH_REQUIRED')
           account.value = undefined;
         else throw cause;
       }
     } catch (cause) {
-      if (current === sequence) {
+      if (!stale()) {
         if (!networkRead) {
           network.value = undefined;
           daos.value = [];

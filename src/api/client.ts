@@ -84,7 +84,13 @@ async function request<T>(
   input?: unknown,
   timeoutMs = 15000,
 ): Promise<T> {
-  const csrf = sessionStorage.getItem(csrfStorageKey()) ?? '';
+  const url = resolveApiUrl(path),
+    csrfKey = csrfStorageKey();
+  const checkNetwork = () => {
+    if (url !== resolveApiUrl(path) || csrfKey !== csrfStorageKey())
+      throw new ApiFailure('WALLET_CONTEXT_CHANGED');
+  };
+  const csrf = sessionStorage.getItem(csrfKey) ?? '';
   const encoded = input === undefined ? undefined : JSON.stringify(input);
   const controlHeaders: Record<string, string> = {};
   if (encoded !== undefined && AccountControlPaths.some((route) => route === path)) {
@@ -97,12 +103,14 @@ async function request<T>(
       path,
       bodyHash,
     });
+    checkNetwork();
     controlHeaders['x-account-intent-id'] = challenge.id;
     const proof = await accountControlSigner(challenge);
     if (proof.kind === 'root') controlHeaders['x-account-signature'] = proof.signature;
     else controlHeaders['x-account-proof'] = JSON.stringify(proof);
   }
-  const response = await fetch(resolveApiUrl(path), {
+  checkNetwork();
+  const response = await fetch(url, {
     method: input === undefined ? 'GET' : 'POST',
     credentials: 'include',
     headers: {
@@ -113,6 +121,7 @@ async function request<T>(
     signal: AbortSignal.timeout(timeoutMs),
   });
   const body: unknown = response.status === 204 ? null : await response.json();
+  checkNetwork();
   if (!response.ok) {
     const error = ErrorSchema.safeParse(body);
     throw new ApiFailure(error.success ? error.data.code : 'SERVICE_UNAVAILABLE');

@@ -56,7 +56,7 @@ npm run verify
 npm run test:e2e
 ```
 
-`npm run verify` runs lint, `vue-tsc`, and the unit tests. It does not run Playwright. `npm run test:e2e` starts Vite when port 5178 is free and reuses a server that is already running. The Playwright projects are desktop Chrome and a Pixel 7 viewport. Run the disposable core API and database first when the journey needs them. `theme.spec.ts` is the exception: it checks the visual layer with fixtures and does not need a chain.
+`npm run verify` runs lint, `vue-tsc`, and the unit tests. It does not run Playwright. `npm run test:e2e` selects the explicitly labelled paid phase (`test:e2e:paid`, 68 desktop Chrome/Pixel 7 cases). Run `test:e2e:research` separately for the 8 native-evidence/report cases. Each phase checks the selected fixture bundle and actual API chain before testing; they cannot share one chain configuration. Vite starts on port 5178 when free or reuses the configured server. Set `DACLIFY_TEST_API_PORT` and `DACLIFY_TEST_UI_PORT` together for other local ports. Follow core’s 0.5 upgrade runbook when selecting the matching private fixture bundle and restarting the local API. Both phases must pass before recording browser qualification. `npx playwright test` retains the raw glob for explicit diagnostic selections. `theme.spec.ts` checks the visual layer with HTTP fixtures and can be selected directly without a chain.
 
 Run `npx playwright test --config playwright.presets.config.ts` for the DAO purpose, participant and authority-rendering regressions. They mock HTTP responses and start their own Vite instance on port 5278 without reusing another session's server. They do not prove contract execution; core's isolated native/API suite covers that separately.
 

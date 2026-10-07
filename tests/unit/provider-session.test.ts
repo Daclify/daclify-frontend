@@ -49,6 +49,26 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 describe('provider sessions leave the user-controlled vault locked', () => {
+  it.each(['removed', 'replaced'] as const)(
+    'checks the actual unlocked key when its saved vault record was %s',
+    async (change) => {
+      const created = await createVault(password);
+      saveVault(created);
+      const owned = account(created.signingPublicKey);
+      vi.spyOn(api, 'challenge').mockResolvedValue({
+        id: randomUUID(),
+        message: 'fixture-message',
+        expires: new Date(Date.now() + 60_000).toISOString(),
+      });
+      vi.spyOn(api, 'login').mockResolvedValue(owned);
+      await unlockAndLogin(password);
+      const replacement = await createVault(password);
+      if (change === 'removed') localStorage.clear();
+      else saveVault(replacement);
+      acceptProviderSession(account(replacement.signingPublicKey), csrf);
+      expect(vaultUnlocked.value).toBe(false);
+    },
+  );
   it('stores the session token material without unlocking a locked vault', () => {
     lockVault();
     const identity = account(PrivateKey.generate('K1').toPublic().toString());

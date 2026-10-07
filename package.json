@@ -14,7 +14,9 @@
     "lint": "vitest run tests/unit/lint-policy.test.ts",
     "verify": "npm run lint && npm run typecheck && npm test",
     "test": "vitest run",
-    "test:e2e": "playwright test",
+    "test:e2e": "npm run test:e2e:paid",
+    "test:e2e:paid": "playwright test --config playwright.paid.config.ts",
+    "test:e2e:research": "playwright test --config playwright.research.config.ts",
     "format:check": "prettier --check \"**/*.{ts,vue,css,json}\"",
     "format": "prettier --write \"**/*.{ts,vue,css,json}\""
   },

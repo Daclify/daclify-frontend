@@ -11,6 +11,7 @@ import { createPinia } from 'pinia';
 const root = process.cwd();
 const server = await createServer({
   root,
+  cacheDir: '.artifacts/access-check-cache',
   configFile: false,
   plugins: [vue()],
   server: { middlewareMode: true, hmr: false },
@@ -375,6 +376,43 @@ await sending;
 await flush();
 console.log(JSON.stringify({ check: 'unmounted file preparation', uploads, markers }));
 
+// Exercise the real branding save while its content read is invalidated.
+const storageValues = new Map();
+globalThis.localStorage = {
+  getItem: (key) => storageValues.get(key) ?? null,
+  setItem: (key, value) => storageValues.set(key, value),
+};
+const session = await server.ssrLoadModule('/src/auth/session.ts');
+const { createVault } = await server.ssrLoadModule('/src/auth/vault.ts');
+const created = await createVault('disposable audit fixture password');
+session.saveVault(created);
+api.challenge = async () => ({ message: 'audit fixture' });
+api.login = async () => ({ id: 'fixture', signingKey: created.signingPublicKey });
+await session.unlockAndLogin('disposable audit fixture password');
+const finishBranding = [];
+let brandingWrites = 0;
+api.relay = () => {
+  brandingWrites++;
+  return new Promise((resolve) => { finishBranding.push(resolve); });
+};
+api.content = async (id) => ({ dao: reference(id), members: [], documents: [], keyGrants: [], epochs: [] });
+const brandingProps = reactive({ dao: { ...dao('1'), description: '' }, member: member('1') });
+const branding = mount(await component('/src/components/DaoBrandingPanel.vue'), brandingProps);
+await flush();
+const brandingForm = nodes(branding.container).find((node) => node.tag === 'form');
+const firstSave = brandingForm.props.onSubmit({ preventDefault() {} });
+const duplicateSave = brandingForm.props.onSubmit({ preventDefault() {} });
+await flush();
+brandingProps.dao = { ...brandingProps.dao, branding: { summary: 'Refreshed public summary' } };
+await flush();
+for (const finish of finishBranding) finish({ transactionId: 'ab'.repeat(32) });
+await Promise.all([firstSave, duplicateSave]);
+await flush();
+const brandingButton = nodes(branding.container).find((node) => node.tag === 'button');
+const brandingStillBusy = !!brandingButton.props.disabled;
+branding.app.unmount();
+session.lockVault();
+
 await server.close();
 assert.equal(staleDocument, false, 'A late DAO A response must not replace DAO B content');
 assert.equal(retainedPrivateDraft, false, 'Private drafts must not become public DAO drafts');
@@ -390,3 +428,5 @@ assert.equal(missingGrantEnabled, false, 'A missing installed action cannot enab
 
 assert.equal(uploads, 0, 'A pending file read must not upload after leaving its DAO');
 assert.equal(markers, 0, 'A pending file read must not save an upload under another account');
+assert.equal(brandingStillBusy, false, 'Refreshing branding during save must not permanently disable submission');
+assert.equal(brandingWrites, 1, 'Duplicate branding submissions must not create a second signed write');

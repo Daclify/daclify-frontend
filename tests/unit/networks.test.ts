@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { api } from '../../src/api/client';
 import {
   chooseNetwork,
   configureNetworks,
@@ -30,11 +31,38 @@ const storage = memory();
 Object.assign(globalThis, { localStorage: storage, sessionStorage: memory() });
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   storage.clear();
   configureNetworks(null);
 });
 
 describe('deployed network selection', () => {
+  it('does not accept a response after the selected API changes while the request is pending', async () => {
+    configureNetworks({
+      production: 'https://api.example',
+      testnet: 'https://testnet-api.example',
+    });
+    let finish: (response: Response) => void = () => {
+      throw new Error('NOT_PENDING');
+    };
+    vi.stubGlobal(
+      'fetch',
+      () =>
+        new Promise<Response>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const pending = api.signInOptions();
+    chooseNetwork('testnet');
+    finish(
+      Response.json({
+        telegram: { configured: false, username: null, oidc: false, miniApp: false },
+        email: { delivery: 'unavailable' },
+        passkey: { rpId: 'app.example' },
+      }),
+    );
+    await expect(pending).rejects.toThrow('WALLET_CONTEXT_CHANGED');
+  });
   it('keeps local requests on the relative API and the existing csrf key', () => {
     configureNetworks(null);
     expect(selectedNetwork()).toBeNull();

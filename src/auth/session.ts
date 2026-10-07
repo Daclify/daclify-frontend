@@ -131,8 +131,8 @@ function touch() {
 export function acceptProviderSession(account: Account, csrfToken: string): Account {
   if (!/^[A-Za-z0-9_-]{32,128}$/.test(csrfToken)) throw new Error('CSRF_REQUIRED');
   sessionStorage.setItem(csrfStorageKey(), csrfToken);
-  const saved = savedVault();
-  if (secrets && saved && saved.signingPublicKey !== account.signingKey) lockVault();
+  if (secrets && PrivateKey.from(secrets.signingKey).toPublic().toString() !== account.signingKey)
+    lockVault();
   return account;
 }
 export async function unlockAndLogin(password: string): Promise<Account> {

@@ -38,6 +38,27 @@ beforeEach(() => {
 });
 afterEach(() => vi.restoreAllMocks());
 describe('workspace refresh availability', () => {
+  it('cannot restore the previous account after sign-out during a session refresh', async () => {
+    const state = useWorkspace();
+    state.account = account;
+    let finish: (value: Account) => void = () => {
+      throw new Error('NOT_PENDING');
+    };
+    vi.mocked(api.me).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const pending = state.refresh();
+    await vi.waitFor(() => expect(api.me).toHaveBeenCalledTimes(1));
+    state.account = undefined;
+    finish(account);
+    await pending;
+    expect(state.account).toBeUndefined();
+    expect(api.memberships).not.toHaveBeenCalled();
+    expect(state.loading).toBe(false);
+  });
   it('keeps the current domain and membership mounted during a routine refresh', async () => {
     const state = useWorkspace();
     state.account = account;

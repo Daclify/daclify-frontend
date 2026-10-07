@@ -1,36 +1,46 @@
 import { useWorkspace } from '../state/workspace';
-import { computed, ref, watch } from 'vue';
+import { ref, watch } from 'vue';
 import type { UserMembership } from '@daclify/core-protocol';
 import type { instruction } from '@daclify/core-protocol/sdk';
 import { api } from '../api/client';
-import { vaultUnlocked, canUseVaultKey, relayWithVault } from './session';
+import { canUseVaultKey, relayWithVault } from './session';
+import { resolveApiUrl } from '../api/networks';
 import { nativeWallet, nativeGovernance } from './telos-zero';
 import { evmWallet, signEvmGovernance } from './telos-evm';
 export const selectedSigner = ref<'vault' | 'native' | 'evm'>('vault');
-export const evmAuthorizations = ref(
+const evmAuthorizations = ref(
   new Map<string, NonNullable<Awaited<ReturnType<typeof api.evmBinding>>['binding']>>(),
 );
+let authorizationRevision = 0;
 const memberKey = (member: UserMembership) =>
-  JSON.stringify([member.dao.chainId, member.dao.contract, member.dao.daoId, member.memberId]);
+  JSON.stringify([
+    useWorkspace().account?.id,
+    useWorkspace().network?.chainId,
+    useWorkspace().network?.runtime,
+    resolveApiUrl('/v1'),
+    member.dao.chainId,
+    member.dao.contract,
+    member.dao.daoId,
+    member.memberId,
+  ]);
 watch(
   evmWallet,
   () => {
+    authorizationRevision++;
     evmAuthorizations.value.clear();
   },
   { flush: 'sync' },
 );
 export async function refreshEvmAuthorization(member: UserMembership): Promise<void> {
+  const revision = ++authorizationRevision,
+    key = memberKey(member),
+    wallet = evmWallet.value;
   const { binding } = await api.evmBinding(member.dao.daoId, member.memberId);
-  if (binding) evmAuthorizations.value.set(memberKey(member), binding);
-  else evmAuthorizations.value.delete(memberKey(member));
+  if (revision !== authorizationRevision || wallet !== evmWallet.value || key !== memberKey(member))
+    return;
+  if (binding) evmAuthorizations.value.set(key, binding);
+  else evmAuthorizations.value.delete(key);
 }
-export const signingAvailable = computed(() =>
-  selectedSigner.value === 'vault'
-    ? vaultUnlocked.value
-    : selectedSigner.value === 'native'
-      ? !!nativeWallet.value
-      : !!evmWallet.value,
-);
 export function canSignMember(member: UserMembership | undefined): boolean {
   if (!member) return false;
   if (selectedSigner.value === 'vault') return canUseVaultKey(member.signingKey);

@@ -8,9 +8,15 @@ import {
   signEvmMessage,
   type EvmProvider,
 } from '../../src/auth/telos-evm';
-import { dispatchInstruction, selectedSigner } from '../../src/auth/action-signer';
+import {
+  dispatchInstruction,
+  selectedSigner,
+  refreshEvmAuthorization,
+  canSignMember,
+} from '../../src/auth/action-signer';
 import { api, friendlyError } from '../../src/api/client';
 import { makeInstruction, encodeAction, governanceTypedData } from '@daclify/core-protocol/sdk';
+import { UserMembershipSchema } from '@daclify/core-protocol';
 const address = '0x7e5f4552091a69125d5dfcb7b8c2659029395bdf',
   signature = '0x' + '11'.repeat(32) + '22'.repeat(32) + '1b';
 const dao = {
@@ -193,4 +199,56 @@ it('checks the original app context again after asynchronous binding lookup befo
 it('explains a rejected wallet context without exposing internal error details', () => {
   expect(friendlyError(new Error('WALLET_CONTEXT_CHANGED'))).toContain('Review the current action');
   expect(friendlyError(new Error('private diagnostic'))).not.toContain('private diagnostic');
+});
+
+const member = UserMembershipSchema.parse({
+  dao,
+  memberId: '1',
+  nonce: '0',
+  active: true,
+  admin: false,
+  reviewer: false,
+  credits: '0',
+  claim: '0',
+  stake: '0',
+  nativeAccount: '',
+  custody: 'user-controlled',
+});
+const activeBinding = {
+  binding: { member_id: '1', chain_id: '41', address: address.slice(2), epoch: '1', active: true },
+};
+it('does not let an older authorization lookup overwrite a newer revocation', async () => {
+  let finish: (value: Awaited<ReturnType<typeof api.evmBinding>>) => void = () => {
+    throw new Error('NOT_PENDING');
+  };
+  vi.spyOn(api, 'evmBinding')
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    )
+    .mockResolvedValueOnce({ binding: null });
+  const older = refreshEvmAuthorization(member);
+  await refreshEvmAuthorization(member);
+  finish(activeBinding);
+  await older;
+  expect(canSignMember(member)).toBe(false);
+});
+it('ignores binding data from the wallet that disconnected during lookup', async () => {
+  let finish: (value: Awaited<ReturnType<typeof api.evmBinding>>) => void = () => {
+    throw new Error('NOT_PENDING');
+  };
+  vi.spyOn(api, 'evmBinding').mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const pending = refreshEvmAuthorization(member);
+  const replacement = { provider, chainId: 41 as const, address };
+  evmWallet.value = replacement;
+  finish(activeBinding);
+  await pending;
+  expect(canSignMember(member)).toBe(false);
 });
