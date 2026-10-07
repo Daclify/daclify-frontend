@@ -6,9 +6,11 @@ export interface DeployedEndpoints {
 }
 
 let endpoints: DeployedEndpoints | null = null;
+let developmentOrigin: string | null = null;
 
 export function configureNetworks(value: DeployedEndpoints | null): void {
   endpoints = value;
+  developmentOrigin = null;
 }
 
 export function selectedNetwork(): DeployedNetwork | null {
@@ -24,13 +26,14 @@ export function chooseNetwork(name: DeployedNetwork): void {
 }
 
 export function csrfStorageKey(): string {
+  if (developmentOrigin) return `daclify.csrf.dev.${developmentOrigin}`;
   const selected = selectedNetwork();
   return selected ? `daclify.csrf.${selected}` : 'daclify.csrf';
 }
 
 export function resolveApiUrl(path: string): string {
   const selected = selectedNetwork();
-  if (!selected || !endpoints) return path;
+  if (!selected || !endpoints) return `${developmentOrigin ?? ''}${path}`;
   return `${endpoints[selected]}${path}`;
 }
 
@@ -47,6 +50,13 @@ export function parseNetworkFile(value: unknown): DeployedEndpoints | null {
 }
 
 export async function loadDeployedNetworks(): Promise<void> {
+  const development = import.meta.env.DEV ? viteValue('VITE_API_ORIGIN') : undefined;
+  if (development) {
+    const origin = publicHttpsOrigin(development);
+    configureNetworks(null);
+    developmentOrigin = origin;
+    return;
+  }
   const response = await fetch('/networks.json', { cache: 'no-store' });
   if (response.status === 404) {
     configureNetworks(viteNetworks());

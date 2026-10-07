@@ -4,6 +4,7 @@ import {
   chooseNetwork,
   configureNetworks,
   csrfStorageKey,
+  loadDeployedNetworks,
   parseNetworkFile,
   resolveApiUrl,
   selectedNetwork,
@@ -32,11 +33,53 @@ Object.assign(globalThis, { localStorage: storage, sessionStorage: memory() });
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   storage.clear();
   configureNetworks(null);
 });
 
 describe('deployed network selection', () => {
+  it('connects a development build directly to one HTTPS API and isolates its CSRF token', async () => {
+    vi.stubEnv('DEV', true);
+    vi.stubEnv('VITE_API_ORIGIN', 'https://testnet-api.example');
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    storage.setItem('daclify.network', 'production');
+    await loadDeployedNetworks();
+    expect(fetch).not.toHaveBeenCalled();
+    expect(selectedNetwork()).toBeNull();
+    expect(resolveApiUrl('/v1/me')).toBe('https://testnet-api.example/v1/me');
+    expect(csrfStorageKey()).toBe('daclify.csrf.dev.https://testnet-api.example');
+    expect(() => chooseNetwork('production')).toThrow('NETWORKS_UNCONFIGURED');
+  });
+
+  it('ignores the development API override in a deployed build', async () => {
+    vi.stubEnv('DEV', false);
+    vi.stubEnv('VITE_API_ORIGIN', 'https://unexpected-api.example');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        Response.json({
+          production: 'https://api.example',
+          testnet: 'https://testnet-api.example',
+        }),
+      ),
+    );
+    await loadDeployedNetworks();
+    expect(resolveApiUrl('/v1/me')).toBe('https://api.example/v1/me');
+  });
+
+  it.each([
+    'http://api.example',
+    'https://api.example/v1',
+    'https://user:secret@api.example',
+    'https://api.example?query=1',
+  ])('rejects an invalid development API origin: %s', async (origin) => {
+    vi.stubEnv('DEV', true);
+    vi.stubEnv('VITE_API_ORIGIN', origin);
+    vi.stubGlobal('fetch', vi.fn());
+    await expect(loadDeployedNetworks()).rejects.toThrow('NETWORKS_INVALID');
+  });
   it('does not accept a response after the selected API changes while the request is pending', async () => {
     configureNetworks({
       production: 'https://api.example',
