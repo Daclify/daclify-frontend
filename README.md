@@ -4,19 +4,22 @@ Vue 3 application for account onboarding, DAO creation, governance, works, payro
 
 The screen consumes the packed protocol from [daclify-backend-core](https://github.com/Daclify/daclify-backend-core) and the packed module SDK from [daclify-backend-modules](https://github.com/Daclify/daclify-backend-modules). Check those out as siblings and follow core’s [development bootstrap](https://github.com/Daclify/daclify-backend-core/blob/main/docs/development.md) before `npm ci` here. Deploy names, Stripe, and the API origins are specified in core’s operations guide. Locally that file is `../daclify-backend-core/docs/operations.md`.
 
-This is an incomplete development application. It is not a production launch.
+Current development version: **0.6.0-alpha.1**, consuming matching core/module protocol, SDK and help packages. This is an incomplete development application, not a qualified production launch. Follow the [0.6 upgrade guide](https://github.com/Daclify/daclify-backend-core/blob/main/docs/operations/upgrade-0.6.md) when updating an existing API/frontend pair.
 
 DAO creation now offers community, NGO / grants, gaming guild, team / cooperative and custom presets, independently of human, mixed or guarded-agent participation. Policy and participant controls are in workspace settings; Works funding can require an executable member vote. Native guardian actions are prepared for external signing. See core's [authority and merge notes](../daclify-backend-core/docs/dao-presets.md).
 
 ## Screens
 
-| Route                              | Screen                                                           |
-| ---------------------------------- | ---------------------------------------------------------------- |
-| `/`                                | Hub listing for the connected runtime                            |
-| `/create`                          | Create a DAO on that runtime                                     |
-| `/dao/:id` and `/dao/:id/:section` | Members, ballots, works, payroll, treasury, and documents        |
-| `/account`                         | The signed-in account, recovery, and the service-payment receipt |
-| `/docs` and `/docs/:topic`         | Versioned guides from the packed core and module bundles         |
+| Route                              | Screen                                                                     |
+| ---------------------------------- | -------------------------------------------------------------------------- |
+| `/`                                | DAO hub for the configured runtime                                         |
+| `/daclify`                         | Daclify DAO, platform fees and module catalogue administration             |
+| `/create`                          | DAO setup, deployment/preset choices and creation payment                  |
+| `/marketplace`                     | Modules, names and public service listings                                 |
+| `/dao/:id` and `/dao/:id/:section` | Members, ballots, works, grants, payroll, treasury, settings and documents |
+| `/account`                         | Sign-in methods, wallet bindings, encrypted vault/kit and payment receipts |
+| `/docs` and `/docs/:topic`         | Versioned core/module product guides and references                        |
+| `/status`                          | Safe configuration, capabilities and technical platform details            |
 
 The visual system and its checks are described in [docs/ui/ciq-alignment.md](docs/ui/ciq-alignment.md).
 
@@ -60,7 +63,7 @@ npm run verify
 npm run test:e2e
 ```
 
-`npm run verify` runs lint, `vue-tsc`, and the unit tests. It does not run Playwright. `npm run test:e2e` selects the explicitly labelled paid phase (`test:e2e:paid`, 68 desktop Chrome/Pixel 7 cases). Run `test:e2e:research` separately for the 8 native-evidence/report cases. Each phase checks the selected fixture bundle and actual API chain before testing; they cannot share one chain configuration. Vite starts on port 5178 when free or reuses the configured server. Set `DACLIFY_TEST_API_PORT` and `DACLIFY_TEST_UI_PORT` together for other local ports. Follow core’s 0.5 upgrade runbook when selecting the matching private fixture bundle and restarting the local API. Both phases must pass before recording browser qualification. `npx playwright test` retains the raw glob for explicit diagnostic selections. `theme.spec.ts` checks the visual layer with HTTP fixtures and can be selected directly without a chain.
+`npm run verify` runs lint, `vue-tsc`, and the unit tests. It does not run Playwright. `npm run test:e2e` selects the explicitly labelled paid phase (`test:e2e:paid`, desktop Chrome/Pixel 7 journeys). Run `test:e2e:research` separately for the 8 native-evidence/report cases. Each phase checks the selected fixture bundle and actual API chain before testing; they cannot share one chain configuration. Vite starts on port 5178 when free or reuses the configured server. Set `DACLIFY_TEST_API_PORT` and `DACLIFY_TEST_UI_PORT` together for other local ports. Follow core’s 0.5 upgrade runbook when selecting the matching private fixture bundle and restarting the local API. Both phases must pass before recording browser qualification. `npx playwright test` retains the raw glob for explicit diagnostic selections. `theme.spec.ts` checks the visual layer with HTTP fixtures and can be selected directly without a chain.
 
 Run `npx playwright test --config playwright.presets.config.ts` for the DAO purpose, participant and authority-rendering regressions. They mock HTTP responses and start their own Vite instance on port 5278 without reusing another session's server. They do not prove contract execution; core's isolated native/API suite covers that separately.
 
@@ -68,10 +71,22 @@ Run `npx playwright test --config playwright.presets.config.ts` for the DAO purp
 
 The browser holds user-controlled signing and decryption keys. It does not receive Pinata credentials, the relay key, or the Stripe secret. Private documents are encrypted before upload. The guides inside the app come from the packed protocol bundles, so a guide edited in core appears here after that package is rebuilt and this repository reinstalls it. Live Google and Telegram redirects, a native-wallet journey, and discovery across more than one runtime are not qualified in this application.
 
-## 0.5 account and module flows
+## Accounts, recovery and module flows
 
-Returning users can use paired email, Telegram, passkeys, Telos Zero or EOA wallets. Account pairing, DAO admission, governance authorization and private decryption are separate explicit steps. Workspace signing offers Daclify keys or an activated native/EOA wallet; private content still requires encryption keys. Provider availability follows service configuration.
+Returning users can use configured paired email, Telegram, passkeys, Telos Zero or EOA wallets. Complete Google browser login remains unfinished. Account pairing, DAO admission, governance authorization and private decryption are separate explicit steps. Workspace signing offers Daclify keys or an activated native/EOA wallet; private content still requires encryption keys. Provider availability follows service configuration.
 
 Discovery uses v3 public summaries/raster branding and URL filters. Works offers contribution agreements and authored public service listings; Grants handles application consent, eligibility and award votes; Members handles optional endorsement admission; Decide offers representative terms/elections; Treasury provides complete JSON/CSV spending exports with honest coverage/reconciliation indicators. Module actions are checked against this client’s pinned SDK version/hash, and Documentation displays matching package versions and generated request/action/configuration references.
+
+After database loss, a currently bound supported blockchain wallet can reconstruct wallet-only service access to its existing member. Account clearly labels this state and Create DAO requires a proved vault before checkout. Restore the original encrypted kit with its separate recovery credential, then approve attachment with the wallet; this preserves the recovered service UUID. New vault keys are for new DAOs/content and cannot decrypt old grants or change the existing contract encryption identity.
+
+One recovered administrator can manage the DAO; each other member needs their own current keys or bound wallet. A kit containing a rotated-out signing key does not regain governance by itself. Pairings live in PostgreSQL: a verified backup preserves them, otherwise each user pairs their methods again after recovery. Private documents additionally need original decryption keys and surviving grants/ciphertext. Follow [disaster recovery](https://github.com/Daclify/daclify-backend-core/blob/main/docs/disaster-recovery.md).
+
+For the self-contained recovery browser regressions, use a free port and select the file explicitly:
+
+```sh
+DACLIFY_TEST_UI_PORT=5208 npx playwright test tests/e2e/wallet-recovery.spec.ts
+```
+
+These desktop/mobile tests use provider/HTTP fixtures and client cryptography. They do not qualify a real Anchor or EVM wallet client. See [frontend documentation](docs/README.md) for ownership, help routes and remaining limits.
 
 Use core’s [execution ledger](../daclify-backend-core/docs/evidence/2026-10-07-research-execution.md) and [0.5 upgrade runbook](../daclify-backend-core/docs/operations/upgrade-0.5.md). Local fixtures do not qualify real provider credentials, wallet clients, durable custody or production deployment.

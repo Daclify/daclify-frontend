@@ -1,0 +1,23 @@
+# Frontend documentation
+
+Current application: **0.6.0-alpha.1**, with matching packed core/module help and SDK packages. See the [repository README](../README.md) for routes, local development, Netlify uploads, account recovery and test phases.
+
+## Help inside the application
+
+`/docs/:topic` renders producer-owned core/module bundles, searchable by topic and content. The intended hosted handbook is [app.daclify.com/docs](https://app.daclify.com/docs); the host must be deployed and configured separately. Contextual DAO links retain their DAO reference, and the handbook checks connected service/interface/module versions and code status. An unconnected guide or a displayed API package version is not deployed-contract verification.
+
+The recovery explanation is `/docs/recovery`; accounts, providers, documents, treasury, deployments and platform administration each have their own topic. Module guides live in Documentation, rather than a duplicate Resources entry. `/status` shows safe capability/configuration indicators and expandable technical details; `/daclify` provides the platform DAO controls with actual authorization checks.
+
+Edit product text in the owning backend repo's `docs/guides/topics.json`, regenerate its docs, rebuild the public development packages and reinstall consumers through core's sibling bootstrap. Do not hard-code a second copy of guides or API schemas here. Keep stable topic IDs so existing UI links continue to work. Core's [documentation index](https://github.com/Daclify/daclify-backend-core/blob/main/docs/README.md) explains generation and versioning.
+
+## Presentation and recovery
+
+[Visual system](ui/ciq-alignment.md) documents the supplied CIQ/MIQ design source and Daclify adaptations. [Original visual plan](superpowers/plans/2026-10-05-ciq-visual-alignment.md) is a historical design record.
+
+The browser owns user-controlled signing/decryption keys and keeps only encrypted local envelopes at rest. Provider sessions and wallet-only access do not unlock private content. Original-kit recovery, separate wallet approval, stale-account handling and creation gating are covered by unit/crypto and desktop/mobile recovery regressions. One user's kit never restores other members' keys. See core's [recovery runbook](https://github.com/Daclify/daclify-backend-core/blob/main/docs/disaster-recovery.md) for per-user requirements and lost social pairings.
+
+## Verification and limits
+
+`npm run verify` checks source lint, Vue templates/TypeScript and unit tests; `npm run build` creates the static app. Playwright is separate, with paid/research native fixture phases and explicit mock-only recovery/presentation selections described in the README. [Requirements](releases/requirements.json), [changelog](../CHANGELOG.md) and core's [recovery evidence](https://github.com/Daclify/daclify-backend-core/blob/main/docs/evidence/2026-10-07-wallet-recovery.md) record actual coverage.
+
+Real provider consent, Google browser login, real Anchor/EVM client qualification, independent multi-runtime routing, durable managed custody and hosted backup/proxy operations remain open. A successful local build or a configured provider does not close those gates. The current Vite build also reports a chunk-size warning; no measured bundling optimization is claimed.

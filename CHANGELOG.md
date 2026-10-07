@@ -4,6 +4,8 @@
 
 Wallet-only account and creation flows explain recovery/decryption boundaries. Recover or create an encrypted vault and attach it to the same profile with separate wallet approval. Updated core/modules 0.6 development artifacts and browser/crypto regressions.
 
+Updated READMEs, documentation navigation, recovery/storage limits and coordinated 0.6 upgrade instructions. Generated help and development package integrities are refreshed together; older dated evidence remains historical.
+
 Development prerelease; production release gates remain in force.
 
 ## 0.2.0-alpha.1 — Purpose presets and participant modes
