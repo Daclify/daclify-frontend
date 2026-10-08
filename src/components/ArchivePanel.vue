@@ -125,6 +125,20 @@ async function createExport() {
     if (request === sequence) busy.value = false;
   }
 }
+async function backupExport(item: z.infer<typeof ArchiveRoutes.export.response>) {
+  if (busy.value || !item.manifest || !props.member.active || !props.member.admin) return;
+  const request = ++sequence;
+  busy.value = true;
+  error.value = '';
+  try {
+    const result = await api.archiveBackup(props.dao, item.id, item.manifest.commitment);
+    if (request === sequence) saveStatus(result);
+  } catch (cause) {
+    if (request === sequence) error.value = friendlyError(cause);
+  } finally {
+    if (request === sequence) busy.value = false;
+  }
+}
 async function refreshExport(id: string) {
   const request = ++sequence;
   busy.value = true;
@@ -296,6 +310,23 @@ const reasons = {
           Manifest SHA-256: <code class="archive-commitment">{{ item.manifest.commitment }}</code
           >. Keep this commitment separately with your backup. It is not yet anchored on chain.
         </p>
+        <p v-if="item.backup" class="notice">
+          Encrypted backup restored and verified
+          {{ new Date(item.backup.verifiedAt).toLocaleString() }}. Backup SHA-256:
+          <code class="archive-commitment">{{ item.backup.commitment }}</code
+          >. This does not authorize pruning.
+        </p>
+        <p v-else-if="item.state === 'verified' && !item.backupSupported" class="field-help">
+          The operator has not configured an independent encrypted backup store. Download your
+          recovery bundle and keep it separately.
+        </p>
+        <button
+          v-if="item.state === 'verified' && item.backupSupported && !item.backup"
+          :disabled="busy"
+          @click="backupExport(item)"
+        >
+          Create and verify encrypted backup
+        </button>
         <button class="secondary" :disabled="busy" @click="refreshExport(item.id)">
           Refresh export status
         </button>
@@ -310,8 +341,8 @@ const reasons = {
     <p class="field-help">
       This exports ordinary poll votes and a verified manifest. It does not include account recovery
       keys, social-login pairings or original document files. Save the recovery bundle off the
-      server. Independent backup approval, pruning and historic browsing are still being
-      implemented; exporting does not delete anything.
+      server. Native approval, pruning and historic browsing are still being implemented; exporting
+      does not delete anything.
     </p>
     <RouterLink to="/docs/archive" class="help-link">Archive and recovery guide ↗</RouterLink>
   </section>

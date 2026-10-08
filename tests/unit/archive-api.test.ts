@@ -52,3 +52,48 @@ it('rejects foreign results, fake prune authorization and shorter retention', as
   await expect(api.archivePreview({ ...request, retentionSeconds: 1 })).rejects.toThrow();
   expect(fetcher).not.toHaveBeenCalled();
 });
+it('requests only the reviewed manifest backup and refuses another DAO or backup commitment', async () => {
+  vi.stubGlobal('sessionStorage', { getItem: () => null });
+  configureNetworks(null);
+  const id = '00000000-0000-4000-8000-000000000001',
+    commitment = 'cd'.repeat(32),
+    status = {
+      id,
+      dao,
+      state: 'verified',
+      maximumStoredBytes: '4096',
+      heldBytes: '0',
+      verifiedChunks: 0,
+      totalChunks: 0,
+      manifest: {
+        cid: 'bafkreiaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        bytes: 188,
+        commitment,
+      },
+      pruningAuthorized: false,
+      backupSupported: true,
+      backup: {
+        formatVersion: 1,
+        storeId: 'fixture-backup',
+        keyId: 'fixture-key',
+        commitment: 'ef'.repeat(32),
+        manifestCommitment: commitment,
+        bytes: '2048',
+        verifiedAt: '2026-10-08T12:00:00.000Z',
+      },
+    };
+  const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(status));
+  vi.stubGlobal('fetch', fetcher);
+  expect(await api.archiveBackup(dao, id, commitment)).toEqual(status);
+  expect(fetcher.mock.calls[0]?.[0]).toContain(ArchiveRoutes.backup.path.replace(':id', id));
+  expect(fetcher.mock.calls[0]?.[1]?.body).toBe(
+    JSON.stringify({ expectedManifestCommitment: commitment }),
+  );
+  for (const wrong of [
+    { ...status, dao: { ...dao, contract: 'daoother' } },
+    { ...status, backup: { ...status.backup, manifestCommitment: 'ab'.repeat(32) } },
+  ]) {
+    fetcher.mockResolvedValueOnce(Response.json(wrong));
+    await expect(api.archiveBackup(dao, id, commitment)).rejects.toThrow('DAO_REFERENCE');
+  }
+});

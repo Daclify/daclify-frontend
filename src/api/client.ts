@@ -425,6 +425,22 @@ export const api = {
       throw new ApiFailure('DAO_REFERENCE');
     return result;
   },
+  archiveBackup: async (dao: DaoRef, id: string, expectedManifestCommitment: string) => {
+    const input = ArchiveRoutes.backup.input.parse({ expectedManifestCommitment });
+    const result = await request(
+      ArchiveRoutes.backup.path.replace(':id', z.uuid().parse(id)),
+      ArchiveRoutes.backup.response,
+      input,
+      60000,
+    );
+    if (
+      result.id !== id ||
+      daoPaymentKey(result.dao) !== daoPaymentKey(dao) ||
+      result.backup?.manifestCommitment !== expectedManifestCommitment
+    )
+      throw new ApiFailure('DAO_REFERENCE');
+    return result;
+  },
   archiveBundle: async (dao: DaoRef, id: string) => {
     const result = await request(
       ArchiveRoutes.bundle.path.replace(':id', z.uuid().parse(id)),
@@ -764,6 +780,13 @@ export function friendlyError(error: unknown): string {
       ARCHIVE_REQUEST_CONFLICT:
         'This export request was already used for different details. Preview again before creating a new request.',
       ARCHIVE_NOT_ELIGIBLE: 'Every selected poll must be eligible before exporting.',
+      ARCHIVE_BACKUP_NOT_CONFIGURED:
+        'The operator has not configured an independent encrypted backup store.',
+      ARCHIVE_BACKUP_UNAVAILABLE:
+        'The encrypted backup could not be verified. Its receipt was not changed. Ask the operator to check backup storage and keys.',
+      ARCHIVE_BACKUP_CONFLICT:
+        'This export already has a different immutable backup receipt. Operator review is required.',
+      ARCHIVE_MANIFEST_CHANGED: 'The manifest changed. Reload the export before creating a backup.',
       ARCHIVE_NOT_READY: 'The recovery bundle is still being verified. Refresh its export status.',
       ARCHIVE_NOT_FOUND: 'This export could not be found on the selected operator.',
       ARCHIVE_BUNDLE_UNAVAILABLE:

@@ -27,3 +27,5 @@ Resources includes administrator-approved ordinary-poll exports using existing h
 ## Connected payments and hosting
 
 See core [payment operations](../../daclify-backend-core/docs/operations/connected-payments.md) and app `/docs/shared-hosting`, `/docs/payments`, `/docs/independent-operators`. Independent API discovery now has issuer/code/ABI and current-registration checks; actual operator browser cookies and external providers still need qualification.
+
+Resources → Archive now shows the configured encrypted backup option, exact manifest commitment and saved restore-verification receipt. Backup creation and reload are covered by desktop/mobile browser tests; native approval/pruning are not yet enabled. Operator key/path details never enter this UI.

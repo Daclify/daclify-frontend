@@ -369,11 +369,33 @@ test('previews eligibility, requires export consent and downloads a verified rec
     saved[0] = ArchiveRoutes.reconcile.response.parse({
       ...saved[0],
       state: 'verified',
+      backupSupported: true,
       heldBytes: '0',
       manifest: {
         cid: 'bafkreiaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
         bytes: bytes.length,
         commitment: Checksum256.hash(bytes).toString(),
+      },
+    });
+    await route.fulfill({ json: saved[0] });
+  });
+  await page.route('**' + ArchiveRoutes.backup.path.replace(':id', id), async (route) => {
+    if (!saved[0]?.manifest) throw new Error('Missing reviewed manifest');
+    const input = ArchiveRoutes.backup.input.parse(
+      JSON.parse(route.request().postData() ?? 'null'),
+    );
+    expect(input.expectedManifestCommitment).toBe(saved[0].manifest.commitment);
+    saved[0] = ArchiveRoutes.backup.response.parse({
+      ...saved[0],
+      backupSupported: true,
+      backup: {
+        formatVersion: 1,
+        storeId: 'owned-browser-backup-fixture',
+        keyId: 'fixture-key',
+        commitment: 'cd'.repeat(32),
+        manifestCommitment: input.expectedManifestCommitment,
+        bytes: '4096',
+        verifiedAt: '2026-10-08T12:00:00.000Z',
       },
     });
     await route.fulfill({ json: saved[0] });
@@ -416,12 +438,21 @@ test('previews eligibility, requires export consent and downloads a verified rec
   await exportButton.click();
   await expect(page.getByText('Export ' + id, { exact: false })).toBeVisible();
   await page.getByRole('button', { name: 'Refresh export status', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'Create and verify encrypted backup', exact: true })
+    .click();
+  await expect(
+    page.getByText('Encrypted backup restored and verified', { exact: false }),
+  ).toBeVisible();
   const downloading = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Download recovery bundle', exact: true }).click();
   const download = await downloading;
   expect(download.suggestedFilename()).toContain(id);
   await page.reload();
   await expect(page.getByText('Export ' + id, { exact: false })).toBeVisible();
+  await expect(
+    page.getByText('Encrypted backup restored and verified', { exact: false }),
+  ).toBeVisible();
   await expect(
     page.getByText('DAO-level observation is disabled on this deployment.', { exact: false }),
   ).toBeVisible();

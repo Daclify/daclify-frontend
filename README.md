@@ -106,3 +106,5 @@ Development resource views show per-DAO verified/held storage usage and allow th
 Resources also supports approved ordinary-poll exports, saved progress after reload and verified recovery downloads from existing hosting capacity. Store the displayed manifest SHA-256 separately with the bundle. Original account keys/login pairings/document files are excluded. Independent backup attestation, native anchors/pruning and historic browsing remain unfinished; see [export operations](../daclify-backend-core/docs/archive-exports.md).
 
 The RAM readout separates DAO counters/purchased credits from whole-account native figures and keeps unqualified totals unknown. Configured budgets do not imply backed allocations. See [RAM observation](../daclify-backend-core/docs/ram-accounting.md); funded pools, completion reserves and enforcement remain outstanding.
+
+Resources → Archive now shows the configured encrypted backup option, exact manifest commitment and saved restore-verification receipt. Backup creation and reload are covered by desktop/mobile browser tests; native approval/pruning are not yet enabled. Operator key/path details never enter this UI.
