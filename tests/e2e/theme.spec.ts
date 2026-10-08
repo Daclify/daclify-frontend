@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { readFileSync } from 'node:fs';
 import AxeBuilder from '@axe-core/playwright';
 import { ApiRoutes, ErrorSchema, NetworkSchema } from '@daclify/core-protocol';
 
@@ -118,6 +119,35 @@ test('community cards and documentation fit a narrow viewport', async ({ page })
   await expect(page.locator('.docs-content')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+});
+
+test('license guidance and source links are reachable from the app', async ({ page }) => {
+  await page.getByRole('link', { name: 'Source & license', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Source and license', exact: true }),
+  ).toBeVisible();
+  await expect(page.locator('.docs-content')).toContainText('AGPL-3.0-only');
+  await expect(page.getByRole('link', { name: 'Core source', exact: true })).toHaveAttribute(
+    'href',
+    'https://github.com/Daclify/daclify-backend-core',
+  );
+  await expect(page.getByRole('link', { name: 'Module source', exact: true })).toHaveAttribute(
+    'href',
+    'https://github.com/Daclify/daclify-backend-modules',
+  );
+  await expect(page.getByRole('link', { name: 'Frontend source', exact: true })).toHaveAttribute(
+    'href',
+    'https://github.com/Daclify/daclify-frontend',
+  );
+  const fontLicense = await page.request.get('/third-party-licenses/inter-OFL-1.1.txt');
+  expect(fontLicense.ok()).toBe(true);
+  expect(await fontLicense.text()).toContain('SIL OPEN FONT LICENSE');
+  const appLicense = await page.request.get('/LICENSE');
+  expect(appLicense.ok()).toBe(true);
+  expect(await appLicense.text()).toBe(readFileSync('LICENSE', 'utf8'));
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(
+    false,
+  );
 });
 
 test('network errors stay readable and retry remains reachable with reduced motion', async ({

@@ -221,6 +221,7 @@ onMounted(() => {
       <footer class="page-footer">
         <span>Built for communities that make things happen.</span
         ><RouterLink to="/docs/privacy">Privacy &amp; trust</RouterLink>
+        <RouterLink to="/docs/license">Source &amp; license</RouterLink>
       </footer>
     </div>
   </div>

@@ -94,3 +94,9 @@ These desktop/mobile tests use provider/HTTP fixtures and client cryptography. T
 Use core’s [execution ledger](../daclify-backend-core/docs/evidence/2026-10-07-research-execution.md) and [0.5 upgrade runbook](../daclify-backend-core/docs/operations/upgrade-0.5.md). Local fixtures do not qualify real provider credentials, wallet clients, durable custody or production deployment.
 
 `npm run test:e2e:payments` starts an owned Vite server on 5218 and checks deployment choices and subscription consent on desktop/mobile with HTTP fixtures and axe. It performs no live Stripe or chain writes. Existing paid/research fixture suites require matching native/API releases; new shared-creation tests use the free path.
+
+## License
+
+First-party code, contracts, SDKs and documentation are licensed under
+**AGPL-3.0-only**. See [LICENSE](LICENSE) and [licensing and source obligations](LICENSING.md).
+Third-party files retain their own licenses. Contributions remain owned by their authors.

@@ -160,6 +160,15 @@ onUnmounted(() => {
         </p>
         <h2>{{ active.title }}</h2>
         <p v-for="paragraph in active.paragraphs" :key="paragraph">{{ paragraph }}</p>
+        <ul v-if="active.id === 'license'">
+          <li><a href="https://github.com/Daclify/daclify-backend-core">Core source</a></li>
+          <li><a href="https://github.com/Daclify/daclify-backend-modules">Module source</a></li>
+          <li><a href="https://github.com/Daclify/daclify-frontend">Frontend source</a></li>
+          <li>
+            <a href="/LICENSE">AGPL version 3 license text</a>
+          </li>
+          <li><a href="/third-party-licenses/inter-OFL-1.1.txt">Inter font license</a></li>
+        </ul>
       </template>
       <template v-else-if="route.params.topic"
         ><h2>Guide unavailable</h2>
