@@ -6,6 +6,8 @@ The screen consumes the packed protocol from [daclify-backend-core](https://gith
 
 Current development version: **0.7.0-alpha.1**, consuming matching core/module protocol, SDK and help packages. Shared creation is free for 10 active-member slots, with administrator-approved graduated monthly capacity above that. Independent contract/server and own-portal choices say Contact for pricing. Optional DAO Connect merchant payments and hosting are separate. Review [upgrade 0.7](../daclify-backend-core/docs/operations/upgrade-0.7.md) and [payment operations](../daclify-backend-core/docs/operations/connected-payments.md). Development checks do not establish live provider/client qualification.
 
+The resource-billing-archives development branch includes exact native/card RAM consent, separate prepaid storage, whole-file retention priorities, verified Archive backups/approvals/manual batches, merged anchored history, public logo/cover upload and hosted-reference recovery after SQL loss. Uploading an image and signing its public card update are distinct. Recovery verifies ownership and bytes and restores no Stripe or social-login records. Recorded RAM allocations are visible; enforcement and obligation-specific completion holds remain unfinished. Destructive retention and production pruning are disabled until migration, full restoration and provider/release qualification pass. Run `npm run test:e2e:resources` only against its owned local fixture.
+
 DAO creation now offers community, NGO / grants, gaming guild, team / cooperative and custom presets, independently of human, mixed or guarded-agent participation. Policy and participant controls are in workspace settings; Works funding can require an executable member vote. Native guardian actions are prepared for external signing. See core's [authority and merge notes](../daclify-backend-core/docs/dao-presets.md).
 
 ## Screens
@@ -95,20 +97,16 @@ Use core’s [execution ledger](../daclify-backend-core/docs/evidence/2026-10-07
 
 `npm run test:e2e:payments` starts an owned Vite server on 5218 and checks deployment choices and subscription consent on desktop/mobile with HTTP fixtures and axe. It performs no live Stripe or chain writes. Existing paid/research fixture suites require matching native/API releases; new shared-creation tests use the free path.
 
+## Resources and recovery development branch
+
+Resources shows exact DAO/payer RAM counters, manual identity/activity/completion allocations, separately purchased capacity, native/card RAM quotes and consent, prepaid pinned capacity and original grace deadlines. Configured budgets do not guarantee completion or enforce growth limits. Cleanup is disabled by default and its actual operator setting is displayed. See [RAM accounting](../daclify-backend-core/docs/ram-accounting.md) and [storage accounting](../daclify-backend-core/docs/storage-accounting.md).
+
+Archive supports previews, explicit export consent, resumable exports, independent encrypted backup receipts, native availability, signed approval/revocation, manual source-owned vote batches, merged history and recovery downloads without the original SQL export index. Store the manifest SHA-256 separately. Original kits, pairings and file blobs are excluded from archive exports. Bounded hosted-reference recovery rebuilds verified pin ownership/bytes, not billing or missing files. Public card images require explicit public consent and separate signed publication; saved public requests retry with the same ID after response loss/reload.
+
+The owned native database-loss drill and actual UI crypto verified original-kit recovery of a retained private file; protected document pruning, full legacy upgrade and live provider qualification remain open. Automatic included/slot grants, completion holds, quota enforcement, reminders/alerts, funded gateway allowance and the 0.8 rollout remain unfinished. Use `npm run test:e2e:resources` with explicitly owned matching API/native/PostgreSQL fixtures; HTTP provider responses are not live Stripe/Pinata proof. See the [execution record](../daclify-backend-core/docs/evidence/2026-10-08-resource-execution.md).
+
 ## License
 
 First-party code, contracts, SDKs and documentation are licensed under
 **AGPL-3.0-only**. See [LICENSE](LICENSE) and [licensing and source obligations](LICENSING.md).
 Third-party files retain their own licenses. Contributions remain owned by their authors.
-
-Development resource views show per-DAO verified/held storage usage and allow the linked Daclify DAO administrator to sign revision-checked RAM/storage policy updates. Decimal fee/price fields remain strings until exact producer parsing. Resources shows approved prepaid storage, immutable accepted pricing and original grace deadlines. Fresh administrator signing control and exact recurring consent are required; an HTTP-fixture browser flow does not qualify live Stripe. Purchased RAM and automatic cleanup remain unfinished; policy changes alone do not start charges. The owned resource/browser fixture is checked by `playwright.resources.config.ts`.
-
-Resources also supports approved ordinary-poll exports, saved progress after reload and verified recovery downloads from existing hosting capacity. Store the displayed manifest SHA-256 separately with the bundle. Original account keys/login pairings/document files are excluded. Independent backup attestation, native anchors/pruning and historic browsing remain unfinished; see [export operations](../daclify-backend-core/docs/archive-exports.md).
-
-The RAM readout separates DAO counters/purchased credits from whole-account native figures and keeps unqualified totals unknown. Configured budgets do not imply backed allocations. See [RAM observation](../daclify-backend-core/docs/ram-accounting.md); funded pools, completion reserves and enforcement remain outstanding.
-
-Resources → Archive now shows the configured encrypted backup option, exact manifest commitment and saved restore-verification receipt. Backup creation and reload are covered by desktop/mobile browser tests; native approval/pruning are not yet enabled. Operator key/path details never enter this UI.
-
-The resource-billing-archives development branch supports exact native Archive availability attestation and signed administrator approval/revocation. Destructive pruning remains disabled pending source-owned eligibility and recovery qualification. This is development-branch functionality, not a production deployment.
-
-The development branch now includes bounded source-owned ordinary-poll vote pruning, trusted prior source-schema reads, on-chain archive discovery/recovery without the SQL export index, and administrator whole-file retention priorities. The guarded cleanup engine has local race/recovery tests but is not enabled at application startup. Backed RAM enforcement, legacy migration, full private/history restoration and live-provider/release qualification remain open.

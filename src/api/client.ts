@@ -27,6 +27,8 @@ import {
   daoPaymentKey,
   HostedUploadSchema,
   HostedIntentSchema,
+  BrandingUploadSchema,
+  type BrandingUpload,
   ErrorSchema,
   type HostedUpload,
   type Account,
@@ -594,6 +596,39 @@ export const api = {
       HostedUploadSchema.parse(input),
       60000,
     ),
+  uploadBranding: async (value: BrandingUpload) => {
+    const input = BrandingUploadSchema.parse(value);
+    assertOperatorDao(input.dao);
+    const result = await request(
+      ApiRoutes.brandingUpload.path,
+      ApiRoutes.brandingUpload.response,
+      input,
+      60000,
+    );
+    if (
+      daoPaymentKey(result.dao) !== daoPaymentKey(input.dao) ||
+      result.requestId !== input.requestId ||
+      result.slot !== input.slot ||
+      result.image.bytes !== input.bytes ||
+      result.image.commitment !== input.commitment ||
+      result.image.mediaType !== input.mediaType
+    )
+      throw new ApiFailure('UPLOAD_RECEIPT');
+    return result;
+  },
+  recoverStorage: async (value: z.input<typeof ApiRoutes.storageRecover.input>) => {
+    const input = ApiRoutes.storageRecover.input.parse(value);
+    assertOperatorDao(input.dao);
+    const result = await request(
+      ApiRoutes.storageRecover.path,
+      ApiRoutes.storageRecover.response,
+      input,
+      60000,
+    );
+    if (daoPaymentKey(result.dao) !== daoPaymentKey(input.dao) || result.kind !== input.kind)
+      throw new ApiFailure('DAO_REFERENCE');
+    return result;
+  },
   uploadStatus: (requestId: string) =>
     request(
       ApiRoutes.uploadStatus.path.replace(':requestId', z.uuid().parse(requestId)),
@@ -930,6 +965,12 @@ export function friendlyError(error: unknown): string {
       RESULT_LIMIT:
         'This deployment exceeds the current read limit. Configure an indexed read service.',
       STORAGE_UNCONFIGURED: 'Hosted storage is not configured on this service.',
+      PENDING_REQUEST_STORAGE:
+        'This browser could not save the upload for safe retry. Free tab storage or choose a smaller image before uploading.',
+      STORAGE_RECOVERY_UNSUPPORTED:
+        'This provider cannot verify hosted ownership for recovery. Ask the operator to restore its database or provider configuration.',
+      STORAGE_RECOVERY_COVERAGE:
+        'The surviving reference page could not be verified completely. Retry or ask the operator to investigate.',
       STRIPE_NOT_CONFIGURED: 'Card payments are not configured on this service.',
       NAMES_UNCONFIGURED: 'The Telos nameservice is not on this chain yet.',
       CARD_UNAVAILABLE: 'This name has no card price on chain.',

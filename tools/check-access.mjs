@@ -408,7 +408,7 @@ await flush();
 for (const finish of finishBranding) finish({ transactionId: 'ab'.repeat(32) });
 await Promise.all([firstSave, duplicateSave]);
 await flush();
-const brandingButton = nodes(branding.container).find((node) => node.tag === 'button');
+const brandingButton = nodes(branding.container).find((node) => node.tag === 'button' && textOf(node).includes('Sign and update card'));
 const brandingStillBusy = !!brandingButton.props.disabled;
 branding.app.unmount();
 session.lockVault();

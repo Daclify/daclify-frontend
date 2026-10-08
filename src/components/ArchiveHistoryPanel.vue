@@ -128,8 +128,11 @@ onBeforeUnmount(() => sequence++);
     <div v-if="page" class="archive-history-table">
       <h3>Archived votes · poll #{{ page.parentId }}</h3>
       <p>
-        Verified archive coverage. These are original on-chain vote records; live rows are not
-        repeated here.
+        {{
+          page.liveRowsIncluded
+            ? 'Verified archive and current on-chain rows, merged by stable vote ID.'
+            : 'Verified archive coverage. Current live rows are unavailable on this deployment.'
+        }}
       </p>
       <table>
         <caption class="sr-only">

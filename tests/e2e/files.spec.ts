@@ -172,6 +172,124 @@ test('shows one shared storage object for two published document references', as
   );
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 });
+test('uploads a public card image for a private DAO, retries the same request and signs publication separately', async ({
+  page,
+}) => {
+  await createWorkspace(page, true);
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  const panel = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: 'Public directory card', exact: true }) });
+  const image = Buffer.from('iVBORw0KGgo=', 'base64');
+  await panel
+    .getByLabel('Image file', { exact: true })
+    .setInputFiles({ name: 'public-logo.png', mimeType: 'image/png', buffer: image });
+  const upload = panel.getByRole('button', { name: 'Upload and verify image', exact: true });
+  await expect(upload).toBeDisabled();
+  await panel
+    .getByRole('checkbox', {
+      name: 'I understand this image is public and unencrypted, including for a private DAO.',
+    })
+    .check();
+  let requestId: string | undefined;
+  await page.route('**/v1/branding/uploads', async (route) => {
+    const input = ApiRoutes.brandingUpload.input.parse(
+      JSON.parse(route.request().postData() ?? '{}'),
+    );
+    if (!requestId) {
+      requestId = input.requestId;
+      const response = await route.fetch();
+      expect(response.status()).toBe(200);
+      await route.abort();
+    } else {
+      expect(input.requestId).toBe(requestId);
+      await route.continue();
+    }
+  });
+  await upload.click();
+  const retry = panel.getByRole('button', { name: 'Retry the same upload', exact: true });
+  await expect(retry).toBeEnabled();
+  await page.reload();
+  await expect(retry).toBeEnabled();
+  await expect(
+    panel.getByRole('button', { name: 'Sign and update card', exact: true }),
+  ).toBeDisabled();
+  await page.getByRole('link', { name: 'Your account', exact: true }).click();
+  await page.getByLabel('Vault password', { exact: true }).fill(password);
+  await page.getByRole('button', { name: 'Unlock and sign in', exact: true }).click();
+  await expect(page).toHaveURL(/\/dao\/\d+\/settings$/);
+  await retry.click();
+  await expect(
+    panel.getByText('Image verified and hosted. Sign the card update to publish this selection.'),
+  ).toBeVisible();
+  await panel
+    .getByLabel('Card summary', { exact: true })
+    .fill('Private documents, public community identity.');
+  const saved = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === '/v1/relay' && response.request().method() === 'POST',
+  );
+  await panel.getByRole('button', { name: 'Sign and update card', exact: true }).click();
+  expect((await saved).status()).toBe(200);
+  await expect(
+    panel.getByRole('button', { name: 'Sign and update card', exact: true }),
+  ).toBeEnabled();
+  await expect(panel.getByLabel('Logo', { exact: true })).not.toHaveValue('');
+  await page.reload();
+  await expect(panel.getByLabel('Card summary', { exact: true })).toHaveValue(
+    'Private documents, public community identity.',
+  );
+  await expect(panel.getByLabel('Logo', { exact: true })).not.toHaveValue('');
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test('recovers bounded hosted references, displays uncertain files and distinguishes recovery from paid billing', async ({
+  page,
+}) => {
+  await createWorkspace(page);
+  const panel = page
+    .locator('aside')
+    .filter({ has: page.getByRole('heading', { name: 'Hosted storage', exact: true }) });
+  await panel.getByText('Recover hosted records after database loss', { exact: true }).click();
+  let batch = 0;
+  await page.route('**' + ApiRoutes.storageRecover.path, async (route) => {
+    const input = ApiRoutes.storageRecover.input.parse(
+      JSON.parse(route.request().postData() ?? 'null'),
+    );
+    expect(input.kind).toBe('document-version');
+    expect(input.after).toBe(batch === 0 ? '0' : '26');
+    await route.fulfill({
+      json: ApiRoutes.storageRecover.response.parse({
+        dao: input.dao,
+        kind: input.kind,
+        next: batch++ === 0 ? '26' : null,
+        billingRestored: false,
+        objects: [
+          {
+            referenceKey: 'chain:7:1:1',
+            cid: 'bafkreiaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            state: batch === 1 ? 'recovered' : 'unavailable',
+          },
+        ],
+      }),
+    });
+  });
+  await panel.getByRole('button', { name: 'Verify surviving hosted records', exact: true }).click();
+  await expect(
+    panel.getByText('1 references checked. Paid billing has not been restored.', { exact: true }),
+  ).toBeVisible();
+  await expect(panel.getByText('chain:7:1:1: recovered', { exact: true })).toBeVisible();
+  await panel.getByRole('button', { name: 'Verify next batch', exact: true }).click();
+  await expect(panel.getByText('chain:7:1:1: unavailable', { exact: true })).toBeVisible();
+  await expect(panel.getByRole('button', { name: 'Verify next batch', exact: true })).toHaveCount(
+    0,
+  );
+  await panel.getByLabel('References to recover').selectOption('branding');
+  await expect(panel.getByText('chain:7:1:1: unavailable', { exact: true })).toHaveCount(0);
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
 test('requires exact recurring storage consent and shows a pending checkout without granting capacity', async ({
   page,
 }) => {

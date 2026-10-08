@@ -162,6 +162,12 @@ onBeforeUnmount(() => sequence++);
             platform category {{ bytes(payer.usage.platform) }}.
           </p>
           <p>Purchased credit {{ bytes(payer.purchasedBytes) }}.</p>
+          <p v-if="payer.allocation">
+            Recorded allocation: activity {{ bytes(payer.allocation.activity) }} · identity
+            {{ bytes(payer.allocation.identity) }} · completion budget
+            {{ bytes(payer.allocation.completion) }}. Quota enforcement is disabled; this is not a
+            guarantee that outstanding work has reserved completion RAM.
+          </p>
           <details>
             <summary>Whole payer account</summary>
             <p>

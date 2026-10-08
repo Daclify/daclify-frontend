@@ -20,7 +20,8 @@
     "test:e2e:paid": "playwright test --config playwright.paid.config.ts",
     "test:e2e:research": "playwright test --config playwright.research.config.ts",
     "format:check": "prettier --check \"**/*.{ts,vue,css,json}\"",
-    "format": "prettier --write \"**/*.{ts,vue,css,json}\""
+    "format": "prettier --write \"**/*.{ts,vue,css,json}\"",
+    "test:e2e:resources": "playwright test --config playwright.resources.config.ts"
   },
   "dependencies": {
     "@daclify/core-protocol": "file:../daclify-backend-core/.artifacts/daclify-core-protocol-0.7.0-alpha.1.tgz",
