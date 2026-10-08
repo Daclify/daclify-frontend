@@ -116,3 +116,33 @@ it('decrypts a verified archived private file with the original recovered kit an
   corruptChunk[corruptChunk.length - 1] = (corruptChunk.at(-1) ?? 0) ^ 1;
   expect(() => decodeArchiveChunk(corruptChunk, archiveDomain, tree.root)).toThrow();
 });
+it('a future-only member can open a new epoch but cannot decrypt retained old private files', async () => {
+  const dao = {
+      chainId: 'ab'.repeat(32),
+      contract: 'daclifycore',
+      daoId: '2',
+      interfaceVersion: 1 as const,
+    },
+    oldEpoch = crypto.getRandomValues(new Uint8Array(32)),
+    futureEpoch = crypto.getRandomValues(new Uint8Array(32)),
+    member = await createVault('future-only disposable password');
+  const prepared = await preparePrivateFile(
+    new TextEncoder().encode('Old private archive'),
+    { version: 1, filename: 'old.txt', mediaType: 'text/plain' },
+    oldEpoch,
+    contentDomain(dao, '9', 1, '1'),
+  );
+  const grantDomain = epochGrantDomain(dao, '2', '10'),
+    grant = await createEpochGrant(member.encryptionPublicKey, futureEpoch, grantDomain),
+    keys = await recoverVault(member.recoveryEnvelope, member.recoveryCredential),
+    opened = await openCommittedEpoch(
+      keys.encryptionPrivateKey,
+      grant,
+      grantDomain,
+      await sha256Hex(futureEpoch),
+    );
+  expect(opened).toEqual(futureEpoch);
+  await expect(
+    openPrivateFile(decodeStoredBytes(prepared.content), opened, contentDomain(dao, '9', 1, '1')),
+  ).rejects.toThrow();
+});

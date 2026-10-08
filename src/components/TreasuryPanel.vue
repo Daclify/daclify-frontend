@@ -217,7 +217,16 @@ async function exit() {
         maxlength="13"
         spellcheck="false"
       /><label for="exit-amount">Withdrawal amount ({{ dao.token.symbol }})</label
-      ><input id="exit-amount" v-model="amount" inputmode="decimal" required /><button
+      ><input id="exit-amount" v-model="amount" inputmode="decimal" required />
+      <button
+        type="button"
+        class="secondary"
+        :disabled="busy || (kind === 'withdraw' ? member.claim : member.stake) === '0'"
+        @click="amount = units(kind === 'withdraw' ? member.claim : member.stake)"
+      >
+        Use full {{ kind === 'withdraw' ? 'payment claim' : 'stake balance' }}
+      </button>
+      <button
         :disabled="
           busy || !signerReady || (kind === 'withdraw' ? member.claim : member.stake) === '0'
         "

@@ -30,7 +30,11 @@ import {
 } from '../src/content/files';
 const input: unknown = JSON.parse(readFileSync(0, 'utf8'));
 const args = z
-  .object({ mode: z.enum(['prepare', 'sign', 'verify']), directory: z.string(), dao: DaoRefSchema })
+  .object({
+    mode: z.enum(['prepare', 'sign', 'verify', 'file']),
+    directory: z.string(),
+    dao: DaoRefSchema,
+  })
   .parse(input);
 const directory = resolve(args.directory);
 if (!directory.includes('/daclify-native-restore-'))
@@ -94,6 +98,28 @@ if (args.mode === 'prepare') {
           .toString(),
       }),
     );
+  } else if (args.mode === 'file') {
+    const value = z
+      .object({
+        epoch: RuntimeTableSchemas.epochs,
+        grant: RuntimeTableSchemas.keygrants,
+        documentId: z.string(),
+        version: z.int().positive(),
+      })
+      .parse(input);
+    const key = await openCommittedEpoch(
+      keys.encryptionPrivateKey,
+      JSON.parse(value.grant.envelope),
+      epochGrantDomain(args.dao, value.epoch.epoch, '1'),
+      value.epoch.commitment,
+    );
+    const file = await preparePrivateFile(
+      plaintext,
+      { version: 1, filename: 'private-agreement.txt', mediaType: 'text/plain' },
+      key,
+      contentDomain(args.dao, value.documentId, value.version, value.epoch.epoch),
+    );
+    process.stdout.write(JSON.stringify(file));
   } else {
     const value = z
       .object({

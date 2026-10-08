@@ -131,7 +131,7 @@ onBeforeUnmount(() => sequence++);
     <template v-if="usage">
       <p v-if="usage.totalObservedBytes !== null" role="status">
         <strong>{{ bytes(usage.totalObservedBytes) }}</strong> recorded for this DAO across its
-        payer contracts.
+        metered Daclify contract records.
       </p>
       <p v-else class="notice" role="status">
         A complete DAO RAM total is unavailable.
@@ -168,6 +168,15 @@ onBeforeUnmount(() => sequence++);
             {{ bytes(payer.allocation.completion) }}. Quota enforcement is disabled; this is not a
             guarantee that outstanding work has reserved completion RAM.
           </p>
+          <p
+            v-if="payer.entitlement && payer.entitlement.identity_per_slot !== '0'"
+            class="field-help"
+          >
+            Identity allowance granted once for {{ payer.entitlement.slots }} funded member slots at
+            {{ bytes(payer.entitlement.identity_per_slot) }} per slot, under accepted policy
+            {{ payer.entitlement.policy_revision }}. Renewals and replacement members do not grant
+            those bytes again. This is distinct from the current monthly membership limit.
+          </p>
           <details>
             <summary>Whole payer account</summary>
             <p>
@@ -189,6 +198,11 @@ onBeforeUnmount(() => sequence++);
         Configured policy budgets {{ bytes(usage.policy.includedActivityBytes) }} activity and
         {{ bytes(usage.policy.identityBytesPerSlot) }} per approved member slot. These values do not
         prove a funded allocation.
+      </p>
+      <p class="field-help">
+        Token contracts can create or change sender-paid RAM outside these counters. Full resource
+        accounting and protected payout reserves remain under qualification; growth limits are not
+        active.
       </p>
       <p class="field-help">
         Live account reads completed {{ new Date(usage.read.completedAt).toLocaleString() }}. They

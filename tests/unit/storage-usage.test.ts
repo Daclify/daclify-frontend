@@ -108,7 +108,7 @@ it('reads canonical billing status and rejects another deployment', async () => 
   vi.stubGlobal('sessionStorage', { getItem: () => null });
   const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(billing));
   vi.stubGlobal('fetch', fetcher);
-  expect(await api.storageBilling(dao)).toEqual(billing);
+  expect(await api.storageBilling(dao)).toEqual({ ...billing, notices: [], noticeDelivery: false });
   expect(fetcher.mock.calls[0]?.[0]).toContain(StorageBillingRoutes.storageBillingStatus.path);
   vi.stubGlobal(
     'fetch',

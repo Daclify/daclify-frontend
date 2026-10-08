@@ -6,6 +6,9 @@ import { ModuleApiRoutes } from '@daclify/modules';
 import { DecideTableSchemas } from '@daclify/modules/sdk';
 import {
   ArchiveRoutes,
+  buildArchiveTree,
+  encodeArchiveChunk,
+  archiveAttestation,
   archiveSourceSchema,
   archiveManifestForPlan,
   encodeArchiveManifest,
@@ -422,6 +425,7 @@ test('previews eligibility, requires export consent and downloads a verified rec
               ? { identity: '1000', activity: '200', retained: '300', platform: '0' }
               : null,
             purchasedBytes: '4096',
+            entitlement: { policy_revision: '1', identity_per_slot: '2048', slots: 10 },
             globalQuotaBytes: '1000000',
             globalUsedBytes: '10000',
           },
@@ -441,6 +445,7 @@ test('previews eligibility, requires export consent and downloads a verified rec
     );
     expect(input.dao).toEqual(dao);
     expect(input.retentionSeconds).toBe(90 * 86400);
+    if (!('ballotIds' in input)) throw new Error('Poll fixture received document selection');
     const id = input.ballotIds[0];
     if (!id) throw new Error('Preview ID missing');
     latest = ArchiveRoutes.preview.response.parse({
@@ -467,6 +472,7 @@ test('previews eligibility, requires export consent and downloads a verified rec
       JSON.parse(route.request().postData() ?? 'null'),
     );
     expect(input.selection.dao).toEqual(dao);
+    if (!('ballotIds' in input.selection)) throw new Error('Poll fixture received document export');
     expect(input.selection.ballotIds).toEqual(['8']);
     expect(input.selectionCommitment).toBe(archiveExportConsent(latest).selectionCommitment);
     const status = ArchiveRoutes.export.response.parse({
@@ -902,7 +908,9 @@ test('curates whole storage objects with explicit capacity and preserves selecti
   await choices.nth(1).check();
   await expect(save).toBeDisabled();
   await expect(
-    panel.getByText('Select fewer whole files to fit the free allowance.'),
+    panel.getByText('Select fewer files or complete archive bundles to fit the free allowance.', {
+      exact: false,
+    }),
   ).toBeVisible();
   await choices.nth(1).uncheck();
   await choices.nth(2).check();
@@ -912,6 +920,217 @@ test('curates whole storage objects with explicit capacity and preserves selecti
   await page.reload();
   await expect(choices.nth(0)).toBeChecked();
   await expect(choices.nth(2)).toBeChecked();
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test('previews document protection and signs restoration of verified original archive rows', async ({
+  page,
+}) => {
+  test.setTimeout(60000);
+  await createWorkspace(page, true);
+  for (const version of [1, 2]) {
+    await page.getByLabel('Document ID', { exact: true }).fill('901');
+    await page.getByLabel('JSON content', { exact: true }).fill(JSON.stringify({ version }));
+    await page.getByRole('button', { name: 'Encrypt and publish JSON', exact: true }).click();
+    await expect(page.getByText(`Version ${version}`, { exact: true })).toBeVisible();
+  }
+  const link = page.getByRole('link', { name: 'Manage resources →', exact: true }),
+    href = await link.getAttribute('href');
+  if (!href) throw new Error('Resource link missing');
+  const dao = DaoRefSchema.parse(
+    JSON.parse(new URL(href, 'http://localhost').searchParams.get('dao') ?? 'null'),
+  );
+  const content = ApiRoutes.content.response.parse(
+      await (await page.request.get(ApiRoutes.content.path.replace(':id', dao.daoId))).json(),
+    ),
+    original = content.documents.find((d) => d.document_id === '901' && d.version === 1);
+  if (!original) throw new Error('Original document missing');
+  const source = archiveSourceSchema('document-versions'),
+    domain = {
+      format_version: 1 as const,
+      chain_id: dao.chainId,
+      runtime: dao.contract,
+      dao_id: dao.daoId,
+      source: dao.contract,
+      code_hash: source.codeHash,
+      abi_hash: source.rawAbiHash,
+      schema_hash: source.schemaHash,
+      table: 'documents',
+      scope: dao.daoId,
+      chunk_ordinal: 0,
+      leaf_count: 1,
+    },
+    rows = [
+      {
+        primaryKey: original.id,
+        packed: Serializer.encode({
+          abi: ABI.from(runtimeAbi),
+          type: 'document_record',
+          object: original,
+        }).hexString,
+      },
+    ],
+    tree = buildArchiveTree(domain, rows),
+    chunkBytes = encodeArchiveChunk(domain, rows),
+    cid = 'bafkreiaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+  const plan = ArchiveRoutes.preview.response.parse({
+      dao,
+      source: { account: dao.contract, codeHash: source.codeHash, abiHash: source.rawAbiHash },
+      snapshot: {
+        blockNumber: 1,
+        blockId: '00000001' + 'ab'.repeat(28),
+        timestamp: '2026-01-01T00:00:00Z',
+      },
+      pruningAuthorized: false,
+      grossRamBytes: '1',
+      blocked: [],
+      families: [
+        {
+          kind: 'document-versions',
+          parentId: '901',
+          grossRamBytes: '1',
+          chunks: [{ domain, root: tree.root, bytes: chunkBytes.length, rows }],
+        },
+      ],
+    }),
+    manifest = archiveManifestForPlan(plan, [
+      { cid, bytes: chunkBytes.length, commitment: Checksum256.hash(chunkBytes).toString() },
+    ]),
+    manifestBytes = encodeArchiveManifest(manifest),
+    commitment = Checksum256.hash(manifestBytes).toString(),
+    bundle = {
+      id: crypto.randomUUID(),
+      manifest,
+      manifestFile: {
+        cid,
+        bytes: manifestBytes.length,
+        commitment,
+        content: Buffer.from(manifestBytes).toString('base64'),
+      },
+      chunks: [{ cid, content: Buffer.from(chunkBytes).toString('base64') }],
+    };
+  const native = archiveAttestation(
+      bundle,
+      {
+        formatVersion: 1,
+        storeId: 'fixture',
+        keyId: 'fixture',
+        commitment: 'cd'.repeat(32),
+        manifestCommitment: commitment,
+        bytes: '4096',
+        verifiedAt: '2026-10-08T12:00:00Z',
+      },
+      7776000,
+    ),
+    anchor = RuntimeTableSchemas.archives.parse({
+      id: '1',
+      dao_id: dao.daoId,
+      manifest: native.manifest,
+      manifest_cid: cid,
+      manifest_bytes: manifestBytes.length,
+      manifest_commitment: commitment,
+      descriptor_commitment: manifest.descriptorCommitment,
+      backup_commitment: 'cd'.repeat(32),
+      verifier: 'relay',
+      retention_seconds: 7776000,
+      attested_at: 1,
+      approved_by: '1',
+      approved_at: 1,
+      revoked: false,
+      attestation_transaction: 'ab'.repeat(32),
+      approval_transaction: 'cd'.repeat(32),
+    });
+  // Archive availability/history are HTTP fixtures; restoration uses the actual native exact-row guard.
+  await page.route('**' + ArchiveRoutes.history.path + '?*', (route) =>
+    route.fulfill({ json: { dao, anchors: [anchor], next: null } }),
+  );
+  await page.route('**' + ArchiveRoutes.recover.path, (route) => route.fulfill({ json: bundle }));
+  await page.route('**' + ArchiveRoutes.preview.path, async (route) => {
+    const selection = ArchiveRoutes.preview.input.parse(
+      JSON.parse(route.request().postData() ?? 'null'),
+    );
+    if (!('documentRows' in selection)) throw new Error('Expected document selection');
+    expect(selection.documentRows).toEqual([original.id]);
+    await route.fulfill({
+      json: {
+        ...plan,
+        families: [],
+        blocked: [{ parentId: original.id, reason: 'referenced-version' }],
+      },
+    });
+  });
+  await link.click();
+  await page.getByLabel('Archive content', { exact: true }).selectOption('document-versions');
+  await page.getByLabel('Document version', { exact: true }).selectOption(original.id);
+  await page.getByRole('button', { name: 'Preview archive eligibility', exact: true }).click();
+  await expect(
+    page.getByText(
+      'An agreement, grant, election, admission or another protected record requires this version.',
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Create archive export', exact: true }),
+  ).toHaveCount(0);
+  await page
+    .getByRole('button', { name: 'Browse verified document versions', exact: true })
+    .click();
+  const restore = page.getByRole('button', { name: 'Sign and restore this version', exact: true });
+  await restore.click();
+  await expect(page.getByRole('button', { name: 'Restored on chain', exact: true })).toBeDisabled();
+  await page.getByRole('link', { name: 'Back to DAO documents', exact: true }).click();
+  await page.getByText('Version history & integrity', { exact: true }).click();
+  await page.getByRole('button', { name: 'Decrypt document 901 version 1', exact: true }).click();
+  await expect(page.getByText('{\"version\":1}', { exact: true })).toBeVisible();
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test('shows the original storage grace deadline and separates mail delivery from in-app notices', async ({
+  page,
+}) => {
+  await createWorkspace(page);
+  const link = page.getByRole('link', { name: 'Manage resources →', exact: true }),
+    href = await link.getAttribute('href');
+  if (!href) throw new Error('Resource link missing');
+  const dao = DaoRefSchema.parse(
+      JSON.parse(new URL(href, 'http://fixture').searchParams.get('dao') ?? 'null'),
+    ),
+    paidThrough = new Date(Date.now() - 86400000).toISOString(),
+    graceEndsAt = new Date(Date.now() + 29 * 86400000).toISOString();
+  await page.route('**/v1/storage/billing?*', (route) =>
+    route.fulfill({
+      json: {
+        dao,
+        configured: true,
+        currentPricing: DEFAULT_STORAGE_PRICING,
+        funding: {
+          state: 'grace',
+          pricing: DEFAULT_STORAGE_PRICING,
+          units: 1,
+          paidThrough,
+          graceEndsAt,
+          uploadCapacityBytes: '100000000',
+          retainedCapacityBytes: '1100000000',
+        },
+        notices: [{ stage: 'grace-started', paidThrough, graceEndsAt }],
+        noticeDelivery: false,
+        subscription: null,
+      },
+    }),
+  );
+  await link.click();
+  await expect(
+    page.getByText('Storage is in its payment grace period.', { exact: false }),
+  ).toBeVisible();
+  await expect(page.getByText('Original grace deadline:', { exact: false })).toBeVisible();
+  await expect(
+    page.getByText(
+      'Email reminders are disabled on this operator; check Resources for payment and retention notices.',
+      { exact: true },
+    ),
+  ).toBeVisible();
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });

@@ -3,6 +3,8 @@ import { ModuleApiRoutes, VERSION as MODULE_VERSION, type ModuleState } from '@d
 import { ArchiveRoutes } from '@daclify/modules/archive';
 import { z } from 'zod';
 import {
+  ContentPageQuerySchema,
+  type ContentPageQuery,
   ServiceCheckoutSchema,
   ServiceReceiptSchema,
   ServiceReceiptsSchema,
@@ -312,6 +314,14 @@ export const api = {
       ApiRoutes.branding.path.replace(':id', IdSchema.parse(daoId)).replace(':slot', slot),
       ApiRoutes.branding.response,
     ),
+  contentPage: (daoId: string, value: ContentPageQuery = {}) => {
+    const input = ContentPageQuerySchema.parse(value),
+      query = new URLSearchParams();
+    for (const [key, cursor] of Object.entries(input))
+      if (cursor !== undefined) query.set(key, cursor);
+    const path = ApiRoutes.content.path.replace(':id', IdSchema.parse(daoId));
+    return request(path + (query.size ? '?' + query.toString() : ''), ApiRoutes.content.response);
+  },
   content: async (daoId: string) => {
     const path = ApiRoutes.content.path.replace(':id', IdSchema.parse(daoId));
     const all = await request(path, ApiRoutes.content.response);

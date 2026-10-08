@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { ref, watch, onBeforeUnmount } from 'vue';
-import { daoPaymentKey, type DaoRef, type UserMembership } from '@daclify/core-protocol';
+import {
+  daoPaymentKey,
+  type DaoRef,
+  type UserMembership,
+  type DaoContent,
+} from '@daclify/core-protocol';
 import {
   ArchiveRoutes,
   MIN_ARCHIVE_RETENTION_SECONDS,
@@ -18,6 +23,9 @@ import { encodeAction, makeInstruction } from '@daclify/core-protocol/sdk';
 import { downloadFile } from '../content/files';
 const props = defineProps<{ dao: DaoRef; member: UserMembership }>(),
   workspace = useWorkspace();
+const family = ref<'ordinary-poll-votes' | 'document-versions'>('ordinary-poll-votes'),
+  documents = ref<DaoContent['documents']>([]),
+  documentsNext = ref<string | null>(null);
 const ballots = ref<ModuleState['ballots']>([]),
   next = ref<string | null>(null),
   selected = ref(''),
@@ -80,6 +88,33 @@ async function load(cursor?: string) {
     if (request === sequence) busy.value = false;
   }
 }
+async function loadDocuments(cursor?: string) {
+  const request = ++sequence;
+  busy.value = true;
+  error.value = '';
+  try {
+    const result = await api.contentPage(
+      props.dao.daoId,
+      cursor
+        ? { documents: cursor, members: 'done', epochs: 'done', keyGrants: 'done' }
+        : { members: 'done', epochs: 'done', keyGrants: 'done' },
+    );
+    if (daoPaymentKey(result.dao) !== daoPaymentKey(props.dao)) throw new Error('DAO_REFERENCE');
+    if (request === sequence) {
+      documents.value = cursor
+        ? [
+            ...documents.value,
+            ...result.documents.filter((d) => !documents.value.some((old) => old.id === d.id)),
+          ]
+        : result.documents;
+      documentsNext.value = result.next.documents;
+    }
+  } catch (cause) {
+    if (request === sequence) error.value = friendlyError(cause);
+  } finally {
+    if (request === sequence) busy.value = false;
+  }
+}
 async function preview() {
   if (!selected.value || !props.member.active || !props.member.admin) return;
   const request = ++sequence;
@@ -91,11 +126,11 @@ async function preview() {
     const retentionSeconds = ArchivePreviewRequestSchema.shape.retentionSeconds.parse(
       Number(retentionDays.value) * 86400,
     );
-    const result = await api.archivePreview({
-      dao: props.dao,
-      ballotIds: [selected.value],
-      retentionSeconds,
-    });
+    const selection =
+      family.value === 'document-versions'
+        ? { dao: props.dao, documentRows: [selected.value], retentionSeconds }
+        : { dao: props.dao, ballotIds: [selected.value], retentionSeconds };
+    const result = await api.archivePreview(selection);
     if (request === sequence) {
       plan.value = result;
       consent.value = false;
@@ -103,11 +138,7 @@ async function preview() {
         result.families.length && !result.blocked.length
           ? {
               requestId: crypto.randomUUID(),
-              selection: {
-                dao: props.dao,
-                ballotIds: [selected.value],
-                retentionSeconds,
-              },
+              selection,
               ...archiveExportConsent(result),
             }
           : undefined;
@@ -307,6 +338,9 @@ watch(
     sequence++;
     selected.value = '';
     ballots.value = [];
+    documents.value = [];
+    documentsNext.value = null;
+    family.value = 'ordinary-poll-votes';
     next.value = null;
     plan.value = undefined;
     consent.value = false;
@@ -320,9 +354,20 @@ watch(
   },
   { immediate: true },
 );
+function changeFamily() {
+  selected.value = '';
+  clearPreview();
+  if (family.value === 'document-versions' && props.member.active && props.member.admin)
+    void loadDocuments();
+}
 watch(retentionDays, clearPreview);
 onBeforeUnmount(() => sequence++);
 const reasons = {
+  'reference-backfill-required':
+    'The operator must complete source reference backfill before document pruning.',
+  'latest-version': 'The latest version stays on chain.',
+  'referenced-version':
+    'An agreement, grant, election, admission or another protected record requires this version.',
   'protected-family': 'This ballot controls work, grants or an election. Its records stay live.',
   'ballot-active': 'Finalize the ballot before planning its archive.',
   'terminal-marker-required':
@@ -340,13 +385,20 @@ const reasons = {
   >
     <h2 id="archive-heading">Archive exports</h2>
     <p>
-      Check finalized ordinary polls against the 90-day retention rule. Previewing does not delete
-      records, unpin files or authorize a charge.
+      Check finalized ordinary polls or old document versions against the 90-day retention rule.
+      Previewing does not delete records, unpin files or authorize a charge.
     </p>
     <p v-if="error" role="alert" class="alert">{{ error }}</p>
     <p v-if="busy" role="status">Checking archive progress…</p>
     <form @submit.prevent="preview">
-      <label for="archive-ballot">Finalized ballot</label>
+      <label for="archive-family">Archive content</label>
+      <select id="archive-family" v-model="family" :disabled="busy" @change="changeFamily">
+        <option value="ordinary-poll-votes">Finalized ordinary polls</option>
+        <option value="document-versions">Old document versions</option>
+      </select>
+      <label for="archive-ballot">{{
+        family === 'document-versions' ? 'Document version' : 'Finalized ballot'
+      }}</label>
       <select
         id="archive-ballot"
         v-model="selected"
@@ -354,11 +406,39 @@ const reasons = {
         required
         @change="clearPreview"
       >
-        <option value="" disabled>Choose a finalized ballot</option>
-        <option v-for="ballot in ballots" :key="ballot.id" :value="ballot.id">
-          Ballot #{{ ballot.id }}
+        <option value="" disabled>
+          {{
+            family === 'document-versions'
+              ? 'Choose a document version'
+              : 'Choose a finalized ballot'
+          }}
         </option>
+        <template v-if="family === 'document-versions'"
+          ><option v-for="document in documents" :key="document.id" :value="document.id">
+            Document #{{ document.document_id }} · version {{ document.version }} · row #{{
+              document.id
+            }}
+          </option></template
+        >
+        <template v-else
+          ><option v-for="ballot in ballots" :key="ballot.id" :value="ballot.id">
+            Ballot #{{ ballot.id }}
+          </option></template
+        >
       </select>
+      <button
+        v-if="family === 'document-versions' && documentsNext"
+        class="secondary"
+        type="button"
+        :disabled="busy"
+        @click="loadDocuments(documentsNext)"
+      >
+        Load more document versions
+      </button>
+      <p v-if="family === 'document-versions'" class="field-help">
+        Latest and referenced versions stay on chain. Private content remains encrypted; original
+        files stay pinned and retain normal storage charges.
+      </p>
       <label for="archive-retention">Retention delay (days, minimum 90)</label>
       <input
         id="archive-retention"
@@ -372,10 +452,20 @@ const reasons = {
       />
       <button :disabled="busy || !selected">Preview archive eligibility</button>
     </form>
-    <button v-if="next" class="secondary" :disabled="busy" @click="load(next)">
+    <button
+      v-if="family === 'ordinary-poll-votes' && next"
+      class="secondary"
+      :disabled="busy"
+      @click="load(next)"
+    >
       Load more finalized ballots
     </button>
-    <p v-if="!busy && !ballots.length && !error">No finalized ballots on this page.</p>
+    <p v-if="!busy && !error && family === 'ordinary-poll-votes' && !ballots.length">
+      No finalized ballots on this page.
+    </p>
+    <p v-if="!busy && !error && family === 'document-versions' && !documents.length">
+      No document versions on this page.
+    </p>
     <template v-if="plan">
       <p v-for="blocked in plan.blocked" :key="blocked.parentId" class="notice" role="status">
         {{ reasons[blocked.reason] }}
@@ -477,8 +567,8 @@ const reasons = {
               :disabled="busy"
               @change="approvalConsent = approvalConsent === item.id ? null : item.id"
             />
-            I approve this exact manifest and backup for manual pruning of its ordinary poll votes
-            after {{ item.retentionSeconds / 86400 }} days and all availability checks.
+            I approve this exact manifest and backup for manual pruning of its eligible source
+            records after {{ item.retentionSeconds / 86400 }} days and all availability checks.
           </label>
           <button
             v-if="
@@ -528,11 +618,12 @@ const reasons = {
       Load more exports
     </button>
     <p class="field-help">
-      This exports ordinary poll votes and a verified manifest. It does not include account recovery
-      keys, social-login pairings or original document files. Save the recovery bundle off the
-      server. On-chain approval is separate from exporting. Source pruning requires separate
-      operator qualification and a manual batch request. Exporting and signing an approval do not
-      delete anything. Archived records remain available through verified on-chain history.
+      This exports the selected poll votes or document versions and a verified manifest. It does not
+      include account recovery keys, social-login pairings or original document files. Save the
+      recovery bundle off the server. On-chain approval is separate from exporting. Source pruning
+      requires separate operator qualification and a manual batch request. Exporting and signing an
+      approval do not delete anything. Archived records remain available through verified on-chain
+      history.
     </p>
     <RouterLink to="/docs/archive" class="help-link">Archive and recovery guide ↗</RouterLink>
   </section>

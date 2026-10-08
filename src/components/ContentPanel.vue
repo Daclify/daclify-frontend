@@ -503,14 +503,29 @@ async function retrieve(document: DaoContent['documents'][number]) {
         >
         <details>
           <summary>Version history &amp; integrity</summary>
-          <p
+          <div
             v-for="version in content?.documents.filter(
               (d) => d.document_id === document.document_id,
             )"
             :key="version.id"
             class="mono wrap"
           >
-            Version {{ version.version }} · {{ version.commitment }}
+            <p>Version {{ version.version }} · {{ version.commitment }}</p>
+            <pre v-if="!version.cid && version.envelope_version === 0" class="wrap">{{
+              version.metadata
+            }}</pre>
+            <template v-else-if="!version.cid && version.envelope_version === 1"
+              ><button
+                class="secondary"
+                :disabled="busy || !vaultUnlocked || !member?.active"
+                @click="decrypt(version)"
+              >
+                Decrypt document {{ version.document_id }} version {{ version.version }}
+              </button>
+              <pre v-if="decrypted.has(version.id)" class="wrap">{{
+                decrypted.get(version.id)
+              }}</pre>
+            </template>
             <button
               v-if="version.cid"
               class="secondary"
@@ -519,7 +534,7 @@ async function retrieve(document: DaoContent['documents'][number]) {
             >
               Download document {{ version.document_id }} version {{ version.version }}
             </button>
-          </p>
+          </div>
         </details>
       </article>
     </div>

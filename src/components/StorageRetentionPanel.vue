@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { ref, computed, watch, onBeforeUnmount } from 'vue';
-import { ApiRoutes, type DaoRef, type UserMembership } from '@daclify/core-protocol';
+import {
+  ApiRoutes,
+  selectRetainedObjects,
+  type DaoRef,
+  type UserMembership,
+} from '@daclify/core-protocol';
 import type { z } from 'zod';
 import { api, friendlyError } from '../api/client';
 import { useWorkspace } from '../state/workspace';
@@ -16,16 +21,29 @@ let sequence = 0;
 const visible = computed(
     () => status.value?.objects.slice(page.value * 25, page.value * 25 + 25) ?? [],
   ),
+  selection = computed(() => {
+    if (!status.value) return null;
+    try {
+      return selectRetainedObjects(
+        status.value.objects.map((o) => ({ id: o.id, bytes: o.bytes, createdAt: o.createdAt })),
+        status.value.funding.pricing.freeBytes,
+        keep.value,
+        status.value.bundles.map((b) => b.objectIds),
+        status.value.objects.filter((o) => o.releasedAt).map((o) => o.id),
+      );
+    } catch {
+      return null;
+    }
+  }),
   selectedBytes = computed(
     () =>
       status.value?.objects.reduce(
-        (n, o) => n + (keep.value.includes(o.id) ? BigInt(o.bytes) : 0n),
+        (sum, o) => sum + (selection.value?.includes(o.id) ? BigInt(o.bytes) : 0n),
         0n,
       ) ?? 0n,
   ),
-  fits = computed(
-    () => !!status.value && selectedBytes.value <= BigInt(status.value.funding.pricing.freeBytes),
-  );
+  fits = computed(() => selection.value !== null);
+
 async function load() {
   const request = ++sequence;
   busy.value = true;
@@ -96,14 +114,15 @@ onBeforeUnmount(() => sequence++);
     <h2 id="storage-retention-heading">Choose files to keep</h2>
     <p>
       Prioritize whole files for the free allowance if paid storage ends. Remaining space keeps
-      newer files first. A shared CID counts once for your DAO.
+      newer files first. A shared CID counts once for your DAO. Archive manifests and chunks stay
+      together; selecting either includes the whole bundle.
     </p>
     <p v-if="error" role="alert" class="error">{{ error }}</p>
     <p v-if="busy" role="status">Checking storage retention…</p>
     <p v-if="saved" role="status">Your file priorities were saved.</p>
     <template v-if="status"
       ><p>
-        Selected {{ selectedBytes.toLocaleString() }} of
+        Retention plan: {{ selectedBytes.toLocaleString() }} of
         {{ BigInt(status.funding.pricing.freeBytes).toLocaleString() }} free bytes.
         {{
           status.cleanup === 'disabled'
@@ -114,7 +133,10 @@ onBeforeUnmount(() => sequence++);
       <p v-if="status.funding.graceEndsAt">
         Original grace deadline: {{ new Date(status.funding.graceEndsAt).toLocaleString() }}.
       </p>
-      <p v-if="!fits" role="alert">Select fewer whole files to fit the free allowance.</p>
+      <p v-if="!fits" role="alert">
+        Select fewer files or complete archive bundles to fit the free allowance. A bundle with
+        ended hosting cannot be retained as a partial archive.
+      </p>
       <form @submit.prevent="save">
         <ul class="plain-list">
           <li v-for="object in visible" :key="object.id">

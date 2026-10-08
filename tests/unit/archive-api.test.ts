@@ -99,3 +99,21 @@ it('requests only the reviewed manifest backup and refuses another DAO or backup
     await expect(api.archiveBackup(dao, id, commitment)).rejects.toThrow('DAO_REFERENCE');
   }
 });
+it('keeps legacy poll requests unchanged and accepts bounded document selections without guessing fields', async () => {
+  vi.stubGlobal('sessionStorage', { getItem: () => null });
+  configureNetworks(null);
+  const fetcher = vi
+    .fn<typeof fetch>()
+    .mockResolvedValue(
+      Response.json({ ...result, blocked: [{ parentId: '3', reason: 'referenced-version' }] }),
+    );
+  vi.stubGlobal('fetch', fetcher);
+  const selection = { dao, documentRows: ['3'], retentionSeconds: 7776000 };
+  expect((await api.archivePreview(selection)).blocked[0]?.reason).toBe('referenced-version');
+  expect(fetcher.mock.calls[0]?.[1]?.body).toBe(JSON.stringify(selection));
+  expect(() => ArchiveRoutes.preview.input.parse({ ...selection, ballotIds: ['7'] })).toThrow();
+  expect(() =>
+    ArchiveRoutes.preview.input.parse({ ...selection, documentRows: ['3', '3'] }),
+  ).toThrow();
+  expect(ArchiveRoutes.preview.input.parse(request)).toEqual(request);
+});

@@ -190,6 +190,9 @@ function checkout() {
       >Storage and retention guide ↗</RouterLink
     >
   </div>
+  <p v-if="dao && member">
+    <RouterLink :to="`/dao/${dao.daoId}/documents`">Back to DAO documents</RouterLink>
+  </p>
   <p v-if="error" class="alert" role="alert">{{ error }}</p>
   <section v-if="!dao" class="panel">
     <h2>Choose a DAO first</h2>
@@ -218,6 +221,29 @@ function checkout() {
       <ActionSigner :member="member" />
       <section v-if="status" class="panel narrow">
         <h2>Pinned storage</h2>
+        <p v-for="notice in status.notices" :key="notice.stage" class="notice" role="status">
+          {{
+            notice.stage === 'renewal-due'
+              ? 'Storage renewal is approaching.'
+              : notice.stage === 'grace-started'
+                ? 'Storage is in its payment grace period.'
+                : notice.stage === 'grace-ending'
+                  ? 'Storage grace ends within seven days.'
+                  : notice.stage === 'hosting-ended'
+                    ? 'The unfunded hosting grace period has ended.'
+                    : 'Storage billing needs operator review.'
+          }}
+          Paid term: {{ date(notice.paidThrough) }}. Original grace deadline:
+          {{ date(notice.graceEndsAt) }}. Review payment, choose files to keep or export archives
+          below.
+        </p>
+        <p v-if="status.notices.length" class="field-help">
+          {{
+            status.noticeDelivery
+              ? 'Email reminders use the current billing administrator’s paired email. A missing contact or mail outage needs operator review.'
+              : 'Email reminders are disabled on this operator; check Resources for payment and retention notices.'
+          }}
+        </p>
         <dl class="fact-list">
           <dt>Funding</dt>
           <dd>{{ status.funding.state }}</dd>
