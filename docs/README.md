@@ -22,6 +22,8 @@ The browser owns user-controlled signing/decryption keys and keeps only encrypte
 
 Real provider consent, Google browser login, real Anchor/EVM client qualification, independent operator cookie/CORS qualification, durable managed custody and hosted backup/proxy operations remain open. A successful local build or a configured provider does not close those gates. Bundle loading still needs measurement on target browsers; this update makes no performance claim.
 
+Resources includes administrator-approved ordinary-poll exports using existing hosting capacity. Saved progress survives reload, and verified bundles can be downloaded only after comparing their manifest with the separately displayed commitment. The decoder comes from the module producer. Store the bundle and expected commitment off the server; see [export operations](../../daclify-backend-core/docs/archive-exports.md). Exports exclude account keys/login pairings/original document files. Independent backup attestation, native anchors/pruning and historic browsing remain unfinished.
+
 ## Connected payments and hosting
 
 See core [payment operations](../../daclify-backend-core/docs/operations/connected-payments.md) and app `/docs/shared-hosting`, `/docs/payments`, `/docs/independent-operators`. Independent API discovery now has issuer/code/ABI and current-registration checks; actual operator browser cookies and external providers still need qualification.

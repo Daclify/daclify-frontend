@@ -4,7 +4,15 @@ import { readFile } from 'node:fs/promises';
 import AxeBuilder from '@axe-core/playwright';
 import { ModuleApiRoutes } from '@daclify/modules';
 import { DecideTableSchemas } from '@daclify/modules/sdk';
-import { ArchiveRoutes, archiveSourceSchema } from '@daclify/modules/archive';
+import {
+  ArchiveRoutes,
+  archiveSourceSchema,
+  archiveManifestForPlan,
+  encodeArchiveManifest,
+  archiveExportConsent,
+} from '@daclify/modules/archive';
+import { Checksum256 } from '@wharfkit/antelope';
+import type { z } from 'zod';
 import {
   HostedUploadSchema,
   DaoRefSchema,
@@ -228,7 +236,7 @@ test('requires exact recurring storage consent and shows a pending checkout with
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
-test('previews archive eligibility without signing deletion and clears stale selection results', async ({
+test('previews eligibility, requires export consent and downloads a verified recovery bundle', async ({
   page,
 }) => {
   await createWorkspace(page);
@@ -267,6 +275,12 @@ test('previews archive eligibility without signing deletion and clears stale sel
     },
   );
   const source = archiveSourceSchema('ordinary-poll-votes');
+  const saved: z.infer<typeof ArchiveRoutes.export.response>[] = [];
+  const id = crypto.randomUUID();
+  let latest: z.infer<typeof ArchiveRoutes.preview.response> | undefined;
+  await page.route('**' + ArchiveRoutes.list.path + '?*', (route) =>
+    route.fulfill({ json: { dao, exports: saved, next: null } }),
+  );
   await page.route('**' + ArchiveRoutes.preview.path, async (route) => {
     const input = ArchiveRoutes.preview.input.parse(
       JSON.parse(route.request().postData() ?? 'null'),
@@ -275,22 +289,71 @@ test('previews archive eligibility without signing deletion and clears stale sel
     expect(input.retentionSeconds).toBe(90 * 86400);
     const id = input.ballotIds[0];
     if (!id) throw new Error('Preview ID missing');
+    latest = ArchiveRoutes.preview.response.parse({
+      dao,
+      source: { account: 'decide', codeHash: source.codeHash, abiHash: source.rawAbiHash },
+      snapshot: {
+        blockNumber: 1,
+        blockId: '00000001' + 'ab'.repeat(28),
+        timestamp: '2026-01-01T00:00:00.000Z',
+      },
+      pruningAuthorized: false,
+      grossRamBytes: '0',
+      families:
+        id === '8'
+          ? [{ kind: 'ordinary-poll-votes', parentId: '8', grossRamBytes: '0', chunks: [] }]
+          : [],
+      blocked: id === '7' ? [{ parentId: '7', reason: 'retention' }] : [],
+    });
+    await route.fulfill({ json: latest });
+  });
+  await page.route('**' + ArchiveRoutes.export.path, async (route) => {
+    if (!latest) throw new Error('Export without preview');
+    const input = ArchiveRoutes.export.input.parse(
+      JSON.parse(route.request().postData() ?? 'null'),
+    );
+    expect(input.selection.dao).toEqual(dao);
+    expect(input.selection.ballotIds).toEqual(['8']);
+    expect(input.selectionCommitment).toBe(archiveExportConsent(latest).selectionCommitment);
+    const status = ArchiveRoutes.export.response.parse({
+      id,
+      dao,
+      state: 'planned',
+      maximumStoredBytes: input.maximumStoredBytes,
+      heldBytes: input.maximumStoredBytes,
+      verifiedChunks: 0,
+      totalChunks: 0,
+      manifest: null,
+      pruningAuthorized: false,
+    });
+    saved.splice(0, saved.length, status);
+    await route.fulfill({ json: status });
+  });
+  await page.route('**' + ArchiveRoutes.reconcile.path.replace(':id', id), async (route) => {
+    if (!latest || !saved[0]) throw new Error('Missing export');
+    const bytes = encodeArchiveManifest(archiveManifestForPlan(latest, []));
+    saved[0] = ArchiveRoutes.reconcile.response.parse({
+      ...saved[0],
+      state: 'verified',
+      heldBytes: '0',
+      manifest: {
+        cid: 'bafkreiaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        bytes: bytes.length,
+        commitment: Checksum256.hash(bytes).toString(),
+      },
+    });
+    await route.fulfill({ json: saved[0] });
+  });
+  await page.route('**' + ArchiveRoutes.bundle.path.replace(':id', id), async (route) => {
+    if (!latest || !saved[0]?.manifest) throw new Error('Missing verified manifest');
+    const manifest = archiveManifestForPlan(latest, []),
+      bytes = encodeArchiveManifest(manifest);
     await route.fulfill({
-      json: ArchiveRoutes.preview.response.parse({
-        dao,
-        source: { account: 'decide', codeHash: source.codeHash, abiHash: source.rawAbiHash },
-        snapshot: {
-          blockNumber: 1,
-          blockId: '00000001' + 'ab'.repeat(28),
-          timestamp: '2026-01-01T00:00:00.000Z',
-        },
-        pruningAuthorized: false,
-        grossRamBytes: '0',
-        families:
-          id === '8'
-            ? [{ kind: 'ordinary-poll-votes', parentId: '8', grossRamBytes: '0', chunks: [] }]
-            : [],
-        blocked: id === '7' ? [{ parentId: '7', reason: 'retention' }] : [],
+      json: ArchiveRoutes.bundle.response.parse({
+        id,
+        manifest,
+        manifestFile: { ...saved[0].manifest, content: Buffer.from(bytes).toString('base64') },
+        chunks: [],
       }),
     });
   });
@@ -310,9 +373,18 @@ test('previews archive eligibility without signing deletion and clears stale sel
   ).toHaveCount(0);
   await preview.click();
   await expect(page.getByText('Eligible for export planning.', { exact: false })).toBeVisible();
-  await expect(
-    page.getByText('This screen provides a read-only preview.', { exact: false }),
-  ).toBeVisible();
+  const exportButton = page.getByRole('button', { name: 'Create archive export', exact: true });
+  await expect(exportButton).toBeDisabled();
+  await page.getByLabel('I approve this export and its storage reservation.').check();
+  await exportButton.click();
+  await expect(page.getByText('Export ' + id, { exact: false })).toBeVisible();
+  await page.getByRole('button', { name: 'Refresh export status', exact: true }).click();
+  const downloading = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download recovery bundle', exact: true }).click();
+  const download = await downloading;
+  expect(download.suggestedFilename()).toContain(id);
+  await page.reload();
+  await expect(page.getByText('Export ' + id, { exact: false })).toBeVisible();
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });

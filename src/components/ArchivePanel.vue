@@ -1,11 +1,17 @@
 <script setup lang="ts">
 import { ref, watch, onBeforeUnmount } from 'vue';
 import { daoPaymentKey, type DaoRef, type UserMembership } from '@daclify/core-protocol';
-import { ArchiveRoutes, MIN_ARCHIVE_RETENTION_SECONDS } from '@daclify/modules/archive';
+import {
+  ArchiveRoutes,
+  MIN_ARCHIVE_RETENTION_SECONDS,
+  archiveExportConsent,
+  verifyArchiveBundle,
+} from '@daclify/modules/archive';
 import type { ModuleState } from '@daclify/modules';
 import type { z } from 'zod';
 import { api, friendlyError } from '../api/client';
 import { useWorkspace } from '../state/workspace';
+import { downloadFile } from '../content/files';
 const props = defineProps<{ dao: DaoRef; member: UserMembership }>(),
   workspace = useWorkspace();
 const ballots = ref<ModuleState['ballots']>([]),
@@ -14,10 +20,16 @@ const ballots = ref<ModuleState['ballots']>([]),
   busy = ref(false),
   error = ref('');
 const plan = ref<z.infer<typeof ArchiveRoutes.preview.response>>();
+const consent = ref(false),
+  pendingRequest = ref<z.infer<typeof ArchiveRoutes.export.input>>(),
+  exports = ref<z.infer<typeof ArchiveRoutes.export.response>[]>([]),
+  exportsNext = ref<string | null>(null);
 let sequence = 0;
 function clearPreview() {
   sequence++;
   plan.value = undefined;
+  consent.value = false;
+  pendingRequest.value = undefined;
   error.value = '';
   busy.value = false;
 }
@@ -26,27 +38,34 @@ async function load(cursor?: string) {
   busy.value = true;
   error.value = '';
   try {
-    const page = await api.moduleState(
-      props.dao.daoId,
-      cursor
-        ? {
-            ballots: cursor,
-            projects: 'done',
-            schedules: 'done',
-            elections: 'done',
-            terms: 'done',
-            joinApplications: 'done',
-            rounds: 'done',
-            applications: 'done',
-          }
-        : {},
-    );
+    const [page, saved] = await Promise.all([
+      api.moduleState(
+        props.dao.daoId,
+        cursor
+          ? {
+              ballots: cursor,
+              projects: 'done',
+              schedules: 'done',
+              elections: 'done',
+              terms: 'done',
+              joinApplications: 'done',
+              rounds: 'done',
+              applications: 'done',
+            }
+          : {},
+      ),
+      cursor ? Promise.resolve(undefined) : api.archiveExports(props.dao),
+    ]);
     if (daoPaymentKey(page.dao) !== daoPaymentKey(props.dao)) throw new Error('DAO_REFERENCE');
     if (request === sequence) {
       for (const row of page.ballots)
         if (row.status !== 0 && !ballots.value.some((item) => item.id === row.id))
           ballots.value.push(row);
       next.value = page.next.ballots;
+      if (saved) {
+        exports.value = saved.exports;
+        exportsNext.value = saved.next;
+      }
     }
   } catch (cause) {
     if (request === sequence) error.value = friendlyError(cause);
@@ -66,7 +85,94 @@ async function preview() {
       ballotIds: [selected.value],
       retentionSeconds: MIN_ARCHIVE_RETENTION_SECONDS,
     });
-    if (request === sequence) plan.value = result;
+    if (request === sequence) {
+      plan.value = result;
+      consent.value = false;
+      pendingRequest.value =
+        result.families.length && !result.blocked.length
+          ? {
+              requestId: crypto.randomUUID(),
+              selection: {
+                dao: props.dao,
+                ballotIds: [selected.value],
+                retentionSeconds: MIN_ARCHIVE_RETENTION_SECONDS,
+              },
+              ...archiveExportConsent(result),
+            }
+          : undefined;
+    }
+  } catch (cause) {
+    if (request === sequence) error.value = friendlyError(cause);
+  } finally {
+    if (request === sequence) busy.value = false;
+  }
+}
+function saveStatus(status: z.infer<typeof ArchiveRoutes.export.response>) {
+  exports.value = [status, ...exports.value.filter((e) => e.id !== status.id)];
+}
+async function createExport() {
+  if (!consent.value || !pendingRequest.value || busy.value) return;
+  const request = ++sequence,
+    input = pendingRequest.value;
+  busy.value = true;
+  error.value = '';
+  try {
+    const result = await api.archiveExport(input);
+    if (request === sequence) saveStatus(result);
+  } catch (cause) {
+    if (request === sequence) error.value = friendlyError(cause);
+  } finally {
+    if (request === sequence) busy.value = false;
+  }
+}
+async function refreshExport(id: string) {
+  const request = ++sequence;
+  busy.value = true;
+  error.value = '';
+  try {
+    const result = await api.archiveRefresh(props.dao, id);
+    if (request === sequence) saveStatus(result);
+  } catch (cause) {
+    if (request === sequence) error.value = friendlyError(cause);
+  } finally {
+    if (request === sequence) busy.value = false;
+  }
+}
+async function downloadExport(id: string) {
+  const request = ++sequence;
+  busy.value = true;
+  error.value = '';
+  try {
+    const status = exports.value.find((e) => e.id === id);
+    if (!status?.manifest || status.state !== 'verified') throw new Error('ARCHIVE_NOT_READY');
+    const bundle = verifyArchiveBundle(
+      await api.archiveBundle(props.dao, id),
+      status.manifest.commitment,
+    );
+    if (request === sequence)
+      downloadFile(new TextEncoder().encode(JSON.stringify(bundle)), {
+        version: 1,
+        filename: `daclify-dao-${props.dao.daoId}-archive-${id}.json`,
+        mediaType: 'application/json',
+      });
+  } catch (cause) {
+    if (request === sequence) error.value = friendlyError(cause);
+  } finally {
+    if (request === sequence) busy.value = false;
+  }
+}
+async function moreExports() {
+  if (!exportsNext.value) return;
+  const request = ++sequence;
+  busy.value = true;
+  error.value = '';
+  try {
+    const result = await api.archiveExports(props.dao, exportsNext.value);
+    if (request === sequence) {
+      for (const row of result.exports)
+        if (!exports.value.some((e) => e.id === row.id)) exports.value.push(row);
+      exportsNext.value = result.next;
+    }
   } catch (cause) {
     if (request === sequence) error.value = friendlyError(cause);
   } finally {
@@ -88,6 +194,10 @@ watch(
     ballots.value = [];
     next.value = null;
     plan.value = undefined;
+    consent.value = false;
+    pendingRequest.value = undefined;
+    exports.value = [];
+    exportsNext.value = null;
     error.value = '';
     busy.value = false;
     if (props.member.active && props.member.admin) void load();
@@ -111,13 +221,13 @@ const reasons = {
     class="panel narrow"
     aria-labelledby="archive-heading"
   >
-    <h2 id="archive-heading">Archive preview</h2>
+    <h2 id="archive-heading">Archive exports</h2>
     <p>
       Check finalized ordinary polls against the 90-day retention rule. Previewing does not delete
       records, unpin files or authorize a charge.
     </p>
     <p v-if="error" role="alert" class="alert">{{ error }}</p>
-    <p v-if="busy" role="status">Reading archive eligibility…</p>
+    <p v-if="busy" role="status">Checking archive progress…</p>
     <form @submit.prevent="preview">
       <label for="archive-ballot">Finalized ballot</label>
       <select
@@ -147,6 +257,18 @@ const reasons = {
           Eligible for export planning. Estimated gross row/index RAM:
           {{ BigInt(plan.grossRamBytes).toLocaleString() }} bytes.
         </p>
+        <form v-if="pendingRequest" @submit.prevent="createExport">
+          <p>
+            Reserve up to {{ BigInt(pendingRequest.maximumStoredBytes).toLocaleString() }} stored
+            bytes from this DAO’s existing hosting capacity. Archive bundles use normal IPFS storage
+            pricing.
+          </p>
+          <label class="checkbox"
+            ><input v-model="consent" type="checkbox" :disabled="busy" /> I approve this export and
+            its storage reservation.</label
+          >
+          <button :disabled="busy || !consent">Create archive export</button>
+        </form>
         <p>
           Retained markers and future archive commitments reduce net savings. An export still needs
           storage capacity, a verified independent backup and matching administrator approval before
@@ -158,10 +280,44 @@ const reasons = {
         {{ new Date(plan.snapshot.timestamp).toLocaleString() }}.
       </p>
     </template>
+    <h3>Saved exports</h3>
+    <p v-if="!exports.length && !busy">No saved exports for this DAO.</p>
+    <ul v-if="exports.length" class="plain-list">
+      <li v-for="item in exports" :key="item.id">
+        <p>
+          Export {{ item.id }} · {{ item.state }}<br />{{ item.verifiedChunks }} of
+          {{ item.totalChunks }} chunks verified ·
+          {{ BigInt(item.heldBytes).toLocaleString() }} bytes still reserved.
+        </p>
+        <p v-if="item.state === 'review'" class="notice">
+          Operator review is needed. Its files and reservation are retained.
+        </p>
+        <p v-if="item.manifest" class="field-help">
+          Manifest SHA-256: <code class="archive-commitment">{{ item.manifest.commitment }}</code
+          >. Keep this commitment separately with your backup. It is not yet anchored on chain.
+        </p>
+        <button class="secondary" :disabled="busy" @click="refreshExport(item.id)">
+          Refresh export status
+        </button>
+        <button v-if="item.state === 'verified'" :disabled="busy" @click="downloadExport(item.id)">
+          Download recovery bundle
+        </button>
+      </li>
+    </ul>
+    <button v-if="exportsNext" class="secondary" :disabled="busy" @click="moreExports">
+      Load more exports
+    </button>
     <p class="field-help">
-      Export, approval, pruning and historic restore are still being implemented. This screen
-      provides a read-only preview.
+      This exports ordinary poll votes and a verified manifest. It does not include account recovery
+      keys, social-login pairings or original document files. Save the recovery bundle off the
+      server. Independent backup approval, pruning and historic browsing are still being
+      implemented; exporting does not delete anything.
     </p>
     <RouterLink to="/docs/archive" class="help-link">Archive and recovery guide ↗</RouterLink>
   </section>
 </template>
+<style scoped>
+.archive-commitment {
+  overflow-wrap: anywhere;
+}
+</style>

@@ -349,6 +349,55 @@ export const api = {
       throw new ApiFailure('DAO_REFERENCE');
     return result;
   },
+  archiveExport: async (input: z.infer<typeof ArchiveRoutes.export.input>) => {
+    const result = await request(
+      ArchiveRoutes.export.path,
+      ArchiveRoutes.export.response,
+      ArchiveRoutes.export.input.parse(input),
+      60000,
+    );
+    if (daoPaymentKey(result.dao) !== daoPaymentKey(input.selection.dao))
+      throw new ApiFailure('DAO_REFERENCE');
+    return result;
+  },
+  archiveExports: async (dao: DaoRef, cursor?: string) => {
+    const input = ArchiveRoutes.list.input.parse({ dao, ...(cursor ? { cursor } : {}) }),
+      result = await request(
+        ArchiveRoutes.list.path +
+          '?dao=' +
+          encodeURIComponent(JSON.stringify(input.dao)) +
+          (input.cursor ? '&cursor=' + input.cursor : ''),
+        ArchiveRoutes.list.response,
+      );
+    if (
+      daoPaymentKey(result.dao) !== daoPaymentKey(dao) ||
+      result.exports.some((e) => daoPaymentKey(e.dao) !== daoPaymentKey(dao))
+    )
+      throw new ApiFailure('DAO_REFERENCE');
+    return result;
+  },
+  archiveRefresh: async (dao: DaoRef, id: string) => {
+    const result = await request(
+      ArchiveRoutes.reconcile.path.replace(':id', z.uuid().parse(id)),
+      ArchiveRoutes.reconcile.response,
+      {},
+      60000,
+    );
+    if (result.id !== id || daoPaymentKey(result.dao) !== daoPaymentKey(dao))
+      throw new ApiFailure('DAO_REFERENCE');
+    return result;
+  },
+  archiveBundle: async (dao: DaoRef, id: string) => {
+    const result = await request(
+      ArchiveRoutes.bundle.path.replace(':id', z.uuid().parse(id)),
+      ArchiveRoutes.bundle.response,
+      undefined,
+      60000,
+    );
+    if (result.id !== id || daoPaymentKey(result.manifest.dao) !== daoPaymentKey(dao))
+      throw new ApiFailure('DAO_REFERENCE');
+    return result;
+  },
   storageBilling: async (dao: DaoRef) => {
     const result = await request(
       StorageBillingRoutes.storageBillingStatus.path +
@@ -671,7 +720,16 @@ export function friendlyError(error: unknown): string {
       CHAIN_ACTION_REJECTED:
         'The contract rejected the action. Refresh the DAO and check your permissions.',
       CHAIN_UNAVAILABLE: 'The blockchain node is unavailable. Try again later.',
-      ARCHIVE_ADMIN_REQUIRED: 'Only an active DAO administrator can preview its archive.',
+      ARCHIVE_ADMIN_REQUIRED: 'Only an active DAO administrator can manage its archive.',
+      ARCHIVE_PLAN_CHANGED:
+        'The selected rows or storage estimate changed. Preview and approve the export again.',
+      ARCHIVE_REQUEST_CONFLICT:
+        'This export request was already used for different details. Preview again before creating a new request.',
+      ARCHIVE_NOT_ELIGIBLE: 'Every selected poll must be eligible before exporting.',
+      ARCHIVE_NOT_READY: 'The recovery bundle is still being verified. Refresh its export status.',
+      ARCHIVE_NOT_FOUND: 'This export could not be found on the selected operator.',
+      ARCHIVE_BUNDLE_UNAVAILABLE:
+        'The recovery bundle could not be retrieved or verified. Keep your existing backup and try again.',
       ARCHIVE_UNAVAILABLE: 'Archive preview is not configured on this operator.',
       ARCHIVE_SCHEMA_UNSUPPORTED:
         'The deployed contract or archive schema is not qualified for this preview.',
