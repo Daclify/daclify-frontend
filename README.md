@@ -110,3 +110,5 @@ The RAM readout separates DAO counters/purchased credits from whole-account nati
 Resources → Archive now shows the configured encrypted backup option, exact manifest commitment and saved restore-verification receipt. Backup creation and reload are covered by desktop/mobile browser tests; native approval/pruning are not yet enabled. Operator key/path details never enter this UI.
 
 The resource-billing-archives development branch supports exact native Archive availability attestation and signed administrator approval/revocation. Destructive pruning remains disabled pending source-owned eligibility and recovery qualification. This is development-branch functionality, not a production deployment.
+
+The development branch now includes bounded source-owned ordinary-poll vote pruning, trusted prior source-schema reads, on-chain archive discovery/recovery without the SQL export index, and administrator whole-file retention priorities. The guarded cleanup engine has local race/recovery tests but is not enabled at application startup. Backed RAM enforcement, legacy migration, full private/history restoration and live-provider/release qualification remain open.

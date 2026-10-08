@@ -204,6 +204,28 @@ async function authorizeExport(
     if (request === sequence) busy.value = false;
   }
 }
+async function pruneExport(item: z.infer<typeof ArchiveRoutes.export.response>) {
+  if (
+    busy.value ||
+    !item.pruningAuthorized ||
+    !item.manifest ||
+    !props.member.active ||
+    !props.member.admin
+  )
+    return;
+  const request = ++sequence,
+    dao = props.dao;
+  busy.value = true;
+  error.value = '';
+  try {
+    const result = await api.archivePrune(dao, item.id, item.manifest.commitment);
+    if (request === sequence) saveStatus(result);
+  } catch (cause) {
+    if (request === sequence) error.value = friendlyError(cause);
+  } finally {
+    if (request === sequence) busy.value = false;
+  }
+}
 async function backupExport(item: z.infer<typeof ArchiveRoutes.export.response>) {
   if (busy.value || !item.manifest || !props.member.active || !props.member.admin) return;
   const request = ++sequence;
@@ -434,9 +456,19 @@ const reasons = {
                 : 'Availability attested; approval required'
           }}. Retention: {{ item.retentionSeconds / 86400 }} days. Pruning stays separately gated.
         </p>
-        <template v-if="(item.backup || item.anchor) && item.state === 'verified'">
+        <template
+          v-if="
+            (item.backup || item.anchor) &&
+            ['verified', 'pruning', 'completed'].includes(item.state)
+          "
+        >
           <label
-            v-if="!item.anchor || item.anchor.revoked || item.anchor.approved_by === '0'"
+            v-if="
+              !item.anchor ||
+              item.anchor.revoked ||
+              item.anchor.approved_by === '0' ||
+              item.anchor.approved_by !== member.memberId
+            "
             class="checkbox"
           >
             <input
@@ -449,14 +481,19 @@ const reasons = {
             after {{ item.retentionSeconds / 86400 }} days and all availability checks.
           </label>
           <button
-            v-if="!item.anchor || item.anchor.revoked || item.anchor.approved_by === '0'"
+            v-if="
+              !item.anchor ||
+              item.anchor.revoked ||
+              item.anchor.approved_by === '0' ||
+              item.anchor.approved_by !== member.memberId
+            "
             :disabled="busy || approvalConsent !== item.id || !canSignMember(member)"
             @click="authorizeExport(item, 'archapprove')"
           >
             Sign archive approval
           </button>
           <button
-            v-else
+            v-if="item.anchor && item.anchor.approved_by !== '0' && !item.anchor.revoked"
             class="secondary"
             :disabled="busy || !canSignMember(member)"
             @click="authorizeExport(item, 'archrevoke')"
@@ -464,10 +501,25 @@ const reasons = {
             Revoke archive approval
           </button>
         </template>
+        <button
+          v-if="item.pruningAuthorized && item.state !== 'completed'"
+          :disabled="busy"
+          @click="pruneExport(item)"
+        >
+          Prune next batch (up to 25 old votes)
+        </button>
+        <p v-if="item.state === 'pruning'" class="field-help">
+          Partial pruning is recorded on chain. Continue manually; revoked approval blocks further
+          batches.
+        </p>
         <button class="secondary" :disabled="busy" @click="refreshExport(item.id)">
           Refresh export status
         </button>
-        <button v-if="item.state === 'verified'" :disabled="busy" @click="downloadExport(item.id)">
+        <button
+          v-if="['verified', 'pruning', 'completed'].includes(item.state)"
+          :disabled="busy"
+          @click="downloadExport(item.id)"
+        >
           Download recovery bundle
         </button>
       </li>
@@ -478,8 +530,9 @@ const reasons = {
     <p class="field-help">
       This exports ordinary poll votes and a verified manifest. It does not include account recovery
       keys, social-login pairings or original document files. Save the recovery bundle off the
-      server. On-chain approval is separate from exporting. Source pruning and historic browsing
-      remain gated; exporting and signing an approval do not delete anything.
+      server. On-chain approval is separate from exporting. Source pruning requires separate
+      operator qualification and a manual batch request. Exporting and signing an approval do not
+      delete anything. Archived records remain available through verified on-chain history.
     </p>
     <RouterLink to="/docs/archive" class="help-link">Archive and recovery guide ↗</RouterLink>
   </section>

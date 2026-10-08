@@ -503,6 +503,47 @@ test('previews eligibility, requires export consent and downloads a verified rec
       }),
     });
   });
+  await page.route('**' + ArchiveRoutes.history.path + '?*', (route) =>
+    route.fulfill({
+      json: { dao, anchors: saved[0]?.anchor ? [saved[0].anchor] : [], next: null },
+    }),
+  );
+  await page.route('**' + ArchiveRoutes.historyPage.path, async (route) => {
+    const input = ArchiveRoutes.historyPage.input.parse(
+      JSON.parse(route.request().postData() ?? 'null'),
+    );
+    expect(input.dao).toEqual(dao);
+    expect(input.manifestCommitment).toBe(saved[0]?.manifest?.commitment);
+    await route.fulfill({
+      json: ArchiveRoutes.historyPage.response.parse({
+        dao,
+        manifestCommitment: input.manifestCommitment,
+        parentId: '8',
+        records: [],
+        next: null,
+        coverage: 'verified-archive',
+        liveRowsIncluded: false,
+      }),
+    });
+  });
+  await page.route('**' + ArchiveRoutes.recover.path, async (route) => {
+    const input = ArchiveRoutes.recover.input.parse(
+      JSON.parse(route.request().postData() ?? 'null'),
+    );
+    if (!latest || !saved[0]?.anchor || !saved[0].manifest)
+      throw new Error('Missing anchored history');
+    expect(input.manifestCommitment).toBe(saved[0].manifest.commitment);
+    const manifest = archiveManifestForPlan(latest, []),
+      bytes = encodeArchiveManifest(manifest);
+    await route.fulfill({
+      json: {
+        id,
+        manifest,
+        manifestFile: { ...saved[0].manifest, content: Buffer.from(bytes).toString('base64') },
+        chunks: [],
+      },
+    });
+  });
   await link.click();
   await expect(
     page.getByText('recorded for this DAO across its payer contracts.', { exact: false }),
@@ -547,6 +588,13 @@ test('previews eligibility, requires export consent and downloads a verified rec
   const download = await downloading;
   expect(download.suggestedFilename()).toContain(id);
   await page.reload();
+  await page.getByRole('button', { name: 'Browse verified votes', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Archived votes · poll #8', exact: true }),
+  ).toBeVisible();
+  const recoveredDownload = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Recover archive bundle', exact: true }).click();
+  expect((await recoveredDownload).suggestedFilename()).toContain('archive-1');
   await expect(page.getByText('Export ' + id, { exact: false })).toBeVisible();
   await expect(
     page.getByText('Encrypted backup restored and verified', { exact: false }),
@@ -670,6 +718,82 @@ test('requires exact one-time card RAM consent and preserves the order across re
   await expect(
     panel.getByRole('link', { name: 'Continue secure Stripe checkout ↗', exact: true }),
   ).toBeVisible();
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test('curates whole storage objects with explicit capacity and preserves selections across reload', async ({
+  page,
+}) => {
+  await createWorkspace(page);
+  const link = page.getByRole('link', { name: 'Manage resources →', exact: true }),
+    href = await link.getAttribute('href');
+  if (!href) throw new Error('Resource link missing');
+  const dao = DaoRefSchema.parse(
+    JSON.parse(new URL(href, 'http://localhost').searchParams.get('dao') ?? 'null'),
+  );
+  const ids = [
+    '00000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000002',
+    '00000000-0000-4000-8000-000000000003',
+  ];
+  let generation = '0',
+    keep: string[] = [];
+  function status() {
+    return ApiRoutes.curation.response.parse({
+      dao,
+      generation,
+      funding: {
+        state: 'overdue',
+        pricing: { ...DEFAULT_STORAGE_PRICING, freeBytes: '100' },
+        units: 1,
+        paidThrough: '2026-08-01T00:00:00Z',
+        graceEndsAt: '2026-08-31T00:00:00Z',
+        uploadCapacityBytes: '100',
+        retainedCapacityBytes: '100',
+      },
+      cleanup: 'disabled',
+      objects: ids.map((id, i) => ({
+        id,
+        cid: 'bafkreiaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        bytes: i === 2 ? '40' : '60',
+        createdAt: `2026-0${i + 1}-01T00:00:00Z`,
+        kinds: ['media'],
+        selected: keep.includes(id),
+        retained: i > 0,
+        releasedAt: null,
+      })),
+    });
+  }
+  await page.route('**' + ApiRoutes.curation.path + '?*', (route) =>
+    route.fulfill({ json: status() }),
+  );
+  await page.route('**' + ApiRoutes.retain.path, async (route) => {
+    const input = ApiRoutes.retain.input.parse(JSON.parse(route.request().postData() ?? 'null'));
+    expect(input.dao).toEqual(dao);
+    expect(input.generation).toBe(generation);
+    keep = input.keep;
+    generation = (BigInt(generation) + 1n).toString();
+    await route.fulfill({ json: status() });
+  });
+  await link.click();
+  const panel = page.getByRole('region', { name: 'Choose files to keep' }),
+    choices = panel.locator('input[type=checkbox]'),
+    save = page.getByRole('button', { name: 'Save free-allowance priorities', exact: true });
+  await choices.nth(0).check();
+  await choices.nth(1).check();
+  await expect(save).toBeDisabled();
+  await expect(
+    panel.getByText('Select fewer whole files to fit the free allowance.'),
+  ).toBeVisible();
+  await choices.nth(1).uncheck();
+  await choices.nth(2).check();
+  await save.click();
+  await expect(panel.getByText('Your file priorities were saved.')).toBeVisible();
+  expect(keep).toEqual([ids[0], ids[2]]);
+  await page.reload();
+  await expect(choices.nth(0)).toBeChecked();
+  await expect(choices.nth(2)).toBeChecked();
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });

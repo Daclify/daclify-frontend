@@ -376,6 +376,71 @@ export const api = {
     if (daoPaymentKey(result.dao) !== daoPaymentKey(dao)) throw new ApiFailure('DAO_REFERENCE');
     return result;
   },
+  archiveHistory: async (dao: DaoRef, cursor?: string) => {
+    const input = ArchiveRoutes.history.input.parse({ dao, ...(cursor ? { cursor } : {}) }),
+      result = await request(
+        ArchiveRoutes.history.path +
+          '?dao=' +
+          encodeURIComponent(JSON.stringify(input.dao)) +
+          (input.cursor ? '&cursor=' + input.cursor : ''),
+        ArchiveRoutes.history.response,
+      );
+    if (
+      daoPaymentKey(result.dao) !== daoPaymentKey(dao) ||
+      result.anchors.some(
+        (a) =>
+          a.dao_id !== dao.daoId ||
+          a.manifest.runtime !== dao.contract ||
+          a.manifest.chain_id !== dao.chainId,
+      )
+    )
+      throw new ApiFailure('DAO_REFERENCE');
+    return result;
+  },
+  archiveHistoryPage: async (input: z.infer<typeof ArchiveRoutes.historyPage.input>) => {
+    const result = await request(
+      ArchiveRoutes.historyPage.path,
+      ArchiveRoutes.historyPage.response,
+      ArchiveRoutes.historyPage.input.parse(input),
+      60000,
+    );
+    if (
+      daoPaymentKey(result.dao) !== daoPaymentKey(input.dao) ||
+      result.manifestCommitment !== input.manifestCommitment
+    )
+      throw new ApiFailure('DAO_REFERENCE');
+    return result;
+  },
+  archiveRecover: async (input: z.infer<typeof ArchiveRoutes.recover.input>) => {
+    const result = await request(
+      ArchiveRoutes.recover.path,
+      ArchiveRoutes.recover.response,
+      ArchiveRoutes.recover.input.parse(input),
+      60000,
+    );
+    if (
+      daoPaymentKey(result.manifest.dao) !== daoPaymentKey(input.dao) ||
+      result.manifestFile.commitment !== input.manifestCommitment
+    )
+      throw new ApiFailure('DAO_REFERENCE');
+    return result;
+  },
+  archivePrune: async (dao: DaoRef, id: string, expectedManifestCommitment: string) => {
+    const input = ArchiveRoutes.prune.input.parse({ expectedManifestCommitment }),
+      result = await request(
+        ArchiveRoutes.prune.path.replace(':id', z.uuid().parse(id)),
+        ArchiveRoutes.prune.response,
+        input,
+        120000,
+      );
+    if (
+      result.id !== id ||
+      daoPaymentKey(result.dao) !== daoPaymentKey(dao) ||
+      result.manifest?.commitment !== expectedManifestCommitment
+    )
+      throw new ApiFailure('DAO_REFERENCE');
+    return result;
+  },
   archivePreview: async (input: z.infer<typeof ArchiveRoutes.preview.input>) => {
     const result = await request(
       ArchiveRoutes.preview.path,
@@ -472,6 +537,24 @@ export const api = {
       60000,
     );
     if (result.id !== id || daoPaymentKey(result.manifest.dao) !== daoPaymentKey(dao))
+      throw new ApiFailure('DAO_REFERENCE');
+    return result;
+  },
+  storageCuration: async (dao: DaoRef) => {
+    const result = await request(
+      ApiRoutes.curation.path + '?dao=' + encodeURIComponent(JSON.stringify(dao)),
+      ApiRoutes.curation.response,
+    );
+    if (daoPaymentKey(result.dao) !== daoPaymentKey(dao)) throw new ApiFailure('DAO_REFERENCE');
+    return result;
+  },
+  storageRetain: async (input: z.infer<typeof ApiRoutes.retain.input>) => {
+    const result = await request(
+      ApiRoutes.retain.path,
+      ApiRoutes.retain.response,
+      ApiRoutes.retain.input.parse(input),
+    );
+    if (daoPaymentKey(result.dao) !== daoPaymentKey(input.dao))
       throw new ApiFailure('DAO_REFERENCE');
     return result;
   },
@@ -797,6 +880,21 @@ export function friendlyError(error: unknown): string {
       CHAIN_ACTION_REJECTED:
         'The contract rejected the action. Refresh the DAO and check your permissions.',
       CHAIN_UNAVAILABLE: 'The blockchain node is unavailable. Try again later.',
+      STORAGE_CURATION_CHANGED:
+        'Another administrator updated the file selection. Refresh and review it.',
+      STORAGE_KEEP_CAPACITY:
+        'These whole files exceed the free storage allowance. Select fewer files.',
+      STORAGE_KEEP_UNKNOWN: 'A selected storage object is no longer available. Refresh the list.',
+      STORAGE_REMOVAL_REVIEW:
+        'Storage cleanup is paused for operator review; its recovery staging is retained.',
+      CONTENT_HOSTING_ENDED:
+        'Hosting for this file has ended. Restore a separately saved copy or re-pin it.',
+      ARCHIVE_PRUNING_DISABLED:
+        'The operator has not enabled qualified source pruning. Your records remain on chain.',
+      ARCHIVE_APPROVAL_REQUIRED:
+        'An exact active administrator approval is required before pruning.',
+      ARCHIVE_PROGRESS_CHANGED: 'Another batch advanced this archive. Refresh its status.',
+      ARCHIVE_HISTORY_UNAVAILABLE: 'On-chain archive discovery is unavailable on this deployment.',
       ARCHIVE_ADMIN_REQUIRED: 'Only an active DAO administrator can manage its archive.',
       ARCHIVE_PLAN_CHANGED:
         'The selected rows or storage estimate changed. Preview and approve the export again.',

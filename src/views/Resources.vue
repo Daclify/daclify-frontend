@@ -17,6 +17,8 @@ import { canSignMember } from '../auth/action-signer';
 import ActionSigner from '../components/ActionSigner.vue';
 import StorageUsagePanel from '../components/StorageUsagePanel.vue';
 import ArchivePanel from '../components/ArchivePanel.vue';
+import ArchiveHistoryPanel from '../components/ArchiveHistoryPanel.vue';
+import StorageRetentionPanel from '../components/StorageRetentionPanel.vue';
 import RamUsagePanel from '../components/RamUsagePanel.vue';
 const route = useRoute(),
   state = useWorkspace();
@@ -339,7 +341,9 @@ function checkout() {
         </p>
       </section>
     </template>
+    <StorageRetentionPanel :dao="dao" :member="member" />
     <RamUsagePanel :dao="dao" :member="member" />
     <ArchivePanel :dao="dao" :member="member" />
+    <ArchiveHistoryPanel :dao="dao" :member="member" />
   </template>
 </template>
