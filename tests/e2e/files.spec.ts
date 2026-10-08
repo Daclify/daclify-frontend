@@ -18,6 +18,7 @@ import {
   DaoRefSchema,
   StorageApprovalSchema,
   DEFAULT_STORAGE_PRICING,
+  DEFAULT_RESOURCE_POLICY,
   storagePricingHash,
   ApiRoutes,
 } from '@daclify/core-protocol';
@@ -423,6 +424,122 @@ test('previews eligibility, requires export consent and downloads a verified rec
   await expect(page.getByText('Export ' + id, { exact: false })).toBeVisible();
   await expect(
     page.getByText('DAO-level observation is disabled on this deployment.', { exact: false }),
+  ).toBeVisible();
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test('requires exact one-time card RAM consent and preserves the order across reload', async ({
+  page,
+}) => {
+  await createWorkspace(page);
+  const href = await page
+    .getByRole('link', { name: 'Manage resources →', exact: true })
+    .getAttribute('href');
+  if (!href) throw new Error('Resource link missing');
+  const dao = DaoRefSchema.parse(
+    JSON.parse(new URL(href, 'http://fixture').searchParams.get('dao') ?? 'null'),
+  );
+  const terms = ApiRoutes.ramCardQuote.response.parse({
+    quote: {
+      dao,
+      rail: 'tlos',
+      baseUnits: '50000',
+      feeUnits: '2500',
+      totalUnits: '52500',
+      feeBps: 500,
+      order: {
+        dao_id: dao.daoId,
+        payer: 'relay',
+        reference: 'cd'.repeat(32),
+        policy_revision: '1',
+        maximum: '5.2500 TLOS',
+        expires: Math.floor(Date.now() / 1000) + 300,
+        purchases: [{ receiver: dao.contract, quantity: '5.0000 TLOS', minimum_bytes: '1048576' }],
+      },
+      systemCodeHash: 'ef'.repeat(32),
+      systemRawAbiHash: 'fe'.repeat(32),
+      quotedAt: new Date().toISOString(),
+    },
+    policy: { ...DEFAULT_RESOURCE_POLICY, revision: '1' },
+    oracle: { median: '10000', precision: 4, observed_at: Math.floor(Date.now() / 1000) },
+    baseUsdCents: 500,
+    feeUsdCents: 100,
+    totalUsdCents: 600,
+  });
+  await page.route('**' + ApiRoutes.ramUsage.path.replace(':id', dao.daoId), (route) =>
+    route.fulfill({
+      json: ApiRoutes.ramUsage.response.parse({
+        dao,
+        observation: 'active',
+        enforcement: 'disabled',
+        policy: terms.policy,
+        totalObservedBytes: '0',
+        purchasedBytes: '0',
+        read: {
+          startedAt: new Date().toISOString(),
+          completedAt: new Date().toISOString(),
+          atomic: false,
+        },
+        payers: [
+          {
+            payer: dao.contract,
+            moduleId: null,
+            sourceVerified: true,
+            usage: { identity: '0', activity: '0', retained: '0', platform: '0' },
+            purchasedBytes: '0',
+            globalQuotaBytes: '10000000',
+            globalUsedBytes: '10000',
+          },
+        ],
+      }),
+    }),
+  );
+  await page.route('**' + ApiRoutes.ramCardQuote.path, (route) => route.fulfill({ json: terms }));
+  let saved: z.infer<typeof ApiRoutes.ramCardStatus.response> | undefined;
+  await page.route('**' + ApiRoutes.ramCardCheckout.path, async (route) => {
+    const approval = ApiRoutes.ramCardCheckout.input.parse(
+      JSON.parse(route.request().postData() ?? 'null'),
+    );
+    expect(approval).toMatchObject({ consent: true, totalUsdCents: 600, feeUsdCents: 100 });
+    expect(route.request().headers()['x-account-intent-id']).toBeTruthy();
+    saved = ApiRoutes.ramCardCheckout.response.parse({
+      id: approval.requestId,
+      dao,
+      state: 'pending',
+      approval,
+      checkoutUrl: 'https://checkout.stripe.com/c/pay/cs_test_ram_browser',
+      acquiredBytes: null,
+      settledAt: null,
+    });
+    await route.fulfill({ json: saved });
+  });
+  await page.route('**/v1/resources/ram/card/orders/*', (route) => {
+    if (!saved) throw new Error('Missing saved order');
+    return route.fulfill({ json: saved });
+  });
+  await page.getByRole('link', { name: 'Manage resources →', exact: true }).click();
+  const panel = page.getByRole('region', { name: 'Buy RAM with a card', exact: true });
+  await panel.getByLabel('Contract receiving RAM').selectOption(dao.contract);
+  await panel.getByRole('button', { name: 'Get card quote', exact: true }).click();
+  await expect(panel.getByText('One-time total $6.00.', { exact: false })).toBeVisible();
+  const approve = panel.getByRole('button', {
+    name: 'Approve and prepare card checkout',
+    exact: true,
+  });
+  await expect(approve).toBeDisabled();
+  await panel
+    .getByLabel('I approve this exact one-time price and byte minimum.', { exact: false })
+    .check();
+  await approve.click();
+  await expect(
+    panel.getByRole('link', { name: 'Continue secure Stripe checkout ↗', exact: true }),
+  ).toBeVisible();
+  expect(saved?.state).toBe('pending');
+  await page.reload();
+  await expect(panel.getByText('Order ' + saved?.id, { exact: false })).toBeVisible();
+  await expect(
+    panel.getByRole('link', { name: 'Continue secure Stripe checkout ↗', exact: true }),
   ).toBeVisible();
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

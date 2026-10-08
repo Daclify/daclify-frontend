@@ -128,6 +128,11 @@ watch(() => workspace.network?.chainId, load);
             <dd>
               {{ (status.chain.creation?.premium_bps ?? status.defaults.tlosPremiumBps) / 100 }}%
             </dd>
+            <dt>Operator RAM reserve</dt>
+            <dd>
+              {{ status.chain.ramReserve?.available ?? 'Unfunded / unavailable' }} · separate from
+              DAO treasury, stakes and claims.
+            </dd>
             <dt>Creation settler</dt>
             <dd>{{ status.chain.creation?.settler ?? 'Unconfigured' }}</dd>
             <dt>Fresh TLOS rate</dt>

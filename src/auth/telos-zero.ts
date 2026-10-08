@@ -8,8 +8,15 @@ import {
   NativeProofSchema,
   type NativeProof,
   type Network,
+  RamQuoteSchema,
+  type RamQuote,
 } from '@daclify/core-protocol';
-import { encodeAction, runtimeAbi, type instruction } from '@daclify/core-protocol/sdk';
+import {
+  encodeAction,
+  runtimeAbi,
+  nativeRamActions,
+  type instruction,
+} from '@daclify/core-protocol/sdk';
 import { api } from '../api/client';
 import { useWorkspace } from '../state/workspace';
 export const nativeWallet = shallowRef<Session>();
@@ -55,7 +62,7 @@ export function nativeIdentity() {
   });
 }
 async function transactNative(
-  action: Action,
+  action: Action | Action[],
   broadcast: boolean,
   checkContext: () => void = () => {},
 ) {
@@ -65,15 +72,20 @@ async function transactNative(
     accountId = workspace.account?.id,
     network = JSON.stringify([workspace.network?.chainId, workspace.network?.runtime]),
     location = globalThis.location?.href;
-  const result = await selected.transact(
-    { action },
-    {
-      broadcast: false,
-      allowModify: false,
-      expireSeconds: 120,
-      abis: [{ account: action.account, abi: runtimeAbi }],
-    },
-  );
+  const actions = Array.isArray(action) ? action : [action];
+  const first = actions[0];
+  if (!first) throw new Error('NATIVE_ACTION_REQUIRED');
+  const result = await selected.transact(actions.length === 1 ? { action: first } : { actions }, {
+    broadcast: false,
+    allowModify: false,
+    expireSeconds: 120,
+    abis: [
+      {
+        account: workspace.network?.runtime ?? actions[0]?.account.toString() ?? '',
+        abi: runtimeAbi,
+      },
+    ],
+  });
   const transaction = result.resolved?.transaction;
   if (!transaction) throw new Error('NATIVE_PROOF_INVALID');
   if (
@@ -83,19 +95,48 @@ async function transactNative(
     selected !== nativeWallet.value ||
     !result.signer.equals(selected.permissionLevel) ||
     result.chain.id.toString() !== selected.chain.id.toString() ||
-    transaction.actions.length !== 1 ||
-    !transaction.actions[0]?.equals(action) ||
+    transaction.actions.length !== actions.length ||
+    !actions.every((expected, index) => transaction.actions[index]?.equals(expected)) ||
     transaction.context_free_actions.length ||
     transaction.transaction_extensions.length ||
     Number(transaction.delay_sec) !== 0
   )
     throw new Error('WALLET_CONTEXT_CHANGED');
   checkContext();
-  if (broadcast)
-    await selected.client.v1.chain.push_transaction(
+  if (broadcast) {
+    const executed = await selected.client.v1.chain.push_transaction(
       SignedTransaction.from({ ...transaction, signatures: result.signatures }),
     );
+    if (
+      executed.transaction_id !== transaction.id.toString() ||
+      executed.processed.id !== transaction.id.toString() ||
+      executed.processed.receipt.status !== 'executed'
+    )
+      throw new Error('NATIVE_EXECUTION_UNCONFIRMED');
+  }
   return { transaction, signatures: result.signatures };
+}
+export async function nativeRamPurchase(
+  value: RamQuote,
+  checkContext: () => void,
+): Promise<string> {
+  const quote = RamQuoteSchema.parse(value),
+    identity = nativeIdentity();
+  const check = () => {
+    const state = useWorkspace();
+    if (
+      nativeIdentity().account !== quote.order.payer ||
+      identity.chainId !== quote.dao.chainId ||
+      state.network?.chainId !== quote.dao.chainId ||
+      state.network.runtime !== quote.dao.contract
+    )
+      throw new Error('WALLET_CONTEXT_CHANGED');
+    if (quote.order.expires <= Date.now() / 1000) throw new Error('RAM_QUOTE_EXPIRED');
+    checkContext();
+  };
+  check();
+  const result = await transactNative(nativeRamActions(quote), true, check);
+  return result.transaction.id.toString();
 }
 export async function nativeIntentProof(runtime: string, message: string): Promise<NativeProof> {
   const selected = nativeIdentity();

@@ -1,4 +1,4 @@
-import { NetworkSchema } from '@daclify/core-protocol';
+import { NetworkSchema, RamQuoteSchema } from '@daclify/core-protocol';
 import { useWorkspace } from '../../src/state/workspace';
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
@@ -14,7 +14,12 @@ import {
   type TransactOptions,
 } from '@wharfkit/session';
 import { WalletPluginAnchor } from '@wharfkit/wallet-plugin-anchor';
-import { nativeWallet, nativeIntentProof, nativeGovernance } from '../../src/auth/telos-zero';
+import {
+  nativeWallet,
+  nativeIntentProof,
+  nativeGovernance,
+  nativeRamPurchase,
+} from '../../src/auth/telos-zero';
 import { makeInstruction, encodeAction, runtimeAbi } from '@daclify/core-protocol/sdk';
 const chainId = 'ab'.repeat(32),
   key = PrivateKey.generate('K1');
@@ -22,6 +27,22 @@ const wallet = new Session({
   chain: { id: chainId, url: 'https://native.example.test' },
   permissionLevel: 'alice@active',
   walletPlugin: new WalletPluginAnchor(),
+});
+const tokenAbi = ABI.from({
+  version: 'eosio::abi/1.2',
+  structs: [
+    {
+      name: 'transfer',
+      base: '',
+      fields: [
+        { name: 'from', type: 'name' },
+        { name: 'to', type: 'name' },
+        { name: 'quantity', type: 'asset' },
+        { name: 'memo', type: 'string' },
+      ],
+    },
+  ],
+  actions: [{ name: 'transfer', type: 'transfer', ricardian_contract: '' }],
 });
 let options: TransactOptions | undefined,
   started = false,
@@ -35,20 +56,35 @@ beforeEach(() => {
   extra = false;
   vi.spyOn(wallet, 'transact').mockImplementation(async (args, selectedOptions) => {
     options = selectedOptions;
-    if (!('action' in args) || !args.action) throw new Error('EXPECTED_SINGLE_ACTION');
-    const action = Action.from(args.action),
-      transaction = Transaction.from({
-        expiration: '2026-10-07T12:00:00',
-        ref_block_num: 1,
-        ref_block_prefix: 2,
-        actions: extra ? [action, action] : [action],
-      });
+    const actions =
+      'actions' in args && args.actions
+        ? args.actions.map((a) => Action.from(a))
+        : 'action' in args && args.action
+          ? [Action.from(args.action)]
+          : [];
+    if (!actions.length) throw new Error('EXPECTED_ACTIONS');
+    const action = actions[0];
+    if (!action) throw new Error('EXPECTED_ACTION');
+    const transaction = Transaction.from({
+      expiration: '2026-10-07T12:00:00',
+      ref_block_num: 1,
+      ref_block_prefix: 2,
+      actions: extra ? [...actions, action] : actions,
+    });
     const request = await SigningRequest.create(
       { chainId, transaction },
-      { abiProvider: { getAbi: async () => ABI.from(runtimeAbi) } },
+      {
+        abiProvider: {
+          getAbi: async (account) =>
+            account.toString() === 'eosio.token' ? tokenAbi : ABI.from(runtimeAbi),
+        },
+      },
     );
     const resolved = request.resolve(
-      new Map([['daclifycore', ABI.from(runtimeAbi)]]),
+      new Map([
+        ['daclifycore', ABI.from(runtimeAbi)],
+        ['eosio.token', tokenAbi],
+      ]),
       wallet.permissionLevel,
       { chainId },
     );
@@ -127,3 +163,54 @@ it('preserves wallet cancellation and never broadcasts the refused operation', a
   await expect(nativeIntentProof('daclifycore', 'intent')).rejects.toThrow('USER_CANCELLED');
   expect(push).not.toHaveBeenCalled();
 });
+
+it.each(['network', 'route', 'consent', 'extra-action', 'disconnect'] as const)(
+  'rejects RAM purchase when %s changes while wallet approval is pending',
+  async (change) => {
+    const state = useWorkspace();
+    state.network = NetworkSchema.parse({
+      chainId,
+      runtime: 'daclifycore',
+      rpcUrl: 'https://native.example.test',
+      hub: null,
+      environment: 'local',
+      interfaceVersion: 1,
+      coreVersion: '0.7.0-alpha.1',
+      capabilities: [],
+    });
+    const quote = RamQuoteSchema.parse({
+      dao: { chainId, contract: 'daclifycore', daoId: '1', interfaceVersion: 1 },
+      rail: 'tlos',
+      baseUnits: '100',
+      feeUnits: '5',
+      totalUnits: '105',
+      feeBps: 500,
+      order: {
+        dao_id: '1',
+        payer: 'alice',
+        reference: 'cd'.repeat(32),
+        policy_revision: '1',
+        maximum: '0.0105 TLOS',
+        expires: Math.floor(Date.now() / 1000) + 300,
+        purchases: [{ receiver: 'daclifycore', quantity: '0.0100 TLOS', minimum_bytes: '1024' }],
+      },
+      systemCodeHash: 'ef'.repeat(32),
+      systemRawAbiHash: 'fe'.repeat(32),
+      quotedAt: new Date().toISOString(),
+    });
+    let approved = true;
+    extra = change === 'extra-action';
+    const push = vi.spyOn(wallet.client.v1.chain, 'push_transaction');
+    const operation = nativeRamPurchase(quote, () => {
+      if (!approved) throw new Error('CONSENT_CHANGED');
+    });
+    await pending();
+    if (change === 'network') state.network = { ...state.network, chainId: 'cd'.repeat(32) };
+    if (change === 'route') globalThis.location.href = 'https://app.example.test/dao/2';
+    if (change === 'consent') approved = false;
+    if (change === 'disconnect') nativeWallet.value = undefined;
+    resolveApproval();
+    await expect(operation).rejects.toThrow();
+    expect(push).not.toHaveBeenCalled();
+  },
+);

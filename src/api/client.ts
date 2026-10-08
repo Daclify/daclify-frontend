@@ -337,7 +337,37 @@ export const api = {
     }
     return all;
   },
+  cardRamQuote: (input: z.infer<typeof ApiRoutes.ramCardQuote.input>) =>
+    request(
+      ApiRoutes.ramCardQuote.path,
+      ApiRoutes.ramCardQuote.response,
+      ApiRoutes.ramCardQuote.input.parse(input),
+    ),
+  cardRamCheckout: (input: z.infer<typeof ApiRoutes.ramCardCheckout.input>) =>
+    request(
+      ApiRoutes.ramCardCheckout.path,
+      ApiRoutes.ramCardCheckout.response,
+      ApiRoutes.ramCardCheckout.input.parse(input),
+    ),
+  cardRamReconcile: (id: string) =>
+    request(
+      ApiRoutes.ramCardReconcile.path.replace(':id', z.uuid().parse(id)),
+      ApiRoutes.ramCardReconcile.response,
+      {},
+      60000,
+    ),
+  cardRamStatus: (id: string) =>
+    request(
+      ApiRoutes.ramCardStatus.path.replace(':id', z.uuid().parse(id)),
+      ApiRoutes.ramCardStatus.response,
+    ),
   storage: () => request(ApiRoutes.storage.path, ApiRoutes.storage.response),
+  ramQuote: (input: z.infer<typeof ApiRoutes.ramQuote.input>) =>
+    request(
+      ApiRoutes.ramQuote.path,
+      ApiRoutes.ramQuote.response,
+      ApiRoutes.ramQuote.input.parse(input),
+    ),
   ramUsage: async (dao: DaoRef) => {
     const result = await request(
       ApiRoutes.ramUsage.path.replace(':id', IdSchema.parse(dao.daoId)),

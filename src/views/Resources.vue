@@ -184,7 +184,9 @@ function checkout() {
       <h1>Storage and blockchain resources</h1>
       <p class="lead">Membership, pinned storage and blockchain RAM have separate allowances.</p>
     </div>
-    <RouterLink to="/docs/documents" class="help-link">Storage and retention guide ↗</RouterLink>
+    <RouterLink to="/docs/resources-and-retention" class="help-link"
+      >Storage and retention guide ↗</RouterLink
+    >
   </div>
   <p v-if="error" class="alert" role="alert">{{ error }}</p>
   <section v-if="!dao" class="panel">

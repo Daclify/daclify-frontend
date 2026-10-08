@@ -14,6 +14,11 @@ describe('card checkout display', () => {
     expect(() => hostedCheckoutUrl('https://checkout.stripe.com.evil.example/pay')).toThrow(
       'CHECKOUT_URL',
     );
+    for (const value of [
+      'https://name:password@checkout.stripe.com/pay',
+      'https://checkout.stripe.com:444/pay',
+    ])
+      expect(() => hostedCheckoutUrl(value)).toThrow('CHECKOUT_URL');
     expect(formatReceiptAmount('usd', 1000)).toBe('USD 10.00');
     expect(formatReceiptAmount('usd', 0)).toBe('USD 0.00');
     expect(formatReceiptAmount('usd', 5)).toBe('USD 0.05');
