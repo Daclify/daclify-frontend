@@ -74,6 +74,23 @@ test('creates free shared setup and administers only the linked platform DAO', a
   await expect(
     page.getByText('Platform configuration updated on chain.', { exact: true }),
   ).toBeVisible();
+  await page.getByLabel('TLOS RAM purchase fee (%)').fill('5');
+  await page.getByLabel('Card RAM operational markup (%)').fill('20');
+  await page.getByLabel('Free pinned storage per DAO (MB)').fill('100');
+  await page.getByLabel('Additional storage unit (GB)').fill('1');
+  await page.getByLabel('Monthly price per additional unit (USD)').fill('1');
+  await page.getByRole('button', { name: 'Sign resource policy update' }).click();
+  await expect(
+    page.getByText('Platform configuration updated on chain.', { exact: true }),
+  ).toBeVisible();
+  const policyResponse = await page.request.get(ApiRoutes.status.path);
+  expect(
+    ApiRoutes.status.response.parse(await policyResponse.json()).chain?.resourcePolicy,
+  ).toMatchObject({
+    nativeRamBps: 500,
+    cardRamBps: 2000,
+    storage: { freeBytes: '100000000', unitBytes: '1000000000', monthlyUnitUsdCents: 100 },
+  });
   await page.getByLabel('Native module account', { exact: true }).first().fill('works');
   await page.getByLabel('Title', { exact: true }).fill('Works');
   await page.getByLabel('Verified deployed WASM hash').fill(ModuleCodeHashes.works);

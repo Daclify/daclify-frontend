@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
-import { parseUnits, type PlatformStatus } from '@daclify/core-protocol';
+import {
+  parseUnits,
+  formatUnits,
+  DEFAULT_RESOURCE_POLICY,
+  ResourcePolicySchema,
+  type PlatformStatus,
+} from '@daclify/core-protocol';
 import {
   encodeAction,
   makeInstruction,
@@ -25,6 +31,11 @@ const freeSlots = ref(10),
   firstRate = ref('1.00'),
   nextRate = ref('0.50'),
   restRate = ref('0.20');
+const nativeRamPercent = ref('5.00'),
+  cardRamPercent = ref('20.00'),
+  storageFreeMb = ref('100.000000'),
+  storageUnitGb = ref('1.000000000'),
+  storageUnitUsd = ref('1.00');
 const thirdParty = ref(500),
   firstParty = ref(10000),
   bump = ref(2000),
@@ -73,6 +84,12 @@ async function load() {
     firstRate.value = ((s.chain?.seatPricing?.first_usd ?? 100) / 100).toFixed(2);
     nextRate.value = ((s.chain?.seatPricing?.next_usd ?? 50) / 100).toFixed(2);
     restRate.value = ((s.chain?.seatPricing?.rest_usd ?? 20) / 100).toFixed(2);
+    const resources = s.chain?.resourcePolicy ?? DEFAULT_RESOURCE_POLICY;
+    nativeRamPercent.value = formatUnits(BigInt(resources.nativeRamBps), 2);
+    cardRamPercent.value = formatUnits(BigInt(resources.cardRamBps), 2);
+    storageFreeMb.value = formatUnits(BigInt(resources.storage.freeBytes), 6);
+    storageUnitGb.value = formatUnits(BigInt(resources.storage.unitBytes), 9);
+    storageUnitUsd.value = formatUnits(BigInt(resources.storage.monthlyUnitUsdCents), 2);
     thirdParty.value = s.chain?.fees?.third_party_bps ?? 500;
     firstParty.value = s.chain?.fees?.first_party_bps ?? 10000;
     bump.value = s.chain?.market?.bump_bps ?? 2000;
@@ -125,6 +142,44 @@ async function fees() {
     );
   } catch (cause) {
     error.value = friendlyError(cause);
+  }
+}
+async function resources() {
+  success.value = '';
+  error.value = '';
+  try {
+    const current = status.value?.chain?.resourcePolicy ?? DEFAULT_RESOURCE_POLICY;
+    const policy = ResourcePolicySchema.parse({
+      ...current,
+      nativeRamBps: Number(parseUnits(nativeRamPercent.value, 2)),
+      cardRamBps: Number(parseUnits(cardRamPercent.value, 2)),
+      storage: {
+        ...current.storage,
+        freeBytes: parseUnits(storageFreeMb.value, 6).toString(),
+        unitBytes: parseUnits(storageUnitGb.value, 9).toString(),
+        monthlyUnitUsdCents: Number(parseUnits(storageUnitUsd.value, 2)),
+      },
+    });
+    await sign(
+      'govresources',
+      encodeAction('govresources', {
+        ...actor(),
+        expected_revision: current.revision,
+        native_ram_bps: policy.nativeRamBps,
+        card_ram_bps: policy.cardRamBps,
+        included_activity_bytes: policy.includedActivityBytes,
+        identity_bytes_per_slot: policy.identityBytesPerSlot,
+        quote_lifetime_seconds: policy.quoteLifetimeSeconds,
+        storage_free_bytes: policy.storage.freeBytes,
+        storage_unit_bytes: policy.storage.unitBytes,
+        storage_monthly_usd: policy.storage.monthlyUnitUsdCents,
+      }),
+    );
+  } catch (cause) {
+    error.value =
+      cause instanceof TypeError || cause instanceof RangeError
+        ? 'Enter valid decimal resource fees, storage units and a positive monthly price.'
+        : friendlyError(cause);
   }
 }
 async function hostingPrices() {
@@ -264,7 +319,7 @@ async function describe() {
     </p>
   </section>
   <p v-if="!newPoliciesReady" class="notice">
-    New hosting and Connect controls require the matching reviewed runtime deployment.
+    New hosting, resource and Connect controls require the matching reviewed runtime deployment.
   </p>
   <form class="panel form-panel" @submit.prevent="fees">
     <h2>Shared hosting policy</h2>
@@ -287,6 +342,38 @@ async function describe() {
       </button>
     </fieldset>
     <RouterLink to="/docs/shared-hosting">Hosting guide ↗</RouterLink>
+  </form>
+  <form class="panel form-panel" @submit.prevent="resources">
+    <h2>RAM fees and pinned storage policy</h2>
+    <p>
+      Set prices for new agreements. Existing subscriptions keep their accepted pricing. RAM
+      purchases use one rail-specific markup; the two percentages are not added together.
+    </p>
+    <fieldset :disabled="!canSign || !newPoliciesReady">
+      <label for="ram-native-fee">TLOS RAM purchase fee (%)</label>
+      <input
+        id="ram-native-fee"
+        v-model="nativeRamPercent"
+        type="text"
+        inputmode="decimal"
+        required
+      />
+      <label for="ram-card-fee">Card RAM operational markup (%)</label>
+      <input id="ram-card-fee" v-model="cardRamPercent" type="text" inputmode="decimal" required />
+      <label for="storage-free">Free pinned storage per DAO (MB)</label>
+      <input id="storage-free" v-model="storageFreeMb" type="text" inputmode="decimal" required />
+      <label for="storage-unit">Additional storage unit (GB)</label>
+      <input id="storage-unit" v-model="storageUnitGb" type="text" inputmode="decimal" required />
+      <label for="storage-price">Monthly price per additional unit (USD)</label>
+      <input id="storage-price" v-model="storageUnitUsd" type="text" inputmode="decimal" required />
+      <button>Sign resource policy update</button>
+    </fieldset>
+    <p class="field-help">
+      1 MB = 1,000,000 bytes; 1 GB = 1,000,000,000 bytes. Archives and old versions use the same
+      storage rate. This policy does not allocate RAM or activate paid storage. Purchases,
+      subscriptions and automatic cleanup remain under implementation.
+    </p>
+    <RouterLink to="/docs/platform">Resource policy and authority guide ↗</RouterLink>
   </form>
   <form class="panel form-panel" @submit.prevent="hostingPrices">
     <h2>Graduated monthly capacity prices</h2>

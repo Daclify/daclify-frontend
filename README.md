@@ -100,3 +100,5 @@ Use core’s [execution ledger](../daclify-backend-core/docs/evidence/2026-10-07
 First-party code, contracts, SDKs and documentation are licensed under
 **AGPL-3.0-only**. See [LICENSE](LICENSE) and [licensing and source obligations](LICENSING.md).
 Third-party files retain their own licenses. Contributions remain owned by their authors.
+
+Development resource views show per-DAO verified/held storage usage and allow the linked Daclify DAO administrator to sign revision-checked RAM/storage policy updates. Decimal fee/price fields remain strings until exact producer parsing. The views label purchased RAM, paid storage provisioning and automatic cleanup as unfinished; policy changes alone do not start charges. The owned resource/browser fixture is checked by `playwright.resources.config.ts`.
