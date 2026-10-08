@@ -1,5 +1,6 @@
 import { ModuleCodeHashes } from '@daclify/modules/sdk';
 import { ModuleApiRoutes, VERSION as MODULE_VERSION, type ModuleState } from '@daclify/modules';
+import { ArchiveRoutes } from '@daclify/modules/archive';
 import { z } from 'zod';
 import {
   ServiceCheckoutSchema,
@@ -337,6 +338,17 @@ export const api = {
     return all;
   },
   storage: () => request(ApiRoutes.storage.path, ApiRoutes.storage.response),
+  archivePreview: async (input: z.infer<typeof ArchiveRoutes.preview.input>) => {
+    const result = await request(
+      ArchiveRoutes.preview.path,
+      ArchiveRoutes.preview.response,
+      ArchiveRoutes.preview.input.parse(input),
+      60000,
+    );
+    if (daoPaymentKey(result.dao) !== daoPaymentKey(input.dao))
+      throw new ApiFailure('DAO_REFERENCE');
+    return result;
+  },
   storageBilling: async (dao: DaoRef) => {
     const result = await request(
       StorageBillingRoutes.storageBillingStatus.path +
@@ -659,6 +671,16 @@ export function friendlyError(error: unknown): string {
       CHAIN_ACTION_REJECTED:
         'The contract rejected the action. Refresh the DAO and check your permissions.',
       CHAIN_UNAVAILABLE: 'The blockchain node is unavailable. Try again later.',
+      ARCHIVE_ADMIN_REQUIRED: 'Only an active DAO administrator can preview its archive.',
+      ARCHIVE_UNAVAILABLE: 'Archive preview is not configured on this operator.',
+      ARCHIVE_SCHEMA_UNSUPPORTED:
+        'The deployed contract or archive schema is not qualified for this preview.',
+      ARCHIVE_SNAPSHOT_UNQUALIFIED:
+        'A verified irreversible snapshot is unavailable. Try again after chain confirmation.',
+      ARCHIVE_COVERAGE_INCOMPLETE:
+        'Complete archive coverage could not be verified. Use a smaller selection or contact the operator.',
+      ARCHIVE_SOURCE_INVALID:
+        'The archive source did not pass eligibility or integrity checks. No records were changed.',
       CUSTODY_POLICY: 'This DAO requires user-controlled keys.',
       RESULT_LIMIT:
         'This deployment exceeds the current read limit. Configure an indexed read service.',

@@ -16,6 +16,7 @@ import { useWorkspace } from '../state/workspace';
 import { canSignMember } from '../auth/action-signer';
 import ActionSigner from '../components/ActionSigner.vue';
 import StorageUsagePanel from '../components/StorageUsagePanel.vue';
+import ArchivePanel from '../components/ArchivePanel.vue';
 const route = useRoute(),
   state = useWorkspace();
 const status = ref<z.infer<typeof StorageBillingStatusSchema>>(),
@@ -343,5 +344,6 @@ function checkout() {
         are still being qualified; this screen cannot purchase RAM yet.
       </p>
     </section>
+    <ArchivePanel :dao="dao" :member="member" />
   </template>
 </template>

@@ -2,6 +2,9 @@ import { payCreation } from './creation-payment';
 import { test, expect, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import AxeBuilder from '@axe-core/playwright';
+import { ModuleApiRoutes } from '@daclify/modules';
+import { DecideTableSchemas } from '@daclify/modules/sdk';
+import { ArchiveRoutes, archiveSourceSchema } from '@daclify/modules/archive';
 import {
   HostedUploadSchema,
   DaoRefSchema,
@@ -222,6 +225,94 @@ test('requires exact recurring storage consent and shows a pending checkout with
   await approve.click();
   await expect(page.getByRole('button', { name: 'Continue secure Stripe checkout' })).toBeVisible();
   await expect(page.getByText('100,000,000 bytes', { exact: true })).toHaveCount(2);
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+test('previews archive eligibility without signing deletion and clears stale selection results', async ({
+  page,
+}) => {
+  await createWorkspace(page);
+  const link = page.getByRole('link', { name: 'Manage resources →', exact: true });
+  const href = await link.getAttribute('href');
+  if (!href) throw new Error('Resource link missing');
+  const dao = DaoRefSchema.parse(
+    JSON.parse(new URL(href, 'http://localhost').searchParams.get('dao') ?? 'null'),
+  );
+  // Eligibility responses are HTTP fixtures; native snapshot/coverage is qualified separately.
+  await page.route(
+    '**' + ModuleApiRoutes.state.path.replace(':id', dao.daoId) + '*',
+    async (route) => {
+      const response = await route.fetch(),
+        body = ModuleApiRoutes.state.response.parse(await response.json());
+      body.ballots = ['7', '8'].map((id) =>
+        DecideTableSchemas.ballots.parse({
+          id,
+          dao_id: dao.daoId,
+          creator: '1',
+          kind: 0,
+          choices: 2,
+          closes: 1,
+          quorum: 5000,
+          approval: 5001,
+          denominator: '1',
+          max_member: '1',
+          cast: '0',
+          tallies: ['0', '0'],
+          status: 2,
+          winner: -1,
+          metadata: '{}',
+        }),
+      );
+      await route.fulfill({ json: body });
+    },
+  );
+  const source = archiveSourceSchema('ordinary-poll-votes');
+  await page.route('**' + ArchiveRoutes.preview.path, async (route) => {
+    const input = ArchiveRoutes.preview.input.parse(
+      JSON.parse(route.request().postData() ?? 'null'),
+    );
+    expect(input.dao).toEqual(dao);
+    expect(input.retentionSeconds).toBe(90 * 86400);
+    const id = input.ballotIds[0];
+    if (!id) throw new Error('Preview ID missing');
+    await route.fulfill({
+      json: ArchiveRoutes.preview.response.parse({
+        dao,
+        source: { account: 'decide', codeHash: source.codeHash, abiHash: source.rawAbiHash },
+        snapshot: {
+          blockNumber: 1,
+          blockId: '00000001' + 'ab'.repeat(28),
+          timestamp: '2026-01-01T00:00:00.000Z',
+        },
+        pruningAuthorized: false,
+        grossRamBytes: '0',
+        families:
+          id === '8'
+            ? [{ kind: 'ordinary-poll-votes', parentId: '8', grossRamBytes: '0', chunks: [] }]
+            : [],
+        blocked: id === '7' ? [{ parentId: '7', reason: 'retention' }] : [],
+      }),
+    });
+  });
+  await link.click();
+  const preview = page.getByRole('button', { name: 'Preview archive eligibility', exact: true }),
+    select = page.getByLabel('Finalized ballot', { exact: true });
+  await expect(preview).toBeDisabled();
+  await expect(select).toBeEnabled();
+  await select.selectOption('7');
+  await preview.click();
+  await expect(
+    page.getByText('The 90-day wait from actual finalization or legacy marking has not ended.'),
+  ).toBeVisible();
+  await select.selectOption('8');
+  await expect(
+    page.getByText('The 90-day wait from actual finalization or legacy marking has not ended.'),
+  ).toHaveCount(0);
+  await preview.click();
+  await expect(page.getByText('Eligible for export planning.', { exact: false })).toBeVisible();
+  await expect(
+    page.getByText('This screen provides a read-only preview.', { exact: false }),
+  ).toBeVisible();
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
