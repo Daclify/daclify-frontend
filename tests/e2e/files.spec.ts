@@ -2,7 +2,13 @@ import { payCreation } from './creation-payment';
 import { test, expect, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import AxeBuilder from '@axe-core/playwright';
-import { HostedUploadSchema } from '@daclify/core-protocol';
+import {
+  HostedUploadSchema,
+  DaoRefSchema,
+  StorageApprovalSchema,
+  DEFAULT_STORAGE_PRICING,
+  storagePricingHash,
+} from '@daclify/core-protocol';
 const password = 'download fixture password 2026';
 async function openMenu(page: Page) {
   const button = page.getByRole('button', { name: 'Menu', exact: true });
@@ -62,8 +68,10 @@ test('resumes a verified public upload after a lost response and a browser reloa
   await page.getByLabel('Vault password', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Unlock and sign in' }).click();
   await expect(page.getByText('Vault unlocked', { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/dao\/\d+\/documents$/);
   await openMenu(page);
   await page.getByRole('link', { name: 'DAO hub', exact: true }).click();
+  await expect(page).toHaveURL(/^http:\/\/127\.0\.0\.1:[0-9]+\/$/);
   await page
     .getByRole('link')
     .filter({ has: page.getByRole('heading', { name: title, exact: true }) })
@@ -125,13 +133,11 @@ test('shows one shared storage object for two published document references', as
   const payload = Buffer.from('Repeated hosted resource fixture');
   for (const documentId of ['127', '128']) {
     await page.getByLabel('File document ID').fill(documentId);
-    await page
-      .getByLabel('Document file', { exact: true })
-      .setInputFiles({
-        name: 'repeated.bin',
-        mimeType: 'application/octet-stream',
-        buffer: payload,
-      });
+    await page.getByLabel('Document file', { exact: true }).setInputFiles({
+      name: 'repeated.bin',
+      mimeType: 'application/octet-stream',
+      buffer: payload,
+    });
     await page.getByRole('button', { name: 'Upload file', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Verified file record' })).toBeVisible();
     await page.getByRole('button', { name: 'Sign and publish file record' }).click();
@@ -140,5 +146,82 @@ test('shows one shared storage object for two published document references', as
   await page.getByRole('button', { name: 'Refresh storage usage' }).click();
   await expect(page.getByText('1 unique files · 2 references.', { exact: false })).toBeVisible();
   await expect(page.getByText(`${payload.length} bytes used of`, { exact: false })).toBeVisible();
+  await page.getByRole('link', { name: 'Manage resources →', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Storage and blockchain resources' }),
+  ).toBeVisible();
+  await expect(page.getByText('Paid storage is not configured on this operator.')).toBeVisible();
+  await expect(page.getByText('1 unique files · 2 references.', { exact: false })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Approve and prepare card checkout' })).toHaveCount(
+    0,
+  );
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+});
+test('requires exact recurring storage consent and shows a pending checkout without granting capacity', async ({
+  page,
+}) => {
+  await createWorkspace(page);
+  const resources = page.getByRole('link', { name: 'Manage resources →', exact: true });
+  const href = await resources.getAttribute('href');
+  if (!href) throw new Error('Resource link missing');
+  const dao = DaoRefSchema.parse(
+    JSON.parse(new URL(href, 'http://localhost').searchParams.get('dao') ?? 'null'),
+  );
+  const status = {
+    dao,
+    configured: true,
+    currentPricing: DEFAULT_STORAGE_PRICING,
+    funding: {
+      state: 'free',
+      pricing: DEFAULT_STORAGE_PRICING,
+      units: 0,
+      paidThrough: null,
+      graceEndsAt: null,
+      uploadCapacityBytes: '100000000',
+      retainedCapacityBytes: '100000000',
+    },
+    subscription: null,
+  };
+  await page.route('**/v1/storage/billing?*', (route) => route.fulfill({ json: status }));
+  await page.route('**/v1/storage/approve', async (route) => {
+    const input = StorageApprovalSchema.parse(JSON.parse(route.request().postData() ?? 'null'));
+    expect(input.dao).toEqual(dao);
+    expect(input.units).toBe(3);
+    expect(input.monthlyUsdCents).toBe(300);
+    expect(input.pricingHash).toBe(storagePricingHash(DEFAULT_STORAGE_PRICING));
+    expect(input.recurringConsent).toBe(true);
+    expect(route.request().headers()['x-account-signature']).toBeTruthy();
+    await route.fulfill({
+      json: {
+        ...status,
+        subscription: {
+          id: crypto.randomUUID(),
+          requestId: input.requestId,
+          state: 'pending',
+          pricing: DEFAULT_STORAGE_PRICING,
+          units: 3,
+          monthlyUsdCents: 300,
+          checkoutUrl: 'https://checkout.stripe.com/c/pay/browser-fixture',
+          invoiceUrl: null,
+          pending: null,
+        },
+      },
+    });
+  });
+  await resources.click();
+  const approve = page.getByRole('button', { name: 'Approve and prepare card checkout' });
+  await expect(approve).toBeDisabled();
+  await page.getByLabel('Additional paid storage units').fill('2');
+  const consent = page.getByLabel('I approve these units and this recurring monthly price.');
+  await consent.check();
+  await expect(approve).toBeEnabled();
+  await page.getByLabel('Additional paid storage units').fill('3');
+  await expect(consent).not.toBeChecked();
+  await expect(approve).toBeDisabled();
+  await consent.check();
+  await approve.click();
+  await expect(page.getByRole('button', { name: 'Continue secure Stripe checkout' })).toBeVisible();
+  await expect(page.getByText('100,000,000 bytes', { exact: true })).toHaveCount(2);
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });

@@ -149,7 +149,7 @@ async function resources() {
   error.value = '';
   try {
     const current = status.value?.chain?.resourcePolicy ?? DEFAULT_RESOURCE_POLICY;
-    const policy = ResourcePolicySchema.parse({
+    const validated = ResourcePolicySchema.safeParse({
       ...current,
       nativeRamBps: Number(parseUnits(nativeRamPercent.value, 2)),
       cardRamBps: Number(parseUnits(cardRamPercent.value, 2)),
@@ -160,6 +160,12 @@ async function resources() {
         monthlyUnitUsdCents: Number(parseUnits(storageUnitUsd.value, 2)),
       },
     });
+    if (!validated.success) {
+      error.value =
+        'Choose fees between 0% and 100%, valid storage units and a positive monthly price.';
+      return;
+    }
+    const policy = validated.data;
     await sign(
       'govresources',
       encodeAction('govresources', {

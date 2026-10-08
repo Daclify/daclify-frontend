@@ -24,6 +24,7 @@ const router = createRouter({
     { path: '/status', component: () => import('./views/Status.vue') },
     { path: '/create', component: () => import('./views/CreateDao.vue') },
     { path: '/hosting', component: () => import('./views/Hosting.vue') },
+    { path: '/resources', component: () => import('./views/Resources.vue') },
     { path: '/payments', component: () => import('./views/Payments.vue') },
     { path: '/marketplace', component: () => import('./views/Marketplace.vue') },
     { path: '/dao/:id/:section?', component: () => import('./views/Workspace.vue') },

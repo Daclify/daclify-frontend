@@ -63,7 +63,13 @@ import {
 import type { instruction } from '@daclify/core-protocol/sdk';
 import { csrfStorageKey, resolveApiUrl, currentOperator, assertOperatorDao } from './networks';
 import { AuthChallengePaths, validateAuthChallenge } from '../auth/audience';
-import { HostingRoutes, PaymentRoutes, DirectoryRoutes, type DaoRef } from '@daclify/core-protocol';
+import {
+  HostingRoutes,
+  PaymentRoutes,
+  DirectoryRoutes,
+  StorageBillingRoutes,
+  type DaoRef,
+} from '@daclify/core-protocol';
 export class ApiFailure extends Error {
   constructor(readonly code: string) {
     super(code);
@@ -331,6 +337,27 @@ export const api = {
     return all;
   },
   storage: () => request(ApiRoutes.storage.path, ApiRoutes.storage.response),
+  storageBilling: async (dao: DaoRef) => {
+    const result = await request(
+      StorageBillingRoutes.storageBillingStatus.path +
+        '?dao=' +
+        encodeURIComponent(JSON.stringify(dao)),
+      StorageBillingRoutes.storageBillingStatus.response,
+    );
+    if (daoPaymentKey(result.dao) !== daoPaymentKey(dao)) throw new ApiFailure('DAO_REFERENCE');
+    return result;
+  },
+  storageApprove: async (input: z.infer<typeof StorageBillingRoutes.storageApprove.input>) => {
+    const result = await request(
+      StorageBillingRoutes.storageApprove.path,
+      StorageBillingRoutes.storageApprove.response,
+      StorageBillingRoutes.storageApprove.input.parse(input),
+      60000,
+    );
+    if (daoPaymentKey(result.dao) !== daoPaymentKey(input.dao))
+      throw new ApiFailure('DAO_REFERENCE');
+    return result;
+  },
   storageUsage: async (dao: DaoRef) => {
     const result = await request(
       ApiRoutes.storageUsage.path.replace(':id', encodeURIComponent(dao.daoId)),

@@ -271,6 +271,11 @@ async function rename() {
         >
         <RouterLink
           class="button secondary"
+          :to="{ path: '/resources', query: { dao: JSON.stringify(dao.reference) } }"
+          >Storage and blockchain resources</RouterLink
+        >
+        <RouterLink
+          class="button secondary"
           :to="{ path: '/payments', query: { dao: JSON.stringify(dao.reference) } }"
           >DAO payments and merchant setup</RouterLink
         >

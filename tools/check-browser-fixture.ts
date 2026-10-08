@@ -1,5 +1,6 @@
 import type { FullConfig } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
 import { z } from 'zod';
 import { NetworkSchema } from '@daclify/core-protocol';
 
@@ -31,4 +32,12 @@ export default async function checkBrowserFixture(config: FullConfig): Promise<v
   const network = NetworkSchema.parse(await response.json());
   if (network.environment !== 'local' || network.chainId !== fixture.chainId)
     throw new Error('BROWSER_FIXTURE_CHAIN_MISMATCH');
+  try {
+    execFileSync('npm', ['exec', '--', 'tsx', 'tools/native/unlock.ts'], {
+      cwd: '../daclify-backend-core',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+  } catch {
+    throw new Error('BROWSER_FIXTURE_WALLET_UNAVAILABLE');
+  }
 }

@@ -4,7 +4,12 @@ import { ApiRoutes, type DaoRef, type UserMembership } from '@daclify/core-proto
 import type { z } from 'zod';
 import { api, friendlyError } from '../api/client';
 import { useWorkspace } from '../state/workspace';
-const props = defineProps<{ dao: DaoRef; member: UserMembership; revision: string }>();
+const props = defineProps<{
+  dao: DaoRef;
+  member: UserMembership;
+  revision: string;
+  headingLevel?: 2;
+}>();
 const workspace = useWorkspace();
 const usage = ref<z.infer<typeof ApiRoutes.storageUsage.response>>();
 const loading = ref(false),
@@ -56,7 +61,9 @@ onBeforeUnmount(() => {
 </script>
 <template>
   <aside class="notice" aria-labelledby="hosted-storage-heading">
-    <h4 id="hosted-storage-heading">Hosted storage</h4>
+    <component :is="props.headingLevel === 2 ? 'h2' : 'h4'" id="hosted-storage-heading"
+      >Hosted storage</component
+    >
     <p v-if="loading" role="status">Reading storage usage…</p>
     <p v-if="error" role="alert">{{ error }}</p>
     <template v-if="usage">
@@ -70,12 +77,16 @@ onBeforeUnmount(() => {
       </p>
       <p class="field-help">
         Encrypted bytes, previous versions and archives share this allowance. 1 MB = 1,000,000
-        bytes. Automatic deletion and paid storage upgrades are not enabled yet.
+        bytes. Automatic deletion is disabled. Administrators manage approved storage capacity in
+        Resources.
       </p>
     </template>
     <button type="button" class="secondary" :disabled="loading" @click="refresh">
       Refresh storage usage
     </button>
     <RouterLink to="/docs/documents">Storage documentation ↗</RouterLink>
+    <RouterLink :to="{ path: '/resources', query: { dao: JSON.stringify(props.dao) } }"
+      >Manage resources →</RouterLink
+    >
   </aside>
 </template>

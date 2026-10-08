@@ -1,5 +1,11 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { ApiRoutes, DaoRefSchema } from '@daclify/core-protocol';
+import {
+  ApiRoutes,
+  DaoRefSchema,
+  DEFAULT_STORAGE_PRICING,
+  StorageBillingRoutes,
+  storagePricingHash,
+} from '@daclify/core-protocol';
 import { api } from '../../src/api/client';
 import { configureNetworks } from '../../src/api/networks';
 const dao = DaoRefSchema.parse({
@@ -41,4 +47,51 @@ it('rejects counters from another deployment and malformed negative values', asy
     vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockResolvedValue(Response.json(response)));
     await expect(api.storageUsage(dao)).rejects.toThrow();
   }
+});
+const billing = {
+  dao,
+  configured: false,
+  currentPricing: null,
+  subscription: null,
+  funding: {
+    state: 'free',
+    pricing: DEFAULT_STORAGE_PRICING,
+    units: 0,
+    paidThrough: null,
+    graceEndsAt: null,
+    uploadCapacityBytes: '100000000',
+    retainedCapacityBytes: '100000000',
+  },
+};
+it('reads canonical billing status and rejects another deployment', async () => {
+  vi.stubGlobal('sessionStorage', { getItem: () => null });
+  const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(billing));
+  vi.stubGlobal('fetch', fetcher);
+  expect(await api.storageBilling(dao)).toEqual(billing);
+  expect(fetcher.mock.calls[0]?.[0]).toContain(StorageBillingRoutes.storageBillingStatus.path);
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json({ ...billing, dao: { ...dao, contract: 'other' } })),
+  );
+  await expect(api.storageBilling(dao)).rejects.toThrow('DAO_REFERENCE');
+});
+it('refuses a storage approval without a fresh account-control signer', async () => {
+  vi.stubGlobal('sessionStorage', { getItem: () => null });
+  const fetcher = vi.fn<typeof fetch>();
+  vi.stubGlobal('fetch', fetcher);
+  await expect(
+    api.storageApprove({
+      schemaVersion: 1,
+      requestId: crypto.randomUUID(),
+      dao,
+      units: 1,
+      pricingHash: storagePricingHash(DEFAULT_STORAGE_PRICING),
+      monthlyUsdCents: 100,
+      recurringConsent: true,
+      acceptCurrentPricing: false,
+    }),
+  ).rejects.toThrow('ACCOUNT_CONTROL_REQUIRED');
+  expect(fetcher).not.toHaveBeenCalled();
 });
