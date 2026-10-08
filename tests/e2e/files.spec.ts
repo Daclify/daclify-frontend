@@ -119,3 +119,26 @@ test('publishes only ciphertext for a private file and decrypts its original fil
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
+
+test('shows one shared storage object for two published document references', async ({ page }) => {
+  await createWorkspace(page);
+  const payload = Buffer.from('Repeated hosted resource fixture');
+  for (const documentId of ['127', '128']) {
+    await page.getByLabel('File document ID').fill(documentId);
+    await page
+      .getByLabel('Document file', { exact: true })
+      .setInputFiles({
+        name: 'repeated.bin',
+        mimeType: 'application/octet-stream',
+        buffer: payload,
+      });
+    await page.getByRole('button', { name: 'Upload file', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Verified file record' })).toBeVisible();
+    await page.getByRole('button', { name: 'Sign and publish file record' }).click();
+    await expect(page.getByText('File document published.', { exact: true })).toBeVisible();
+  }
+  await page.getByRole('button', { name: 'Refresh storage usage' }).click();
+  await expect(page.getByText('1 unique files · 2 references.', { exact: false })).toBeVisible();
+  await expect(page.getByText(`${payload.length} bytes used of`, { exact: false })).toBeVisible();
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+});

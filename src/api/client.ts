@@ -331,6 +331,14 @@ export const api = {
     return all;
   },
   storage: () => request(ApiRoutes.storage.path, ApiRoutes.storage.response),
+  storageUsage: async (dao: DaoRef) => {
+    const result = await request(
+      ApiRoutes.storageUsage.path.replace(':id', encodeURIComponent(dao.daoId)),
+      ApiRoutes.storageUsage.response,
+    );
+    if (daoPaymentKey(result.dao) !== daoPaymentKey(dao)) throw new ApiFailure('DAO_REFERENCE');
+    return result;
+  },
   upload: (input: HostedUpload) =>
     request(
       ApiRoutes.upload.path,
@@ -647,6 +655,9 @@ export function friendlyError(error: unknown): string {
       OPERATOR_UNAVAILABLE:
         'The operator API could not be verified. Check its HTTPS endpoint and allowed frontend origins.',
       STORAGE_QUOTA: 'The DAO storage allowance is full. Existing documents remain available.',
+      STORAGE_OWNERSHIP_REVIEW: 'The storage operator must verify this file’s provider ownership.',
+      STORAGE_OBJECT_REVIEW:
+        'This stored file requires operator review before another reference can be added.',
       UPLOAD_PENDING:
         'Upload completion is uncertain. Keep the request ID and check completion before starting another upload.',
       UPLOAD_REQUEST_CONFLICT:

@@ -5,7 +5,13 @@ import { NetworkSchema } from '@daclify/core-protocol';
 
 export default async function checkBrowserFixture(config: FullConfig): Promise<void> {
   const { nativeFixture } = z
-    .object({ nativeFixture: z.enum(['daclify-research-native', 'daclify-research-paid-native']) })
+    .object({
+      nativeFixture: z.enum([
+        'daclify-research-native',
+        'daclify-research-paid-native',
+        'daclify-resources-native',
+      ]),
+    })
     .parse(config.metadata);
   const fixture = z
     .object({ container: z.literal(nativeFixture), chainId: z.string().regex(/^[0-9a-f]{64}$/) })

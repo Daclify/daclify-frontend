@@ -18,6 +18,7 @@ import { encryptDaoFile, relayInstruction, vaultUnlocked } from '../auth/session
 import { preparePublicFile } from '../content/files';
 import { useWorkspace } from '../state/workspace';
 import { canSignMember } from '../auth/action-signer';
+import StorageUsagePanel from './StorageUsagePanel.vue';
 
 const props = defineProps<{
   dao: DaoSummary;
@@ -294,6 +295,12 @@ async function publish() {
 <template>
   <section class="panel narrow">
     <h3>{{ privateDao ? 'Publish an encrypted file' : 'Publish a file to IPFS' }}</h3>
+    <StorageUsagePanel
+      v-if="configured && member?.active"
+      :dao="dao.reference"
+      :member="member"
+      :revision="`${content?.documents.length ?? 0}:${receipt?.requestId ?? ''}`"
+    />
     <p v-if="loading" role="status">Checking hosted storage…</p>
     <p v-else-if="!configured" class="notice">
       Hosted storage is not configured on this service. Small JSON documents remain available.
