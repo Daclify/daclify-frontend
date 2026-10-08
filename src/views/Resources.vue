@@ -17,6 +17,7 @@ import { canSignMember } from '../auth/action-signer';
 import ActionSigner from '../components/ActionSigner.vue';
 import StorageUsagePanel from '../components/StorageUsagePanel.vue';
 import ArchivePanel from '../components/ArchivePanel.vue';
+import RamUsagePanel from '../components/RamUsagePanel.vue';
 const route = useRoute(),
   state = useWorkspace();
 const status = ref<z.infer<typeof StorageBillingStatusSchema>>(),
@@ -336,14 +337,7 @@ function checkout() {
         </p>
       </section>
     </template>
-    <section class="panel narrow">
-      <h2>Blockchain RAM</h2>
-      <p>
-        Contract RAM is separate from pinned storage and is used by core and every installed module.
-        Purchased capacity will remain available after pruning. Funded RAM allocations and purchases
-        are still being qualified; this screen cannot purchase RAM yet.
-      </p>
-    </section>
+    <RamUsagePanel :dao="dao" :member="member" />
     <ArchivePanel :dao="dao" :member="member" />
   </template>
 </template>

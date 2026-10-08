@@ -19,6 +19,7 @@ import {
   StorageApprovalSchema,
   DEFAULT_STORAGE_PRICING,
   storagePricingHash,
+  ApiRoutes,
 } from '@daclify/core-protocol';
 const password = 'download fixture password 2026';
 async function openMenu(page: Page) {
@@ -275,6 +276,38 @@ test('previews eligibility, requires export consent and downloads a verified rec
     },
   );
   const source = archiveSourceSchema('ordinary-poll-votes');
+  let ramReads = 0;
+  await page.route('**' + ApiRoutes.ramUsage.path.replace(':id', dao.daoId), async (route) => {
+    const active = ramReads++ === 0;
+    await route.fulfill({
+      json: ApiRoutes.ramUsage.response.parse({
+        dao,
+        observation: active ? 'active' : 'disabled',
+        enforcement: 'disabled',
+        policy: null,
+        totalObservedBytes: active ? '1500' : null,
+        purchasedBytes: '4096',
+        read: {
+          startedAt: '2026-10-08T00:00:00.000Z',
+          completedAt: '2026-10-08T00:00:01.000Z',
+          atomic: false,
+        },
+        payers: [
+          {
+            payer: dao.contract,
+            moduleId: null,
+            sourceVerified: true,
+            usage: active
+              ? { identity: '1000', activity: '200', retained: '300', platform: '0' }
+              : null,
+            purchasedBytes: '4096',
+            globalQuotaBytes: '1000000',
+            globalUsedBytes: '10000',
+          },
+        ],
+      }),
+    });
+  });
   const saved: z.infer<typeof ArchiveRoutes.export.response>[] = [];
   const id = crypto.randomUUID();
   let latest: z.infer<typeof ArchiveRoutes.preview.response> | undefined;
@@ -358,6 +391,9 @@ test('previews eligibility, requires export consent and downloads a verified rec
     });
   });
   await link.click();
+  await expect(
+    page.getByText('recorded for this DAO across its payer contracts.', { exact: false }),
+  ).toBeVisible();
   const preview = page.getByRole('button', { name: 'Preview archive eligibility', exact: true }),
     select = page.getByLabel('Finalized ballot', { exact: true });
   await expect(preview).toBeDisabled();
@@ -385,6 +421,9 @@ test('previews eligibility, requires export consent and downloads a verified rec
   expect(download.suggestedFilename()).toContain(id);
   await page.reload();
   await expect(page.getByText('Export ' + id, { exact: false })).toBeVisible();
+  await expect(
+    page.getByText('DAO-level observation is disabled on this deployment.', { exact: false }),
+  ).toBeVisible();
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });

@@ -338,6 +338,14 @@ export const api = {
     return all;
   },
   storage: () => request(ApiRoutes.storage.path, ApiRoutes.storage.response),
+  ramUsage: async (dao: DaoRef) => {
+    const result = await request(
+      ApiRoutes.ramUsage.path.replace(':id', IdSchema.parse(dao.daoId)),
+      ApiRoutes.ramUsage.response,
+    );
+    if (daoPaymentKey(result.dao) !== daoPaymentKey(dao)) throw new ApiFailure('DAO_REFERENCE');
+    return result;
+  },
   archivePreview: async (input: z.infer<typeof ArchiveRoutes.preview.input>) => {
     const result = await request(
       ArchiveRoutes.preview.path,
@@ -731,6 +739,11 @@ export function friendlyError(error: unknown): string {
       ARCHIVE_BUNDLE_UNAVAILABLE:
         'The recovery bundle could not be retrieved or verified. Keep your existing backup and try again.',
       ARCHIVE_UNAVAILABLE: 'Archive preview is not configured on this operator.',
+      RESOURCE_UNAVAILABLE: 'RAM reporting is not configured on this operator.',
+      RESOURCE_UNQUALIFIED: 'This deployment does not match the qualified RAM accounting code.',
+      RESOURCE_SCOPE_LIMIT:
+        'The RAM report exceeded its complete-read bound. Ask the operator to review the deployment.',
+      RESOURCE_SOURCE_CHANGED: 'A contract changed during the RAM read. Refresh the report.',
       ARCHIVE_SCHEMA_UNSUPPORTED:
         'The deployed contract or archive schema is not qualified for this preview.',
       ARCHIVE_SNAPSHOT_UNQUALIFIED:
