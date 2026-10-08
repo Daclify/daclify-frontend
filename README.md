@@ -108,3 +108,5 @@ Resources also supports approved ordinary-poll exports, saved progress after rel
 The RAM readout separates DAO counters/purchased credits from whole-account native figures and keeps unqualified totals unknown. Configured budgets do not imply backed allocations. See [RAM observation](../daclify-backend-core/docs/ram-accounting.md); funded pools, completion reserves and enforcement remain outstanding.
 
 Resources → Archive now shows the configured encrypted backup option, exact manifest commitment and saved restore-verification receipt. Backup creation and reload are covered by desktop/mobile browser tests; native approval/pruning are not yet enabled. Operator key/path details never enter this UI.
+
+The resource-billing-archives development branch supports exact native Archive availability attestation and signed administrator approval/revocation. Destructive pruning remains disabled pending source-owned eligibility and recovery qualification. This is development-branch functionality, not a production deployment.

@@ -11,6 +11,8 @@ import {
   encodeArchiveManifest,
   archiveExportConsent,
 } from '@daclify/modules/archive';
+import { RuntimeTableSchemas, runtimeAbi } from '@daclify/core-protocol/sdk';
+import { Name, ABI, Serializer } from '@wharfkit/antelope';
 import { Checksum256 } from '@wharfkit/antelope';
 import type { z } from 'zod';
 import {
@@ -400,6 +402,94 @@ test('previews eligibility, requires export consent and downloads a verified rec
     });
     await route.fulfill({ json: saved[0] });
   });
+  await page.route('**' + ArchiveRoutes.attest.path.replace(':id', id), async (route) => {
+    if (!latest || !saved[0]?.manifest || !saved[0].backup)
+      throw new Error('Missing verified export');
+    const input = ArchiveRoutes.attest.input.parse(
+        JSON.parse(route.request().postData() ?? 'null'),
+      ),
+      manifest = archiveManifestForPlan(latest, []);
+    expect(input.descriptorCommitment).toBe(manifest.descriptorCommitment);
+    saved[0] = ArchiveRoutes.attest.response.parse({
+      ...saved[0],
+      anchor: RuntimeTableSchemas.archives.parse({
+        id: '1',
+        dao_id: dao.daoId,
+        manifest: {
+          format_version: 1,
+          chain_id: dao.chainId,
+          runtime: dao.contract,
+          dao_id: dao.daoId,
+          source: 'decide',
+          code_hash: source.codeHash,
+          abi_hash: source.rawAbiHash,
+          block_number: 1,
+          block_id: latest.snapshot.blockId,
+          timestamp: latest.snapshot.timestamp,
+          families: [
+            {
+              kind: 'ordinary-poll-votes',
+              parent_id: '8',
+              table: 'votes',
+              scope: Name.from(dao.contract).value.toString(),
+              schema_hash: source.schemaHash,
+              records: '0',
+              chunks: [],
+            },
+          ],
+          files: [],
+        },
+        manifest_cid: saved[0].manifest.cid,
+        manifest_bytes: saved[0].manifest.bytes,
+        manifest_commitment: input.manifestCommitment,
+        descriptor_commitment: input.descriptorCommitment,
+        backup_commitment: input.backupCommitment,
+        verifier: 'relay',
+        retention_seconds: input.retentionSeconds,
+        attested_at: Math.floor(Date.now() / 1000),
+        approved_by: '0',
+        approved_at: 0,
+        revoked: false,
+        attestation_transaction: 'ab'.repeat(32),
+        approval_transaction: '00'.repeat(32),
+      }),
+    });
+    await route.fulfill({ json: saved[0] });
+  });
+  let signatures = 0;
+  await page.route('**' + ApiRoutes.relay.path, async (route) => {
+    const input = ApiRoutes.relay.input.parse(JSON.parse(route.request().postData() ?? 'null'));
+    if (!saved[0]?.anchor) throw new Error('Approval requires attestation');
+    expect(input.request.action).toMatch(/^arch(approve|revoke)$/);
+    const fields = RuntimeTableSchemas.archives.parse(saved[0].anchor),
+      raw: unknown = JSON.parse(
+        JSON.stringify(
+          Serializer.decode({
+            abi: ABI.from(runtimeAbi),
+            type: input.request.action,
+            data: input.request.data,
+          }),
+        ),
+      );
+    expect(raw).toMatchObject({
+      runtime: dao.contract,
+      dao_id: dao.daoId,
+      manifest_commitment: fields.manifest_commitment,
+      backup_commitment: fields.backup_commitment,
+      retention_seconds: 90 * 86400,
+    });
+    signatures++;
+    saved[0].anchor = {
+      ...fields,
+      approved_by: '1',
+      approved_at: Math.floor(Date.now() / 1000),
+      revoked: input.request.action === 'archrevoke',
+      approval_transaction: 'cd'.repeat(32),
+    };
+    await route.fulfill({
+      json: ApiRoutes.relay.response.parse({ transactionId: 'cd'.repeat(32) }),
+    });
+  });
   await page.route('**' + ArchiveRoutes.bundle.path.replace(':id', id), async (route) => {
     if (!latest || !saved[0]?.manifest) throw new Error('Missing verified manifest');
     const manifest = archiveManifestForPlan(latest, []),
@@ -444,6 +534,14 @@ test('previews eligibility, requires export consent and downloads a verified rec
   await expect(
     page.getByText('Encrypted backup restored and verified', { exact: false }),
   ).toBeVisible();
+  const approve = page.getByRole('button', { name: 'Sign archive approval', exact: true });
+  await expect(approve).toBeDisabled();
+  await page.getByLabel('I approve this exact manifest and backup', { exact: false }).check();
+  await approve.click();
+  await expect(page.getByText('Administrator approval recorded', { exact: false })).toBeVisible();
+  await page.getByRole('button', { name: 'Revoke archive approval', exact: true }).click();
+  await expect(page.getByText('Approval revoked', { exact: false })).toBeVisible();
+  expect(signatures).toBe(2);
   const downloading = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Download recovery bundle', exact: true }).click();
   const download = await downloading;

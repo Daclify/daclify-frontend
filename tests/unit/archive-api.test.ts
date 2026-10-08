@@ -84,7 +84,9 @@ it('requests only the reviewed manifest backup and refuses another DAO or backup
     };
   const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(status));
   vi.stubGlobal('fetch', fetcher);
-  expect(await api.archiveBackup(dao, id, commitment)).toEqual(status);
+  expect(await api.archiveBackup(dao, id, commitment)).toEqual(
+    ArchiveRoutes.backup.response.parse(status),
+  );
   expect(fetcher.mock.calls[0]?.[0]).toContain(ArchiveRoutes.backup.path.replace(':id', id));
   expect(fetcher.mock.calls[0]?.[1]?.body).toBe(
     JSON.stringify({ expectedManifestCommitment: commitment }),

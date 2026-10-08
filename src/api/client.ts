@@ -425,6 +425,29 @@ export const api = {
       throw new ApiFailure('DAO_REFERENCE');
     return result;
   },
+  archiveAttest: async (
+    dao: DaoRef,
+    id: string,
+    value: z.input<typeof ArchiveRoutes.attest.input>,
+  ) => {
+    const input = ArchiveRoutes.attest.input.parse(value),
+      result = await request(
+        ArchiveRoutes.attest.path.replace(':id', z.uuid().parse(id)),
+        ArchiveRoutes.attest.response,
+        input,
+        60000,
+      );
+    if (
+      result.id !== id ||
+      daoPaymentKey(result.dao) !== daoPaymentKey(dao) ||
+      result.anchor?.manifest_commitment !== input.manifestCommitment ||
+      result.anchor.descriptor_commitment !== input.descriptorCommitment ||
+      result.anchor.backup_commitment !== input.backupCommitment ||
+      result.anchor.retention_seconds !== input.retentionSeconds
+    )
+      throw new ApiFailure('DAO_REFERENCE');
+    return result;
+  },
   archiveBackup: async (dao: DaoRef, id: string, expectedManifestCommitment: string) => {
     const input = ArchiveRoutes.backup.input.parse({ expectedManifestCommitment });
     const result = await request(

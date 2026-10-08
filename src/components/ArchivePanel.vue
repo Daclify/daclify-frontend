@@ -5,12 +5,16 @@ import {
   ArchiveRoutes,
   MIN_ARCHIVE_RETENTION_SECONDS,
   archiveExportConsent,
+  ArchivePreviewRequestSchema,
   verifyArchiveBundle,
 } from '@daclify/modules/archive';
 import type { ModuleState } from '@daclify/modules';
 import type { z } from 'zod';
 import { api, friendlyError } from '../api/client';
 import { useWorkspace } from '../state/workspace';
+import { canSignMember } from '../auth/action-signer';
+import { relayInstruction } from '../auth/session';
+import { encodeAction, makeInstruction } from '@daclify/core-protocol/sdk';
 import { downloadFile } from '../content/files';
 const props = defineProps<{ dao: DaoRef; member: UserMembership }>(),
   workspace = useWorkspace();
@@ -20,6 +24,8 @@ const ballots = ref<ModuleState['ballots']>([]),
   busy = ref(false),
   error = ref('');
 const plan = ref<z.infer<typeof ArchiveRoutes.preview.response>>();
+const approvalConsent = ref<string | null>(null),
+  retentionDays = ref(String(MIN_ARCHIVE_RETENTION_SECONDS / 86400));
 const consent = ref(false),
   pendingRequest = ref<z.infer<typeof ArchiveRoutes.export.input>>(),
   exports = ref<z.infer<typeof ArchiveRoutes.export.response>[]>([]),
@@ -29,6 +35,7 @@ function clearPreview() {
   sequence++;
   plan.value = undefined;
   consent.value = false;
+  approvalConsent.value = null;
   pendingRequest.value = undefined;
   error.value = '';
   busy.value = false;
@@ -80,10 +87,14 @@ async function preview() {
   error.value = '';
   plan.value = undefined;
   try {
+    if (!/^[1-9][0-9]{1,3}$/.test(retentionDays.value)) throw new Error('ARCHIVE_RETENTION');
+    const retentionSeconds = ArchivePreviewRequestSchema.shape.retentionSeconds.parse(
+      Number(retentionDays.value) * 86400,
+    );
     const result = await api.archivePreview({
       dao: props.dao,
       ballotIds: [selected.value],
-      retentionSeconds: MIN_ARCHIVE_RETENTION_SECONDS,
+      retentionSeconds,
     });
     if (request === sequence) {
       plan.value = result;
@@ -95,7 +106,7 @@ async function preview() {
               selection: {
                 dao: props.dao,
                 ballotIds: [selected.value],
-                retentionSeconds: MIN_ARCHIVE_RETENTION_SECONDS,
+                retentionSeconds,
               },
               ...archiveExportConsent(result),
             }
@@ -119,6 +130,74 @@ async function createExport() {
   try {
     const result = await api.archiveExport(input);
     if (request === sequence) saveStatus(result);
+  } catch (cause) {
+    if (request === sequence) error.value = friendlyError(cause);
+  } finally {
+    if (request === sequence) busy.value = false;
+  }
+}
+async function authorizeExport(
+  item: z.infer<typeof ArchiveRoutes.export.response>,
+  action: 'archapprove' | 'archrevoke',
+) {
+  if (
+    busy.value ||
+    (action === 'archapprove' && (!item.backup || !item.manifest)) ||
+    !props.member.active ||
+    !props.member.admin ||
+    !canSignMember(props.member)
+  )
+    return;
+  if (action === 'archapprove' && approvalConsent.value !== item.id) return;
+  const request = ++sequence,
+    member = props.member;
+  busy.value = true;
+  error.value = '';
+  try {
+    let anchor = item.anchor;
+    if (action === 'archapprove') {
+      if (!item.backup || !item.manifest) return;
+      const bundle = await api.archiveBundle(props.dao, item.id);
+      const status = await api.archiveAttest(props.dao, item.id, {
+        manifestCommitment: item.manifest.commitment,
+        descriptorCommitment: bundle.manifest.descriptorCommitment,
+        backupCommitment: item.backup.commitment,
+        retentionSeconds: item.retentionSeconds,
+      });
+      anchor = status.anchor;
+    }
+    if (
+      request !== sequence ||
+      (action === 'archapprove' && approvalConsent.value !== item.id) ||
+      !canSignMember(member)
+    )
+      return;
+    if (!anchor) throw new Error('ARCHIVE_ANCHOR_INVALID');
+    await relayInstruction(
+      makeInstruction(
+        member.dao,
+        member.memberId,
+        member.nonce,
+        Math.floor(Date.now() / 1000) + 120,
+        member.dao.contract,
+        action,
+        encodeAction(action, {
+          runtime: member.dao.contract,
+          dao_id: member.dao.daoId,
+          member_id: member.memberId,
+          manifest_commitment: anchor.manifest_commitment,
+          descriptor_commitment: anchor.descriptor_commitment,
+          backup_commitment: anchor.backup_commitment,
+          retention_seconds: anchor.retention_seconds,
+        }),
+      ),
+    );
+    await workspace.refresh();
+    const result = await api.archiveRefresh(member.dao, item.id);
+    if (request === sequence) {
+      saveStatus(result);
+      approvalConsent.value = null;
+    }
   } catch (cause) {
     if (request === sequence) error.value = friendlyError(cause);
   } finally {
@@ -210,6 +289,7 @@ watch(
     plan.value = undefined;
     consent.value = false;
     pendingRequest.value = undefined;
+    approvalConsent.value = null;
     exports.value = [];
     exportsNext.value = null;
     error.value = '';
@@ -218,6 +298,7 @@ watch(
   },
   { immediate: true },
 );
+watch(retentionDays, clearPreview);
 onBeforeUnmount(() => sequence++);
 const reasons = {
   'protected-family': 'This ballot controls work, grants or an election. Its records stay live.',
@@ -256,6 +337,17 @@ const reasons = {
           Ballot #{{ ballot.id }}
         </option>
       </select>
+      <label for="archive-retention">Retention delay (days, minimum 90)</label>
+      <input
+        id="archive-retention"
+        v-model="retentionDays"
+        type="number"
+        min="90"
+        max="3650"
+        step="1"
+        :disabled="busy"
+        required
+      />
       <button :disabled="busy || !selected">Preview archive eligibility</button>
     </form>
     <button v-if="next" class="secondary" :disabled="busy" @click="load(next)">
@@ -308,7 +400,12 @@ const reasons = {
         </p>
         <p v-if="item.manifest" class="field-help">
           Manifest SHA-256: <code class="archive-commitment">{{ item.manifest.commitment }}</code
-          >. Keep this commitment separately with your backup. It is not yet anchored on chain.
+          >. Keep this commitment separately with your backup.
+          {{
+            item.anchor
+              ? 'The matching anchor is on chain.'
+              : 'It has not been anchored on chain yet.'
+          }}
         </p>
         <p v-if="item.backup" class="notice">
           Encrypted backup restored and verified
@@ -327,6 +424,46 @@ const reasons = {
         >
           Create and verify encrypted backup
         </button>
+        <p v-if="item.anchor" class="field-help">
+          On-chain archive #{{ item.anchor.id }} ·
+          {{
+            item.anchor.revoked
+              ? 'Approval revoked'
+              : item.anchor.approved_by !== '0'
+                ? 'Administrator approval recorded'
+                : 'Availability attested; approval required'
+          }}. Retention: {{ item.retentionSeconds / 86400 }} days. Pruning stays separately gated.
+        </p>
+        <template v-if="(item.backup || item.anchor) && item.state === 'verified'">
+          <label
+            v-if="!item.anchor || item.anchor.revoked || item.anchor.approved_by === '0'"
+            class="checkbox"
+          >
+            <input
+              type="checkbox"
+              :checked="approvalConsent === item.id"
+              :disabled="busy"
+              @change="approvalConsent = approvalConsent === item.id ? null : item.id"
+            />
+            I approve this exact manifest and backup for manual pruning of its ordinary poll votes
+            after {{ item.retentionSeconds / 86400 }} days and all availability checks.
+          </label>
+          <button
+            v-if="!item.anchor || item.anchor.revoked || item.anchor.approved_by === '0'"
+            :disabled="busy || approvalConsent !== item.id || !canSignMember(member)"
+            @click="authorizeExport(item, 'archapprove')"
+          >
+            Sign archive approval
+          </button>
+          <button
+            v-else
+            class="secondary"
+            :disabled="busy || !canSignMember(member)"
+            @click="authorizeExport(item, 'archrevoke')"
+          >
+            Revoke archive approval
+          </button>
+        </template>
         <button class="secondary" :disabled="busy" @click="refreshExport(item.id)">
           Refresh export status
         </button>
@@ -341,8 +478,8 @@ const reasons = {
     <p class="field-help">
       This exports ordinary poll votes and a verified manifest. It does not include account recovery
       keys, social-login pairings or original document files. Save the recovery bundle off the
-      server. Native approval, pruning and historic browsing are still being implemented; exporting
-      does not delete anything.
+      server. On-chain approval is separate from exporting. Source pruning and historic browsing
+      remain gated; exporting and signing an approval do not delete anything.
     </p>
     <RouterLink to="/docs/archive" class="help-link">Archive and recovery guide ↗</RouterLink>
   </section>
