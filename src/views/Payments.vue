@@ -227,7 +227,7 @@ async function broker(revoke = false) {
   <p v-if="notice" class="notice" role="status">{{ notice }}</p>
   <section v-if="!dao" class="panel">
     <h2>Choose a DAO first</h2>
-    <RouterLink to="/">DAO hub</RouterLink>
+    <RouterLink to="/hub">DAO hub</RouterLink>
   </section>
   <template v-else>
     <section class="panel">

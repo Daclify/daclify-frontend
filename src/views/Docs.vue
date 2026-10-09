@@ -6,9 +6,15 @@ import { CoreHelpBundle } from '@daclify/core-protocol/help';
 import permissionDiagram from '@daclify/core-protocol/diagrams/contract-permissions.svg?url';
 import { ModulesHelpBundle } from '@daclify/modules/help';
 import type { ModuleState } from '@daclify/modules';
+import { ArrowUpRight, BookOpen } from '@lucide/vue';
 import { api, friendlyError } from '../api/client';
 import { useWorkspace } from '../state/workspace';
-import { documentationBundles, documentationStatus, searchGuides } from '../help/catalog';
+import {
+  documentationBundles,
+  documentationStatus,
+  groupGuides,
+  searchGuides,
+} from '../help/catalog';
 import ReferencePanel from '../components/ReferencePanel.vue';
 
 const state = useWorkspace();
@@ -26,6 +32,7 @@ const selectedBundles = computed(() =>
   bundles.filter((bundle) => producer.value === 'all' || bundle.producer === producer.value),
 );
 const topics = computed(() => searchGuides(selectedBundles.value, query.value));
+const groups = computed(() => groupGuides(topics.value));
 const active = computed(() =>
   bundles.flatMap((bundle) => bundle.topics).find((topic) => topic.id === route.params.topic),
 );
@@ -88,7 +95,7 @@ onUnmounted(() => {
     <div>
       <p class="eyebrow">HELP IN THE WORKSPACE</p>
       <h1>Daclify handbook</h1>
-      <p class="lead">The rules, responsibilities, and limits behind the interface.</p>
+      <p class="lead">Practical guides for joining, running and growing your DAO.</p>
     </div>
     <span class="pill">Core interface {{ state.network?.interfaceVersion ?? 1 }}</span>
   </div>
@@ -107,22 +114,42 @@ onUnmounted(() => {
       </p>
     </div>
     <div>
-      <label for="guide-bundle">Documentation bundle</label
+      <label for="guide-bundle">Guide collection</label
       ><select id="guide-bundle" v-model="producer">
-        <option value="all">All bundled guides</option>
+        <option value="all">All guides</option>
         <option v-for="bundle in bundles" :key="bundle.producer" :value="bundle.producer">
-          {{ bundle.producer === 'core' ? 'Core' : 'Modules' }} v{{ bundle.packageVersion }}
+          {{ bundle.producer === 'core' ? 'Platform & accounts' : 'DAO modules' }}
         </option>
       </select>
-      <p class="field-help">Guides come from the pinned producer packages.</p>
+      <p class="field-help">Each guide shows the release it applies to.</p>
     </div>
   </div>
   <div class="docs-layout">
-    <nav class="docs-nav" aria-label="Documentation topics">
-      <RouterLink :to="{ path: '/docs', query: route.query }">Handbook overview</RouterLink
-      ><RouterLink v-for="topic in topics" :key="topic.id" :to="guideLink(topic.id)">{{
-        topic.title
-      }}</RouterLink>
+    <nav
+      class="docs-nav"
+      :class="{ 'handbook-index': !route.params.topic }"
+      aria-label="Documentation topics"
+    >
+      <RouterLink class="handbook-overview" :to="{ path: '/docs', query: route.query }"
+        >Handbook overview</RouterLink
+      >
+      <details
+        v-for="group in groups"
+        :key="group.id"
+        class="guide-group"
+        :open="
+          !!query.trim() ||
+          group.topics.some((topic) => topic.id === active?.id) ||
+          (!active && group.id === 'getting-started')
+        "
+      >
+        <summary>
+          {{ group.title }} <span class="guide-count">{{ group.topics.length }}</span>
+        </summary>
+        <RouterLink v-for="topic in group.topics" :key="topic.id" :to="guideLink(topic.id)">{{
+          topic.title
+        }}</RouterLink>
+      </details>
     </nav>
     <article class="panel docs-content">
       <p v-if="readError" class="alert" role="alert">{{ readError }}</p>
@@ -203,21 +230,37 @@ onUnmounted(() => {
         </p></template
       >
       <template v-else>
-        <p class="notice">
+        <p class="field-help">
           Core v{{ CoreHelpBundle.packageVersion }} · Modules v{{
             ModulesHelpBundle.packageVersion
           }}
-          · Interface {{ CoreHelpBundle.interfaceVersion }}. Live provider verification is pending
-          configuration.
+          · Interface {{ CoreHelpBundle.interfaceVersion }}. Check your deployment’s Status page for
+          available services.
         </p>
         <p v-if="!topics.length" role="status">
           No guides match your search. Try a shorter phrase.
         </p>
-        <section v-for="topic in topics" :key="topic.id">
-          <h2>{{ topic.title }}</h2>
-          <p v-for="paragraph in topic.paragraphs" :key="paragraph">{{ paragraph }}</p>
-          <RouterLink :to="guideLink(topic.id)">Link to this guide ↗</RouterLink>
-        </section>
+        <div class="guide-collections">
+          <section v-for="group in groups" :key="group.id" class="guide-collection">
+            <BookOpen :size="22" class="collection-icon" aria-hidden="true" />
+            <h2>{{ group.title }}</h2>
+            <p>{{ group.description }}</p>
+            <details :open="!!query.trim()" class="collection-guides">
+              <summary>
+                Browse {{ group.topics.length }}
+                {{ group.topics.length === 1 ? 'guide' : 'guides' }}
+              </summary>
+              <ul>
+                <li v-for="topic in group.topics" :key="topic.id">
+                  <RouterLink :to="guideLink(topic.id)"
+                    ><span>{{ topic.title }}</span
+                    ><ArrowUpRight :size="16" aria-hidden="true"
+                  /></RouterLink>
+                </li>
+              </ul>
+            </details>
+          </section>
+        </div>
       </template>
       <details class="reference-details" @toggle="toggleReferences">
         <summary>Developer and operator references</summary>
@@ -229,3 +272,106 @@ onUnmounted(() => {
     </article>
   </div>
 </template>
+
+<style scoped>
+.docs-nav {
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  display: block;
+}
+.docs-nav a {
+  display: block;
+  min-width: 0;
+  padding: 12px;
+  border-radius: 8px;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+.docs-nav a:hover,
+.docs-nav a[aria-current='page'] {
+  color: var(--text-primary);
+  background: var(--surface-soft);
+}
+.docs-nav .handbook-overview {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.guide-group {
+  border-top: 1px solid var(--line);
+  padding: 6px 0;
+}
+.guide-group summary {
+  cursor: pointer;
+  padding: 14px 8px;
+  font-weight: 600;
+  font-size: 13px;
+}
+.guide-count {
+  color: var(--text-muted);
+  font-size: 11px;
+  margin-left: 6px;
+}
+.guide-collections {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 28px;
+  margin-top: 28px;
+}
+.docs-content .guide-collection {
+  margin: 0;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+.collection-icon {
+  color: var(--accent-amber);
+}
+.guide-collection h2 {
+  margin: 14px 0 10px;
+  font-size: 18px;
+}
+.guide-collection p {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.collection-guides summary {
+  color: var(--accent-amber);
+  cursor: pointer;
+  padding: 12px 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+.guide-collection ul {
+  list-style: none;
+  padding: 0;
+  margin: 16px 0 0;
+}
+.guide-collection a {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 10px 0;
+  overflow-wrap: anywhere;
+}
+.guide-collection a svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+@media (max-width: 1100px) {
+  .guide-collections {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 850px) {
+  .docs-nav {
+    max-height: none;
+  }
+  .docs-nav.handbook-index {
+    display: none;
+  }
+}
+</style>

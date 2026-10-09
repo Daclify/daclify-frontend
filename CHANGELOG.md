@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased — welcome page and grouped handbook
+
+Add a branded welcome page at `/` with guest and signed-in shortcuts. Move DAO
+discovery to `/hub`, preserving older filtered root bookmarks. Keep network
+verification on workspace routes while introductory content remains readable
+during API failures.
+
+Replace the full-handbook overview with a compact guide index and six collapsible
+contents groups. Retain full-text search, direct links, DAO context, version
+checks and generated references. Add desktop/mobile navigation, keyboard,
+accessibility, search and guide-coverage regressions.
+
 ## Unreleased — installable PWA
 
 Add a standalone web app manifest, maskable Daclify icons and Apple home-screen

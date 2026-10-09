@@ -61,3 +61,20 @@ test('blocks workspace screens and identity reads when the API reports mainnet',
   await expect(page.getByRole('heading', { name: 'Create a DAO' })).toHaveCount(0);
   expect(requests.some((url) => new URL(url).pathname === '/v1/me')).toBe(false);
 });
+
+test('keeps the welcome page readable without opening a wrong-network workspace', async ({
+  page,
+}) => {
+  const requests: string[] = [];
+  page.on('request', (request) => requests.push(new URL(request.url()).pathname));
+  await serve(page, 'mainnet');
+  await page.goto('/');
+  await expect(
+    page.getByRole('heading', { name: 'A home for your community.', exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole('alert')).toContainText('different network');
+  expect(requests).not.toContain('/v1/me');
+  await page.locator('#main').getByRole('link', { name: 'Create a DAO', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Create a DAO', exact: true })).toHaveCount(0);
+  expect(requests).not.toContain('/v1/me');
+});

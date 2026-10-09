@@ -196,7 +196,7 @@ function checkout() {
   <p v-if="error" class="alert" role="alert">{{ error }}</p>
   <section v-if="!dao" class="panel">
     <h2>Choose a DAO first</h2>
-    <RouterLink to="/">Open the DAO hub</RouterLink>
+    <RouterLink to="/hub">Open the DAO hub</RouterLink>
   </section>
   <section v-else-if="!member" class="panel">
     <h2>Member access required</h2>

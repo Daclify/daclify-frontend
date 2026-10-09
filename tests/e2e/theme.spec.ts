@@ -24,7 +24,7 @@ test.beforeEach(async ({ page }) => {
   await page.route(`**${ApiRoutes.me.path}`, (route) =>
     route.fulfill({ status: 401, json: signedOut }),
   );
-  await page.goto('/');
+  await page.goto('/hub');
   await expect(page.getByRole('heading', { name: 'Your DAO hub' })).toBeVisible();
   await expect(page.getByText('local network', { exact: true })).toBeAttached();
 });
@@ -73,9 +73,7 @@ test('keyboard navigation and forms remain usable on desktop and mobile', async 
   await expect(page.getByRole('link', { name: 'Skip to content' })).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page.locator('#main')).toBeFocused();
-  const menu = page.getByRole('button', { name: 'Menu', exact: true });
-  if (await menu.isVisible()) await menu.click();
-  await page.getByRole('link', { name: 'Account', exact: true }).click();
+  await page.getByRole('link', { name: 'Sign in', exact: true }).click();
   await page.getByLabel('Vault password', { exact: true }).fill('visual fixture not saved');
   await expect(page.getByLabel('Vault password', { exact: true })).toHaveValue(
     'visual fixture not saved',

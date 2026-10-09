@@ -1,6 +1,14 @@
 {
   "requirements": [
     {
+      "id": "APP-WELCOME-AND-HUB-NAVIGATION",
+      "tests": ["tests/e2e/homepage.spec.ts", "tests/e2e/network-lock.spec.ts"]
+    },
+    {
+      "id": "GROUPED-DOCUMENTATION",
+      "tests": ["tests/unit/documentation.test.ts", "tests/e2e/documentation.spec.ts"]
+    },
+    {
       "id": "INSTALLABLE-PWA",
       "tests": ["tests/e2e/pwa.spec.ts"]
     },

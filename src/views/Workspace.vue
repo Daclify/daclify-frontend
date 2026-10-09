@@ -177,7 +177,7 @@ async function rename() {
   <div v-if="!dao" class="empty-state">
     <h1>{{ state.loading ? 'Loading workspace…' : 'DAO unavailable' }}</h1>
     <p>Refresh the hub or check this deployment’s connection.</p>
-    <RouterLink class="button secondary" to="/">Back to hub</RouterLink>
+    <RouterLink class="button secondary" to="/hub">Back to hub</RouterLink>
   </div>
   <template v-else
     ><div class="page-heading">

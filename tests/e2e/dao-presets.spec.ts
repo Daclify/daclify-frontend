@@ -124,7 +124,7 @@ test('shows purpose presets and makes participant mode a separate choice', async
   await expect(page.getByRole('button', { name: 'Review free DAO setup' })).toBeDisabled();
 });
 test('filters discovery by purpose without treating it as a permission', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/hub');
   await expect(page.getByRole('heading', { name: 'Grant Commons' })).toBeVisible();
   await page.getByLabel('DAO purpose filter').selectOption('gaming-guild');
   await expect(page.getByRole('heading', { name: 'Grant Commons' })).not.toBeVisible();

@@ -1,8 +1,21 @@
 # Frontend documentation
 
-Current application: **0.8.0-alpha.1**, with matching packed core/module help and SDK packages. Development uses `dev`. See the [repository README](../README.md) for routes, local development, account recovery and test phases, and the [Netlify dev guide](netlify-dev.md) for the separate testnet site.
+Current development application: **0.9.0-alpha.5**, with matching packed core/module help and SDK packages. Development uses `dev`. See the [repository README](../README.md) for routes, local development, account recovery and test phases, and the [Netlify dev guide](netlify-dev.md) for the separate testnet site.
 
 ## Help inside the application
+
+The app starts at `/` with a welcome page; DAO discovery is at `/hub`, and My DAO
+opens `/hub?mine=1`. The brand returns to the welcome page. Previous root URLs
+with Hub filters redirect with their query and hash preserved.
+
+`/docs` is a guide index with expandable lists rather than the full handbook on one page. Six groups
+organize Getting started, Members & governance, Modules & treasury, Costs &
+storage, Privacy & recovery, and Operators & reference. The contents menu uses
+keyboard-accessible expandable sections. Direct links open the selected guide's
+group; full-text search opens matching groups and omits empty ones. Collection
+filters distinguish platform/account guidance from module guidance. Future
+unassigned topics remain visible under More guides. Grouping is a frontend
+presentation choice; guide content and types remain producer-owned.
 
 `/docs/:topic` renders producer-owned core/module bundles, searchable by topic and content. The intended hosted handbook is [app.daclify.com/docs](https://app.daclify.com/docs); the host must be deployed and configured separately. Contextual DAO links retain their DAO reference, and the handbook checks connected service/interface/module versions and code status. An unconnected guide or a displayed API package version is not deployed-contract verification.
 

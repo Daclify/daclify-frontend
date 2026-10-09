@@ -7,7 +7,7 @@ async function openMenu(page: Page) {
     await button.click();
 }
 test('hub, versioned help, keyboard navigation and accessible layout', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/hub');
   await expect(page.getByRole('heading', { name: 'Your DAO hub' })).toBeVisible();
   await page.keyboard.press('Tab');
   await expect(page.getByRole('link', { name: 'Skip to content' })).toBeFocused();
@@ -17,7 +17,9 @@ test('hub, versioned help, keyboard navigation and accessible layout', async ({ 
   await page.getByRole('link', { name: 'Documentation', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Daclify handbook' })).toBeVisible();
   await expect(page.getByText('Core interface 1', { exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'What encryption protects' })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Privacy & recovery', exact: true }),
+  ).toBeVisible();
   const scan = await new AxeBuilder({ page }).analyze();
   expect(scan.violations).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(

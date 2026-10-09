@@ -35,7 +35,7 @@ function toggleHelp() {
 }
 const deployment = deploymentNetwork();
 const operator = currentOperator();
-function leaveOperator(destination = '/') {
+function leaveOperator(destination = '/hub') {
   lockVault();
   closeOperator();
   window.location.assign(destination);
@@ -92,7 +92,7 @@ onMounted(() => {
   <a class="skip-link" href="#main">Skip to content</a>
   <div class="app-shell" :class="{ 'nav-folded': folded }">
     <aside class="sidebar" aria-label="Primary navigation">
-      <RouterLink class="brand" to="/" @click="mobileOpen = false"
+      <RouterLink class="brand" to="/" aria-label="Daclify home" @click="mobileOpen = false"
         ><span class="brand-mark" aria-hidden="true">d.</span
         ><span class="brand-name"
           >daclify<span class="brand-caption">GOVERN TOGETHER</span></span
@@ -108,7 +108,7 @@ onMounted(() => {
       </button>
       <nav id="primary-links" :class="{ 'mobile-open': mobileOpen }">
         <RouterLink
-          :to="{ path: '/', query: { mine: '1' } }"
+          :to="{ path: '/hub', query: { mine: '1' } }"
           aria-label="My DAO"
           :exact-active-class="route.query.mine === '1' ? 'router-link-exact-active' : ''"
           :aria-current-value="route.query.mine === '1' ? 'page' : 'false'"
@@ -118,7 +118,7 @@ onMounted(() => {
           ></RouterLink
         >
         <RouterLink
-          to="/"
+          to="/hub"
           aria-label="Hub"
           :exact-active-class="route.query.mine === '1' ? '' : 'router-link-exact-active'"
           :aria-current-value="route.query.mine === '1' ? 'false' : 'page'"
@@ -211,7 +211,8 @@ onMounted(() => {
     <div class="main-shell">
       <header class="topbar">
         <span class="breadcrumb"
-          >Daclify <span aria-hidden="true">/</span> Community workspace</span
+          >Daclify <span aria-hidden="true">/</span>
+          {{ route.path === '/' ? 'Welcome' : 'Community workspace' }}</span
         >
         <div class="topbar-account">
           <div
@@ -271,9 +272,9 @@ onMounted(() => {
             page.
           </p>
           <button type="button" @click="reloadPage">Reload page</button
-          ><RouterLink class="button secondary" to="/">Back to DAO hub</RouterLink>
+          ><RouterLink class="button secondary" to="/hub">Back to DAO hub</RouterLink>
         </section>
-        <RouterView v-else-if="!deployment || state.network" />
+        <RouterView v-else-if="route.path === '/' || !deployment || state.network" />
         <p v-else class="notice" role="status">
           {{
             state.loading

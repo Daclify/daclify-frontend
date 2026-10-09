@@ -16,7 +16,8 @@ DAO creation now offers community, NGO / grants, gaming guild, team / cooperativ
 
 | Route                              | Screen                                                                     |
 | ---------------------------------- | -------------------------------------------------------------------------- |
-| `/`                                | DAO hub for the configured runtime                                         |
+| `/`                                | Welcome page with discovery, creation, account and help shortcuts            |
+| `/hub` and `/hub?mine=1`           | DAO directory and your communities for the configured runtime               |
 | `/daclify`                         | Daclify DAO, platform fees and module catalogue administration             |
 | `/create`                          | DAO setup, deployment/preset choices and free shared creation              |
 | `/hosting?dao=…`                   | Approved monthly shared member capacity                                    |
@@ -26,14 +27,31 @@ DAO creation now offers community, NGO / grants, gaming guild, team / cooperativ
 | `/marketplace`                     | Redirect to Modules; name-payment returns redirect to Names                |
 | `/dao/:id` and `/dao/:id/:section` | Members, ballots, works, grants, payroll, treasury, settings and documents |
 | `/account`                         | Sign-in methods, wallet bindings, encrypted vault/kit and payment receipts |
+| `/users` and `/users/me`          | Public user directory and your profile/account controls                      |
 | `/docs` and `/docs/:topic`         | Versioned core/module product guides and references                        |
 | `/status`                          | Safe configuration, capabilities and technical platform details            |
 
 The visual system and its checks are described in [docs/ui/ciq-alignment.md](docs/ui/ciq-alignment.md).
 
+The brand opens the welcome page. Guests can explore DAOs before signing in;
+signed-in users get a shortcut to My DAO. Old root Hub bookmarks containing
+`mine`, `q`, `purpose` or `sort` redirect to `/hub` with their query and hash
+preserved. The introductory page remains readable when the API is unavailable;
+fixed-network workspace checks still block an unverified or mismatched API.
+
+Documentation opens a compact index with six task-based groups, expandable guide
+lists and a collapsible contents menu. Getting started opens by default in the menu; a direct guide opens its own
+group, and search expands matching groups. Full guide text appears only after
+selecting a guide. Search still covers guide contents, collection filters remain
+available, and guide links retain their DAO context and release verification.
+New topics without an assigned group appear under More guides.
+On narrow screens the overview uses only the collection cards; individual guides
+show the contents menu, avoiding two copies of the index before the reader gets
+to the content.
+
 ## Install Daclify
 
-The frontend is an installable, online-only PWA. Its manifest opens the DAO hub
+The frontend is an installable, online-only PWA. Its manifest opens the welcome page
 in a standalone window and uses the existing Daclify mark for desktop, Android
 and Apple home-screen icons. Install from the stable HTTPS app domain for your
 network; testnet and production remain separate apps because they use different

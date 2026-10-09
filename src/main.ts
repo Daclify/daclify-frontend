@@ -18,7 +18,15 @@ if (callback.searchParams.has('daclify_order') && callback.searchParams.has('dac
 const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: '/', component: () => import('./views/Hub.vue') },
+    {
+      path: '/',
+      component: () => import('./views/Home.vue'),
+      beforeEnter: (to) => {
+        if (['mine', 'q', 'purpose', 'sort'].some((key) => Object.hasOwn(to.query, key)))
+          return { path: '/hub', query: to.query, hash: to.hash, replace: true };
+      },
+    },
+    { path: '/hub', component: () => import('./views/Hub.vue') },
     { path: '/users', component: () => import('./views/Users.vue') },
     { path: '/users/me', component: () => import('./views/UserDetail.vue') },
     { path: '/users/:daoId/:memberId', component: () => import('./views/UserDetail.vue') },

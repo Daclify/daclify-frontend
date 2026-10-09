@@ -305,7 +305,7 @@ test('sidebar and hub open the same DAO; members have shared public profiles and
   await expect(page.getByRole('button', { name: 'Edit profile & account' })).toHaveCount(0);
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   await page.screenshot({ path: test.info().outputPath('member-profile.png'), fullPage: true });
-  await page.goto('/');
+  await page.goto('/hub');
   await page.locator('.dao-card').click();
   await expect(page).toHaveURL(/\/dao\/1$/);
 });

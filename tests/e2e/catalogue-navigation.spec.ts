@@ -91,7 +91,7 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/v1/names', (route) => route.fulfill({ json: names }));
 });
 test('sidebar order and icon fold control match the workspace navigation', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/hub');
   await openMenu(page);
   const navigation = page
     .getByRole('complementary', { name: 'Primary navigation' })
@@ -115,7 +115,7 @@ test('sidebar order and icon fold control match the workspace navigation', async
     page.getByRole('button', { name: 'Fold menu', exact: true, includeHidden: true }),
   ).toHaveText('');
   await navigation.getByRole('link', { name: 'My DAO', exact: true }).click();
-  await expect(page).toHaveURL(/\/\?mine=1$/);
+  await expect(page).toHaveURL(/\/hub\?mine=1$/);
   await expect(page.getByRole('button', { name: 'My communities', exact: true })).toHaveAttribute(
     'aria-pressed',
     'true',

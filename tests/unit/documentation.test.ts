@@ -1,7 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { HelpBundleSchema, NetworkSchema, ModuleManifestSchema } from '@daclify/core-protocol';
 import { ModuleStateSchema } from '@daclify/modules';
-import { documentationBundles, documentationStatus, searchGuides } from '../../src/help/catalog';
+import { CoreHelpBundle } from '@daclify/core-protocol/help';
+import { ModulesHelpBundle } from '@daclify/modules/help';
+import {
+  documentationBundles,
+  documentationStatus,
+  groupGuides,
+  searchGuides,
+} from '../../src/help/catalog';
 const manifest = ModuleManifestSchema.parse({
   id: 'decide',
   version: '0.1.0-alpha.1',
@@ -76,6 +83,35 @@ const state = ModuleStateSchema.parse({
   controls: [],
 });
 describe('versioned handbook catalog', () => {
+  it('groups every published guide exactly once and retains future guides', () => {
+    const topics = searchGuides(documentationBundles([CoreHelpBundle, ModulesHelpBundle]), '');
+    const groups = groupGuides(topics);
+    const ids = groups.flatMap((group) => group.topics.map((topic) => topic.id));
+    expect([...ids].sort()).toEqual(topics.map((topic) => topic.id).sort());
+    expect(new Set(ids).size).toBe(topics.length);
+    expect(
+      groups.find((group) => group.id === 'getting-started')?.topics.map((topic) => topic.id),
+    ).toContain('accounts');
+    expect(
+      groups.find((group) => group.id === 'operators')?.topics.map((topic) => topic.id),
+    ).toContain('contract-permissions');
+    expect(groups.some((group) => group.id === 'more-guides')).toBe(false);
+    const future = {
+      id: 'new-guide',
+      title: 'A new guide',
+      paragraphs: ['Future package content.'],
+    };
+    expect(groupGuides([future])).toEqual([
+      expect.objectContaining({ id: 'more-guides', topics: [future] }),
+    ]);
+  });
+  it('groups only the search results and omits empty sections', () => {
+    const filtered = searchGuides([core, modules], 'native stake');
+    expect(groupGuides(filtered)).toEqual([
+      expect.objectContaining({ id: 'modules', topics: modules.topics }),
+    ]);
+    expect(groupGuides([])).toEqual([]);
+  });
   it('uses validated producer bundles and rejects duplicate topic identifiers', () => {
     expect(documentationBundles([core, modules])).toEqual([core, modules]);
     expect(() => documentationBundles([core, { ...modules, topics: core.topics }])).toThrow(
