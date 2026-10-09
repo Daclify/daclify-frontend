@@ -167,6 +167,16 @@ test.beforeEach(async ({ page }) => {
       '/v1/me': { account },
       [ApiRoutes.memberships.path]: { memberships: [member] },
       '/v1/people': profiles,
+      '/v1/people/members': {
+        members: content.members.map((row) => ({
+          dao: reference,
+          id: row.id,
+          native_account: row.native_account,
+          active: row.active,
+          profile: profiles.profiles.find((person) => person.memberId === row.id)?.profile ?? null,
+        })),
+        next: null,
+      },
       '/v1/platform/status': platform,
       '/v1/daos/1/content': content,
       '/v1/daos/1/governance': governance,
@@ -190,6 +200,91 @@ test.beforeEach(async ({ page }) => {
       json: body ?? { code: 'NOT_FOUND', message: 'Unavailable UI fixture' },
     });
   });
+});
+test('signed-out Users shows existing members before they publish profiles', async ({ page }) => {
+  await page.route('**/v1/people?*', (route) =>
+    route.fulfill({ json: { profiles: [], next: null } }),
+  );
+  await page.route('**/v1/me', (route) =>
+    route.fulfill({ status: 401, json: { code: 'AUTH_REQUIRED', message: 'Sign in' } }),
+  );
+  await page.route('**/v1/people/members?*', (route) =>
+    route.fulfill({
+      json: {
+        members: [
+          { dao: reference, id: '1', native_account: 'alice', active: true, profile: null },
+          { dao: reference, id: '2', native_account: '', active: true, profile: null },
+          {
+            dao: { ...reference, daoId: '4' },
+            id: '1',
+            native_account: 'alice',
+            active: true,
+            profile: null,
+          },
+        ],
+        next: null,
+      },
+    }),
+  );
+  await page.goto('/users');
+  await expect(page.locator('.person-card')).toHaveCount(2);
+  await expect(page.getByRole('heading', { name: 'alice', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Member 2', exact: true })).toBeVisible();
+  await page.getByRole('link', { name: /alice/ }).click();
+  await expect(
+    page.getByText('This member has not published a profile.', { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Edit profile & account' })).toHaveCount(0);
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+});
+test('Users loads the next DAO and replaces a native fallback with its published profile', async ({
+  page,
+}) => {
+  await page.route('**/v1/me', (route) =>
+    route.fulfill({ status: 401, json: { code: 'AUTH_REQUIRED', message: 'Sign in' } }),
+  );
+  await page.route(
+    (url) => url.pathname === PeopleRoutes.members.path,
+    (route) => {
+      const later = new URL(route.request().url()).searchParams.get('daoId') === '4';
+      return route.fulfill({
+        json: later
+          ? {
+              members: [
+                {
+                  dao: { ...reference, daoId: '4' },
+                  id: '1',
+                  native_account: 'alice',
+                  active: true,
+                  profile: { name: 'alice', fullName: 'Alice Adams' },
+                },
+                {
+                  dao: { ...reference, daoId: '4' },
+                  id: '2',
+                  native_account: '',
+                  active: true,
+                  profile: null,
+                },
+              ],
+              next: null,
+            }
+          : {
+              members: [
+                { dao: reference, id: '1', native_account: 'alice', active: true, profile: null },
+              ],
+              next: { daoId: '4', after: '0' },
+            },
+      });
+    },
+  );
+  await page.goto('/users');
+  await expect(page.getByRole('heading', { name: 'alice', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Load more users' }).click();
+  await expect(page.locator('.person-card')).toHaveCount(2);
+  await expect(page.getByRole('heading', { name: 'Alice Adams', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'alice', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Member 2', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Load more users' })).toHaveCount(0);
 });
 test('sidebar and hub open the same DAO; members have shared public profiles and view controls', async ({
   page,

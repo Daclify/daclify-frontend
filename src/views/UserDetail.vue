@@ -117,6 +117,7 @@ const title = computed(
   () =>
     profile.value?.fullName ||
     profile.value?.name ||
+    memberNative.value ||
     (own.value ? 'Your profile' : `Member ${memberId.value ?? ''}`),
 );
 const links = computed(() =>

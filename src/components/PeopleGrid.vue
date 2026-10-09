@@ -14,6 +14,8 @@ const props = defineProps<{
     active?: boolean;
   }>;
   members?: boolean;
+  loading?: boolean;
+  emptyText?: string;
 }>();
 function savedView() {
   try {
@@ -100,5 +102,11 @@ const visible = computed(() =>
       :heading="members ? 'h3' : 'h2'"
     />
   </div>
-  <p v-if="!visible.length" class="empty-state">No users match this view.</p>
+  <p v-if="!visible.length && !loading" class="empty-state">
+    {{
+      people.length
+        ? 'No users match this view.'
+        : (emptyText ?? 'No members are registered in this DAO yet.')
+    }}
+  </p>
 </template>

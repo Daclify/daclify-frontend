@@ -748,6 +748,23 @@ export const api = {
     if (query.memberId !== undefined) params.set('memberId', query.memberId);
     return request(PeopleRoutes.list.path + '?' + params, PeopleRoutes.list.response);
   },
+  publicMembers: (value: z.infer<typeof PeopleRoutes.members.query> = {}) => {
+    const operator = currentOperator();
+    const query = PeopleRoutes.members.query.parse(
+      operator
+        ? {
+            ...value,
+            onlyDao: operator.reference.daoId,
+            daoId: value.daoId ?? operator.reference.daoId,
+          }
+        : value,
+    );
+    const params = new URLSearchParams();
+    if (query.after !== undefined) params.set('after', query.after);
+    if (query.daoId !== undefined) params.set('daoId', query.daoId);
+    if (query.onlyDao !== undefined) params.set('onlyDao', query.onlyDao);
+    return request(PeopleRoutes.members.path + '?' + params, PeopleRoutes.members.response);
+  },
   governance: (daoId: string) =>
     request(
       ApiRoutes.governance.path.replace(':id', IdSchema.parse(daoId)),

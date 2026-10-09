@@ -1,61 +1,87 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
-import { PublicProfileSchema, type PublicPerson, type PublicProfile } from '@daclify/core-protocol';
+import {
+  PeopleRoutes,
+  PublicProfileSchema,
+  type PublicMember,
+  type PublicProfile,
+} from '@daclify/core-protocol';
+import type { z } from 'zod';
 import PeopleGrid from '../components/PeopleGrid.vue';
 import { api, friendlyError } from '../api/client';
 import { useWorkspace } from '../state/workspace';
 const state = useWorkspace(),
-  people = ref<PublicPerson[]>([]),
+  people = ref<PublicMember[]>([]),
   ownProfile = ref<PublicProfile>(),
-  next = ref<string | null>(null),
+  next = ref<z.infer<typeof PeopleRoutes.members.response>['next']>(null),
   busy = ref(false),
-  error = ref(''),
-  skipped = ref(0);
+  error = ref('');
 let generation = 0,
   disposed = false;
 const seen = new Set<string>();
-const own = (person: PublicPerson) =>
+const own = (person: PublicMember) =>
   state.memberships.some(
     (member) =>
       member.dao.chainId === person.dao.chainId &&
       member.dao.contract === person.dao.contract &&
       member.dao.daoId === person.dao.daoId &&
-      member.memberId === person.memberId,
+      member.memberId === person.id,
   );
+const publicUsers = computed(() => {
+  const users = new Map<string, PublicMember>();
+  for (const person of people.value.filter((p) => !own(p))) {
+    const key = person.native_account
+      ? `native:${person.native_account}`
+      : `${person.dao.daoId}:${person.id}`;
+    const existing = users.get(key);
+    if (!existing || (!existing.profile && person.profile)) users.set(key, person);
+  }
+  return [...users.entries()].map(([key, person]) => ({
+    key,
+    label: person.profile?.name || person.native_account || `Member ${person.id}`,
+    profile: person.profile ?? undefined,
+    to: `/users/${person.dao.daoId}/${person.id}`,
+    badges: [
+      state.daos.find((dao) => dao.reference.daoId === person.dao.daoId)?.title ??
+        `DAO ${person.dao.daoId}`,
+    ],
+  }));
+});
 const cards = computed(() => [
   ...(state.account
     ? [
         {
           key: 'me',
-          label: ownProfile.value?.name ?? 'Your profile',
+          label: ownProfile.value?.name || state.memberships[0]?.nativeAccount || 'Your profile',
           profile: ownProfile.value,
           to: '/users/me',
           own: true,
         },
       ]
     : []),
-  ...people.value
-    .filter((person) => !own(person))
-    .map((person) => ({
-      key: person.id,
-      label: person.accountName,
-      profile: person.profile,
-      to: `/users/${person.dao.daoId}/${person.memberId}`,
-    })),
+  ...publicUsers.value,
 ]);
-async function load(after?: string) {
+async function load(cursor?: z.infer<typeof PeopleRoutes.members.query>) {
   const request = generation;
   busy.value = true;
   error.value = '';
   try {
-    const page = await api.people(after ? { after } : {});
+    const page = await api.publicMembers(cursor);
     if (disposed || request !== generation) return;
-    if (page.next && (seen.has(page.next) || BigInt(page.next) <= BigInt(after ?? '0')))
-      throw new Error('CHAIN_RESPONSE_INVALID');
-    if (page.next) seen.add(page.next);
-    people.value.push(...page.profiles);
+    if (page.next) {
+      const key = JSON.stringify(page.next);
+      const previousDao = BigInt(cursor?.daoId ?? '0'),
+        currentDao = BigInt(page.next.daoId);
+      if (
+        seen.has(key) ||
+        currentDao < previousDao ||
+        (currentDao === previousDao && BigInt(page.next.after) <= BigInt(cursor?.after ?? '0'))
+      )
+        throw new Error('CHAIN_RESPONSE_INVALID');
+      seen.add(key);
+    }
+    people.value.push(...page.members);
     next.value = page.next;
-    skipped.value += page.skipped;
   } catch (cause) {
     if (request === generation) error.value = friendlyError(cause);
   } finally {
@@ -70,7 +96,6 @@ watch(
     seen.clear();
     ownProfile.value = undefined;
     next.value = null;
-    skipped.value = 0;
     void load();
   },
   { immediate: true },
@@ -110,16 +135,20 @@ onBeforeUnmount(() => {
     ><RouterLink v-else class="button" to="/account">Sign in</RouterLink>
   </div>
   <p class="field-help">
-    This directory shows profiles users chose to publish on-chain. Sign-in accounts and private
-    pairings stay private. People can publish different handles for different DAO memberships.
+    Browse public DAO members, including people who have not published a profile yet. Profile
+    details come from a public DAO membership. The same native account is listed once; private
+    sign-in accounts and pairings are not displayed.
   </p>
   <p v-if="error" class="alert" role="alert">
     {{ error }} <button class="text-button" @click="load(next ?? undefined)">Retry</button>
   </p>
-  <PeopleGrid :people="cards" />
-  <p v-if="busy" role="status">Loading public profiles…</p>
+  <PeopleGrid
+    :people="cards"
+    :loading="busy"
+    empty-text="No public DAO members are registered on this network yet."
+  />
+  <p v-if="busy" role="status">Loading public members…</p>
   <button v-else-if="next" class="secondary" @click="load(next ?? undefined)">
     Load more users
   </button>
-  <p v-if="skipped" class="muted">{{ skipped }} incompatible profile records were skipped.</p>
 </template>
