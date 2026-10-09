@@ -457,7 +457,8 @@ async function describe() {
         required
       /><button>Sign commission policy</button>
     </fieldset>
-    <RouterLink to="/marketplace">View modules and name offerings ↗</RouterLink>
+    <RouterLink to="/modules">View modules ↗</RouterLink>
+    <RouterLink to="/names">View name offerings ↗</RouterLink>
   </form>
   <section class="panel">
     <h2>Registered modules</h2>

@@ -5,11 +5,12 @@ import {
   Activity,
   Shield,
   BookOpen,
+  Blocks,
+  AtSign,
   LayoutGrid,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
-  Store,
   UserRound,
 } from '@lucide/vue';
 import { useWorkspace } from './state/workspace';
@@ -122,9 +123,14 @@ onMounted(() => {
             >Create DAO</span
           ></RouterLink
         >
-        <RouterLink to="/marketplace" @click="mobileOpen = false"
-          ><Store class="nav-icon" aria-hidden="true" /><span class="nav-text"
-            >Marketplace</span
+        <RouterLink to="/modules" @click="mobileOpen = false"
+          ><Blocks class="nav-icon" aria-hidden="true" /><span class="nav-text"
+            >Modules</span
+          ></RouterLink
+        >
+        <RouterLink to="/names" @click="mobileOpen = false"
+          ><AtSign class="nav-icon" aria-hidden="true" /><span class="nav-text"
+            >Names</span
           ></RouterLink
         >
         <RouterLink to="/account" @click="mobileOpen = false"

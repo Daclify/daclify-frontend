@@ -6,12 +6,9 @@ async function noOverflow(page: Page) {
   );
 }
 
-test('opens the module and name marketplace', async ({ page }) => {
-  await page.goto('/marketplace');
-  await expect(
-    page.getByRole('heading', { name: 'Modules and Telos names', exact: true }),
-  ).toBeVisible();
-  await expect(page.getByRole('tab', { name: 'Modules', exact: true })).toBeVisible();
+test('browses modules and names from their sidebar pages', async ({ page }) => {
+  await page.goto('/modules');
+  await expect(page.getByRole('heading', { name: 'Modules', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Decide', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Works', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Payroll', exact: true })).toBeVisible();
@@ -48,7 +45,10 @@ test('opens the module and name marketplace', async ({ page }) => {
   await expect(
     page.getByText('Third-party usage charges pay the platform 5%.', { exact: false }),
   ).toBeVisible();
-  await page.getByRole('tab', { name: 'Names', exact: true }).click();
+  const menu = page.getByRole('button', { name: 'Menu', exact: true });
+  if (await menu.isVisible()) await menu.click();
+  await page.getByRole('navigation').getByRole('link', { name: 'Names', exact: true }).click();
+  await expect(page).toHaveURL(/\/names$/);
   await expect(page.getByRole('heading', { name: 'Basic name', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Premium name', exact: true })).toBeVisible();
   await expect(page.getByText('$5.00', { exact: true })).toBeVisible();

@@ -26,7 +26,17 @@ const router = createRouter({
     { path: '/hosting', component: () => import('./views/Hosting.vue') },
     { path: '/resources', component: () => import('./views/Resources.vue') },
     { path: '/payments', component: () => import('./views/Payments.vue') },
-    { path: '/marketplace', component: () => import('./views/Marketplace.vue') },
+    { path: '/modules', component: () => import('./views/Modules.vue') },
+    { path: '/names', component: () => import('./views/Names.vue') },
+    {
+      path: '/marketplace',
+      redirect: (to) => ({
+        path:
+          to.query.names === 'submitted' || to.query.names === 'cancelled' ? '/names' : '/modules',
+        query: to.query,
+        hash: to.hash,
+      }),
+    },
     { path: '/dao/:id/:section?', component: () => import('./views/Workspace.vue') },
     { path: '/docs/:topic?', component: () => import('./views/Docs.vue') },
   ],

@@ -21,7 +21,9 @@ DAO creation now offers community, NGO / grants, gaming guild, team / cooperativ
 | `/create`                          | DAO setup, deployment/preset choices and free shared creation              |
 | `/hosting?dao=…`                   | Approved monthly shared member capacity                                    |
 | `/payments?dao=…`                  | DAO merchant setup, module-product payments and receipts                   |
-| `/marketplace`                     | Modules, names and public service listings                                 |
+| `/modules`                         | Module catalogue, tools, filters and details                               |
+| `/names`                           | Telos account name availability, prices and purchasing                     |
+| `/marketplace`                     | Redirect to Modules; name-payment returns redirect to Names                |
 | `/dao/:id` and `/dao/:id/:section` | Members, ballots, works, grants, payroll, treasury, settings and documents |
 | `/account`                         | Sign-in methods, wallet bindings, encrypted vault/kit and payment receipts |
 | `/docs` and `/docs/:topic`         | Versioned core/module product guides and references                        |

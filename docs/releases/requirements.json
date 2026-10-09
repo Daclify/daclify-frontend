@@ -1,6 +1,10 @@
 {
   "requirements": [
     {
+      "id": "MODULES-AND-NAMES-NAVIGATION",
+      "tests": ["tests/e2e/catalogue-navigation.spec.ts", "tests/e2e/marketplace.spec.ts"]
+    },
+    {
       "id": "STANDALONE-FRONTEND-SDK-PACKAGES",
       "tests": ["tests/unit/sdk-packages.test.ts"]
     },
