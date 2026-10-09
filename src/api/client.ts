@@ -892,6 +892,8 @@ export function friendlyError(error: unknown): string {
   if (error instanceof ApiFailure) {
     const messages: Record<string, string> = {
       ...ContractFailureMessages,
+      NATIVE_EXECUTIVE_BINDING_REQUIRED:
+        'Replace or remove your DAO wallet binding first. The final paired executive must replace the wallet atomically.',
       NETWORK_MISMATCH:
         'The connected service is using a different network from this app. Ask the operator to correct the API configuration.',
       ASSET_UNAVAILABLE:

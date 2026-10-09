@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { useRoute } from 'vue-router';
 import { computed, ref, watch } from 'vue';
+import type { GovernanceState } from '@daclify/core-protocol';
+import { executiveStatus } from '../auth/executives';
 import type { UserMembership } from '@daclify/core-protocol';
 import { encodeAction, makeInstruction } from '@daclify/core-protocol/sdk';
 import { selectedSigner, canSignMember, refreshEvmAuthorization } from '../auth/action-signer';
@@ -69,9 +71,36 @@ async function bind() {
     busy.value = false;
   }
 }
+const governanceState = ref<GovernanceState>();
+const governanceLoading = ref(true);
+let governanceRequest = 0;
+watch(
+  () => props.member?.dao,
+  async (dao) => {
+    const request = ++governanceRequest;
+    governanceLoading.value = true;
+    governanceState.value = undefined;
+    if (!dao) return;
+    try {
+      const result = await api.governance(dao.daoId);
+      if (request === governanceRequest) governanceState.value = result;
+    } catch (cause) {
+      if (request === governanceRequest) error.value = friendlyError(cause);
+    } finally {
+      if (request === governanceRequest) governanceLoading.value = false;
+    }
+  },
+  { immediate: true },
+);
+const lastNativeExecutive = computed(
+  () =>
+    executiveStatus(governanceState.value, props.member?.memberId, Math.floor(Date.now() / 1000))
+      .lastPaired,
+);
 async function unbind() {
   const member = props.member;
-  if (!member) return;
+  if (!member || governanceLoading.value || !governanceState.value || lastNativeExecutive.value)
+    return;
   busy.value = true;
   error.value = '';
   try {
@@ -231,7 +260,9 @@ async function revokeEthereum() {
         Daclify keys and the incoming wallet’s consent.
       </p>
       <button type="button" :disabled="busy || !vaultUnlocked || !member.active" @click="bind">
-        Authorize wallet for this DAO
+        {{
+          member.nativeAccount ? 'Replace DAO wallet atomically' : 'Authorize wallet for this DAO'
+        }}
       </button>
     </template>
     <template v-if="selectedSigner === 'evm'">
@@ -264,10 +295,16 @@ async function revokeEthereum() {
       v-if="member.nativeAccount && ready"
       type="button"
       class="secondary"
-      :disabled="busy || !member.active"
+      :disabled="
+        busy || !member.active || governanceLoading || !governanceState || lastNativeExecutive
+      "
       @click="unbind"
     >
-      Remove native DAO authorization
+      {{
+        lastNativeExecutive
+          ? 'Last executive: replace wallet to continue'
+          : 'Remove native DAO authorization'
+      }}
     </button>
   </section>
 </template>

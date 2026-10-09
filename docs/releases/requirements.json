@@ -55,6 +55,11 @@
         "tests/e2e/networks.spec.ts",
         "tests/e2e/network-lock.spec.ts"
       ]
+    },
+    {
+      "id": "WP02-EXECUTIVE-BROWSER",
+      "suite": "browser",
+      "tests": ["tests/e2e/executives.spec.ts"]
     }
   ]
 }

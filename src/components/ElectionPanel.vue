@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import type { DaoSummary, UserMembership } from '@daclify/core-protocol';
+import type { DaoSummary, UserMembership, GovernanceState } from '@daclify/core-protocol';
 import type { ModuleState } from '@daclify/modules';
 import { encodeDecide, type DecideActions } from '@daclify/modules/sdk';
 import { friendlyError } from '../api/client';
@@ -8,6 +8,7 @@ const props = defineProps<{
   dao: DaoSummary;
   member: UserMembership | undefined;
   data: ModuleState;
+  governance: GovernanceState | undefined;
   canSign: boolean;
   canFinalize: boolean;
   now: number;
@@ -16,6 +17,7 @@ const props = defineProps<{
 }>();
 const module = computed(() => props.data.modules.find((m) => m.deployment.id === 'decide'));
 const title = ref('Community council'),
+  purpose = ref('representative'),
   documentId = ref(''),
   documentVersion = ref(1),
   seats = ref(1),
@@ -78,7 +80,7 @@ async function create() {
       {
         ...actor(),
         election_id: newId(),
-        title: title.value,
+        title: purpose.value === 'executive' ? 'Executives' : title.value,
         document_id: documentId.value,
         document_version: documentVersion.value,
         nomination_close: seconds(nominationClose.value),
@@ -124,20 +126,43 @@ function termStatus(term: ModuleState['terms'][number]) {
 }
 </script>
 <template>
-  <section aria-label="Representative elections">
+  <section aria-label="DAO elections">
     <div class="section-toolbar">
-      <h2>Representative elections</h2>
+      <h2>DAO elections</h2>
       <RouterLink to="/docs/representative-elections">Election and term rules ↗</RouterLink>
     </div>
     <p>
-      Elect representatives for a fixed term. Titles grant no administrator, reviewer or Treasury
-      powers.
+      Elect representatives for a fixed term, or explicitly elect executives to change the appointed
+      roster. Representative titles grant no administrator, reviewer or Treasury powers.
     </p>
     <p v-if="error" class="alert" role="alert">{{ error }}</p>
     <details v-if="member?.admin">
       <summary>Schedule an election</summary>
       <form class="panel form-grid" @submit.prevent="create">
-        <label>Representative title<input v-model="title" maxlength="80" required /></label
+        <label
+          >Election purpose<select v-model="purpose">
+            <option value="representative">Representative office</option>
+            <option
+              value="executive"
+              :disabled="!governance?.executivePolicy || !module?.grants.includes('electexec')"
+            >
+              Executive governance
+            </option>
+          </select></label
+        >
+        <p v-if="purpose === 'executive'" class="notice">
+          This election replaces the executive roster at term start. Native control requires paired
+          Telos Zero accounts; until an eligible successor pairs, the outgoing roster retains
+          control. For the governing DAO, administrator rights follow the eligible paired executive
+          roster.
+        </p>
+        <label v-else
+          >Representative title<input
+            v-model="title"
+            maxlength="80"
+            required
+            pattern="(?!Executives$).*"
+            title="Executives is reserved for executive governance elections" /></label
         ><label>Rules document ID<input v-model="documentId" inputmode="numeric" required /></label
         ><label
           >Rules version<input
@@ -263,7 +288,7 @@ function termStatus(term: ModuleState['terms'][number]) {
           :disabled="!canFinalize"
           @click="finalize(election.id)"
         >
-          Finalize representative election
+          Finalize election
         </button>
         <p v-if="election.status === 2">
           Finalized · {{ data.terms.filter((t) => t.election_id === election.id).length }} recorded

@@ -868,6 +868,7 @@ const selectedProject = computed(() =>
         :dao="dao"
         :member="member"
         :data="data"
+        :governance="governance"
         :can-sign="canSign"
         :can-finalize="canSettle"
         :now="now"

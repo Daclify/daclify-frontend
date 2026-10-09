@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import ExecutivePanel from './ExecutivePanel.vue';
 import { Checksum256 } from '@wharfkit/antelope';
 import {
   DaoSetupSchema,
@@ -223,6 +224,7 @@ function prepareGuardian() {
 }
 </script>
 <template>
+  <ExecutivePanel :dao="dao" :member="member" :state="state" @refresh="load" />
   <section class="panel">
     <div class="section-toolbar">
       <h2>Governance and participants</h2>

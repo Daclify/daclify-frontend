@@ -169,6 +169,10 @@ async function useControl() {
       access after a service failure. Recovery uses the current blockchain binding; it creates no
       new DAO membership and does not restore document-decryption keys.
     </p>
+    <p v-if="mode === 'manage'" class="field-help">
+      Sign-in pairing and DAO wallet authority are separate. Remove or replace executive bindings in
+      the DAO before changing this sign-in pairing.
+    </p>
     <p v-if="error" class="alert" role="alert">{{ error }}</p>
     <p v-if="notice" class="notice" role="status">{{ notice }}</p>
     <ul v-if="mode === 'manage' && links.length" class="method-list">
