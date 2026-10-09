@@ -31,10 +31,12 @@ DAO creation now offers community, NGO / grants, gaming guild, team / cooperativ
 
 The visual system and its checks are described in [docs/ui/ciq-alignment.md](docs/ui/ciq-alignment.md).
 
-Each module card shows its purpose and usage price. **Details** opens its tools
-and on-chain listing. **Activate** lets you choose a DAO where you are an active
-administrator, review compatibility and requested permissions, unlock or connect
-your matching signer, and enable the module. Activation is a signed DAO action;
+Each module card shows its purpose and usage price. **Details** opens an illustrated
+module overview, its included tools, and a pricing/activation panel. Selecting a
+tool shows its description while keeping the module name visible. **Contract
+details** expands the on-chain listing and code hash. **Activate** lets you choose
+a DAO where you are an active administrator, review compatibility and requested
+permissions, unlock or connect your matching signer, and enable the module. Activation is a signed DAO action;
 opening the dialog does not change the DAO. Already-enabled modules are marked
 Enabled. Card styles use published SDK code hashes and known first-party titles
 for older builds, so deployed contract account names can vary. Card artwork does

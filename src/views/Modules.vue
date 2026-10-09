@@ -13,6 +13,9 @@ import {
   X,
   Check,
   Users,
+  ArrowLeft,
+  ArrowRight,
+  ChevronDown,
 } from '@lucide/vue';
 import { ModuleCodeHashes } from '@daclify/modules/sdk';
 import { daoPaymentKey } from '@daclify/core-protocol';
@@ -297,7 +300,7 @@ function moduleCharge(party: 'first-party' | 'third-party'): string {
 </script>
 <template>
   <section class="page modules-page">
-    <header class="catalogue-heading">
+    <header v-if="!selected" class="catalogue-heading">
       <div>
         <p class="eyebrow">Built for your community</p>
         <h1>Modules</h1>
@@ -313,8 +316,8 @@ function moduleCharge(party: 'first-party' | 'third-party'): string {
     <p v-else-if="!catalogue" class="notice" role="status">Loading the module library…</p>
     <p v-else-if="!catalogue.configured" class="notice">{{ catalogue.reason }}</p>
     <template v-else>
-      <article v-if="selected" class="panel module-detail">
-        <div class="section-toolbar">
+      <article v-if="selected" class="module-detail" :data-module="presentationId(selected)">
+        <div class="detail-navigation">
           <button
             type="button"
             class="text-button"
@@ -323,54 +326,147 @@ function moduleCharge(party: 'first-party' | 'third-party'): string {
               selectedOfferId = '';
             "
           >
-            Back to modules
+            <ArrowLeft aria-hidden="true" /> Back to modules
           </button>
-          <button
-            type="button"
-            :disabled="workspace.loading"
-            :aria-label="`Activate ${selected.title}`"
-            @click="openActivation(selected.account)"
-          >
-            <Plus aria-hidden="true" /> Activate on a DAO
-          </button>
+          <RouterLink to="/docs/modules"
+            >Module guide <ArrowUpRight aria-hidden="true"
+          /></RouterLink>
         </div>
-        <p class="eyebrow">
-          {{ presentation(selected).category }} · {{ partyName(selected.party) }}
-        </p>
-        <h2>{{ selectedOffering?.title ?? selected.title }}</h2>
-        <p>{{ selectedOffering?.summary ?? presentation(selected).summary }}</p>
-        <p v-if="selected.summary">{{ selected.summary }}</p>
-        <p v-if="selected.detail" class="module-detail-copy">{{ selected.detail }}</p>
-        <h3 v-if="selectedTools.length">Tools in this module</h3>
-        <div v-if="selectedTools.length" class="module-grid">
-          <button
-            v-for="offer in selectedTools"
-            :key="offer.id"
-            type="button"
-            class="module-card"
-            :aria-current="offer.id === selectedOfferId ? 'true' : undefined"
-            @click="selectedOfferId = offer.id"
-          >
-            <strong>{{ offer.title }}</strong
-            ><small>{{ offer.summary }}</small>
-          </button>
+        <header class="module-detail-hero">
+          <div class="detail-intro">
+            <div class="detail-badges">
+              <span class="detail-category">{{ presentation(selected).category }}</span>
+              <span>{{ partyName(selected.party) }} module</span>
+            </div>
+            <h1>{{ selected.title }}</h1>
+            <p>{{ presentation(selected).summary }}</p>
+            <span v-if="selectedTools.length" class="detail-included">
+              <Blocks aria-hidden="true" /> {{ selectedTools.length }}
+              {{ selectedTools.length === 1 ? 'tool' : 'tools' }}. One module.
+            </span>
+          </div>
+          <div class="detail-artwork" aria-hidden="true">
+            <svg viewBox="0 0 260 220" fill="none">
+              <circle cx="130" cy="110" r="70" />
+              <circle cx="130" cy="110" r="100" stroke-dasharray="3 9" />
+              <path d="M10 110h240M130 10v200M35 35l190 150M35 185L225 35" />
+              <rect x="26" y="35" width="52" height="40" rx="10" />
+              <path d="M39 49h25M39 60h17" />
+            </svg>
+            <span class="detail-artwork-icon"><component :is="presentation(selected).icon" /></span>
+            <span class="detail-artwork-people"><Users /></span>
+            <span class="detail-artwork-check"><Check /></span>
+          </div>
+        </header>
+        <div class="detail-layout">
+          <aside class="detail-activation" aria-labelledby="detail-activation-title">
+            <p class="eyebrow">Make it yours</p>
+            <h2 id="detail-activation-title">Add to your DAO</h2>
+            <div class="detail-pricing">
+              <span>Module usage price</span>
+              <strong>{{ usage(selected.price) }}</strong>
+              <span v-if="selectedTools.length">Every tool in this module is included.</span>
+            </div>
+            <button
+              type="button"
+              :disabled="workspace.loading"
+              :aria-label="`Activate ${selected.title}`"
+              @click="openActivation(selected.account)"
+            >
+              <Plus aria-hidden="true" /> Activate on a DAO
+            </button>
+            <p class="detail-signing-note">
+              <ShieldCheck aria-hidden="true" />
+              Choose a DAO and review permissions before signing.
+            </p>
+            <dl class="detail-publisher">
+              <dt>Publisher</dt>
+              <dd class="mono">{{ selected.publisher }}</dd>
+              <dt>Platform fee</dt>
+              <dd>{{ moduleCharge(selected.party) }}</dd>
+            </dl>
+          </aside>
+          <div class="detail-main">
+            <section
+              v-if="selectedTools.length"
+              class="detail-tools"
+              aria-labelledby="detail-tools-title"
+            >
+              <div class="detail-section-heading">
+                <div>
+                  <p class="eyebrow">Included capabilities</p>
+                  <h2 id="detail-tools-title">What you can do</h2>
+                </div>
+                <span class="detail-tool-count"
+                  >{{ selectedTools.length }}
+                  {{ selectedTools.length === 1 ? 'tool' : 'tools' }}</span
+                >
+              </div>
+              <div class="detail-tool-grid">
+                <button
+                  v-for="(offer, index) in selectedTools"
+                  :key="offer.id"
+                  type="button"
+                  class="detail-tool"
+                  :aria-pressed="offer.id === selectedOfferId"
+                  @click="selectedOfferId = offer.id"
+                >
+                  <span class="detail-tool-number" aria-hidden="true">{{
+                    String(index + 1).padStart(2, '0')
+                  }}</span>
+                  <strong>{{ offer.title }}</strong>
+                  <small>{{ offer.summary }}</small>
+                  <span class="detail-tool-explore" aria-hidden="true"
+                    >{{ offer.id === selectedOfferId ? 'Selected' : 'Explore tool' }} <ArrowRight
+                  /></span>
+                </button>
+              </div>
+              <div v-if="selectedOffering" class="detail-selected-tool">
+                <component :is="presentation(selected).icon" aria-hidden="true" />
+                <div>
+                  <h3>{{ selectedOffering.title }}</h3>
+                  <p>{{ selectedOffering.summary }}</p>
+                </div>
+              </div>
+            </section>
+            <section
+              v-if="
+                selected.detail ||
+                (selected.summary && selected.summary !== presentation(selected).summary)
+              "
+              class="detail-about"
+            >
+              <h2>About this module</h2>
+              <p v-if="selected.summary && selected.summary !== presentation(selected).summary">
+                {{ selected.summary }}
+              </p>
+              <p v-if="selected.detail" class="module-detail-copy">{{ selected.detail }}</p>
+            </section>
+            <details :key="selected.account" class="detail-contract">
+              <summary>Contract details <ChevronDown aria-hidden="true" /></summary>
+              <p>
+                Listing information read from the chain. Deployment compatibility is checked when
+                you choose a DAO.
+              </p>
+              <dl class="detail-list">
+                <dt>Account</dt>
+                <dd class="mono">{{ selected.account }}</dd>
+                <dt>Publisher</dt>
+                <dd class="mono">{{ selected.publisher }}</dd>
+                <dt>Party</dt>
+                <dd>{{ partyName(selected.party) }}</dd>
+                <dt>Usage price</dt>
+                <dd>{{ usage(selected.price) }}</dd>
+                <dt>Platform fee</dt>
+                <dd>{{ moduleCharge(selected.party) }}</dd>
+                <dt>Fee rule</dt>
+                <dd>Accepted. A DAO activates this contract once, with all its included tools.</dd>
+                <dt>Code hash</dt>
+                <dd class="mono">{{ selected.codeHash }}</dd>
+              </dl>
+            </details>
+          </div>
         </div>
-        <dl class="detail-list">
-          <dt>Account</dt>
-          <dd class="mono">{{ selected.account }}</dd>
-          <dt>Publisher</dt>
-          <dd class="mono">{{ selected.publisher }}</dd>
-          <dt>Party</dt>
-          <dd>{{ partyName(selected.party) }}</dd>
-          <dt>Usage price</dt>
-          <dd>{{ usage(selected.price) }}</dd>
-          <dt>Platform fee</dt>
-          <dd>{{ moduleCharge(selected.party) }}</dd>
-          <dt>Fee rule</dt>
-          <dd>Accepted. A DAO activates this contract once, and every tool above comes with it.</dd>
-          <dt>Code hash</dt>
-          <dd class="mono">{{ selected.codeHash }}</dd>
-        </dl>
       </article>
       <template v-else>
         <div class="catalogue-toolbar">
@@ -598,9 +694,12 @@ function moduleCharge(party: 'first-party' | 'third-party'): string {
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 290px), 1fr));
   gap: 20px;
 }
-.catalogue-card {
+.catalogue-card,
+.module-detail {
   --module-accent: var(--accent-amber);
   --module-tint: var(--accent-soft);
+}
+.catalogue-card {
   position: relative;
   display: flex;
   flex-direction: column;
@@ -616,18 +715,18 @@ function moduleCharge(party: 'first-party' | 'third-party'): string {
     border-color var(--motion-fast),
     transform var(--motion-fast);
 }
-.catalogue-card[data-module='works'] {
+[data-module='works'] {
   --module-accent: var(--state-success);
   --module-tint: var(--state-success-bg);
 }
-.catalogue-card[data-module='payroll'] {
+[data-module='payroll'] {
   --module-accent: var(--accent-amber-strong);
 }
-.catalogue-card[data-module='grants-rounds'] {
+[data-module='grants-rounds'] {
   --module-accent: var(--state-danger);
   --module-tint: var(--state-danger-bg);
 }
-.catalogue-card[data-module='endorsement-admission'] {
+[data-module='endorsement-admission'] {
   --module-accent: var(--text-secondary);
   --module-tint: var(--surface-soft);
 }
@@ -782,6 +881,441 @@ function moduleCharge(party: 'first-party' | 'third-party'): string {
   align-content: center;
   cursor: pointer;
   width: fit-content;
+}
+.detail-navigation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+  font-size: 13px;
+}
+.detail-navigation a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  color: var(--text-secondary);
+}
+.detail-navigation a svg {
+  width: 15px;
+  height: 15px;
+}
+.module-detail-hero {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 24px;
+  align-items: center;
+  padding: 36px;
+  margin-bottom: 28px;
+  border: 1px solid var(--border-default);
+  border-radius: 24px;
+  background:
+    radial-gradient(ellipse at 100% 0%, var(--module-tint), transparent 65%), var(--surface-panel);
+  overflow: hidden;
+}
+.detail-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 22px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.detail-category {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-pill);
+  padding: 6px 12px;
+  color: var(--module-accent);
+  background: var(--module-tint);
+  font-weight: 600;
+}
+.detail-intro h1 {
+  font-size: clamp(36px, 4.5vw, 60px);
+  letter-spacing: -1.8px;
+  line-height: 1.08;
+  margin-bottom: 18px;
+  overflow-wrap: anywhere;
+}
+.detail-intro > p {
+  max-width: 620px;
+  margin-bottom: 24px;
+  font-size: 16px;
+  color: var(--text-secondary);
+}
+.detail-included {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.detail-included svg {
+  width: 16px;
+  height: 16px;
+  color: var(--module-accent);
+}
+.detail-artwork {
+  position: relative;
+  width: 260px;
+  height: 220px;
+  color: var(--module-accent);
+}
+.detail-artwork > svg {
+  width: 100%;
+  height: 100%;
+  stroke: currentColor;
+  opacity: 0.25;
+}
+.detail-artwork-icon,
+.detail-artwork-people,
+.detail-artwork-check {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border-default);
+  background: var(--surface-raised);
+  box-shadow: var(--elevation-panel);
+}
+.detail-artwork-icon {
+  inset: 55px 75px;
+  border-color: var(--module-accent);
+  border-radius: 28px;
+  transform: rotate(-8deg);
+}
+.detail-artwork-icon svg {
+  width: 48px;
+  height: 48px;
+  stroke-width: 1.4;
+}
+.detail-artwork-people,
+.detail-artwork-check {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+}
+.detail-artwork-people {
+  right: 12px;
+  top: 32px;
+  transform: rotate(10deg);
+}
+.detail-artwork-check {
+  left: 30px;
+  bottom: 10px;
+  transform: rotate(-8deg);
+}
+.detail-artwork-people svg,
+.detail-artwork-check svg {
+  width: 21px;
+  height: 21px;
+}
+.detail-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  grid-template-areas: 'content activation';
+  align-items: start;
+  gap: 28px;
+}
+.detail-main {
+  grid-area: content;
+  min-width: 0;
+}
+.detail-section-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin: 6px 0 18px;
+}
+.detail-section-heading .eyebrow,
+.detail-activation .eyebrow {
+  margin-bottom: 6px;
+}
+.detail-section-heading h2 {
+  margin: 0;
+}
+.detail-tool-count {
+  flex: none;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.detail-tool-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.detail-tool:only-child {
+  grid-column: 1 / -1;
+}
+.detail-tool {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: start;
+  align-content: start;
+  grid-template-rows: auto auto 1fr auto;
+  gap: 12px;
+  padding: 22px;
+  border: 1px solid var(--border-default);
+  border-radius: 18px;
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  text-align: left;
+  box-shadow: none;
+}
+.detail-tool:hover,
+.detail-tool[aria-pressed='true'] {
+  border-color: var(--module-accent);
+  background: linear-gradient(145deg, var(--module-tint), transparent), var(--surface-panel);
+  box-shadow: none;
+  transform: none;
+}
+.detail-tool-number {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--module-tint);
+  color: var(--module-accent);
+  font-size: 11px;
+}
+.detail-tool strong {
+  font-size: 17px;
+  line-height: 1.35;
+}
+.detail-tool small {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.6;
+}
+.detail-tool-explore {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  color: var(--module-accent);
+  font-size: 12px;
+}
+.detail-tool-explore svg {
+  width: 14px;
+  height: 14px;
+}
+.detail-selected-tool {
+  display: flex;
+  align-items: start;
+  gap: 14px;
+  padding: 20px;
+  margin-top: 16px;
+  border-left: 2px solid var(--module-accent);
+  border-radius: 0 14px 14px 0;
+  background: var(--module-tint);
+}
+.detail-selected-tool > svg {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  color: var(--module-accent);
+}
+.detail-selected-tool h3 {
+  margin-bottom: 6px;
+}
+.detail-selected-tool p,
+.detail-about p {
+  margin-bottom: 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+.detail-about {
+  margin-top: 28px;
+}
+.detail-about h2 {
+  font-size: 18px;
+  margin-bottom: 10px;
+}
+.detail-about p + p {
+  margin-top: 12px;
+}
+.detail-activation {
+  grid-area: activation;
+  position: sticky;
+  top: 24px;
+  padding: 24px;
+  border: 1px solid var(--border-warm);
+  border-radius: 20px;
+  background: linear-gradient(155deg, var(--surface-soft), transparent), var(--surface-panel);
+}
+.detail-activation h2 {
+  font-size: 21px;
+  margin-bottom: 24px;
+}
+.detail-pricing {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 22px;
+}
+.detail-pricing span {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.detail-pricing strong {
+  font-size: 23px;
+  line-height: 1.3;
+  letter-spacing: -0.7px;
+  overflow-wrap: anywhere;
+}
+.detail-activation > button {
+  width: 100%;
+  font-size: 13px;
+}
+.detail-signing-note {
+  display: flex;
+  gap: 8px;
+  align-items: start;
+  margin: 14px 0 22px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.detail-signing-note svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--module-accent);
+}
+.detail-publisher {
+  border-top: 1px solid var(--border-default);
+  margin: 0;
+  padding-top: 18px;
+  font-size: 12px;
+}
+.detail-publisher dt {
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.detail-publisher dd {
+  margin: 0 0 14px;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+.detail-publisher dd:last-child {
+  margin-bottom: 0;
+}
+.detail-contract {
+  margin-top: 28px;
+  border-top: 1px solid var(--border-default);
+  font-size: 13px;
+}
+.detail-contract summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 60px;
+  cursor: pointer;
+  font-weight: 600;
+  list-style: none;
+}
+.detail-contract summary::-webkit-details-marker {
+  display: none;
+}
+.detail-contract summary svg {
+  width: 18px;
+  height: 18px;
+}
+.detail-contract[open] summary svg {
+  transform: rotate(180deg);
+}
+.detail-contract > p {
+  color: var(--text-muted);
+  margin-bottom: 18px;
+}
+.module-detail + .catalogue-fees {
+  margin-top: 28px;
+}
+@media (max-width: 1050px) {
+  .module-detail-hero {
+    grid-template-columns: minmax(0, 1fr) 180px;
+    padding: 28px;
+  }
+  .detail-artwork {
+    width: 180px;
+    height: 180px;
+  }
+  .detail-artwork-icon {
+    inset: 45px;
+  }
+  .detail-artwork-icon svg {
+    width: 38px;
+    height: 38px;
+  }
+  .detail-layout {
+    grid-template-columns: minmax(0, 1fr) 260px;
+    gap: 20px;
+  }
+  .detail-tool-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 850px) {
+  .detail-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'activation' 'content';
+    gap: 28px;
+  }
+  .detail-activation {
+    position: static;
+  }
+  .detail-tool-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 550px) {
+  .module-detail-hero {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+    padding: 24px;
+  }
+  .detail-artwork {
+    grid-row: 1;
+    width: 160px;
+    height: 140px;
+    margin: -10px 0 20px -10px;
+  }
+  .detail-artwork-icon {
+    inset: 30px 40px;
+    border-radius: 20px;
+  }
+  .detail-artwork-people {
+    right: 0;
+    top: 4px;
+  }
+  .detail-artwork-check {
+    left: 0;
+    bottom: 0;
+  }
+  .detail-badges {
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .detail-intro h1 {
+    font-size: 38px;
+  }
+  .detail-intro > p {
+    font-size: 14px;
+    margin-bottom: 18px;
+  }
+  .detail-tool-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .detail-contract .detail-list {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+  .detail-contract dd {
+    margin-bottom: 12px;
+  }
 }
 .activation-dialog {
   width: min(620px, calc(100% - 32px));

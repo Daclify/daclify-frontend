@@ -1,6 +1,10 @@
 {
   "requirements": [
     {
+      "id": "MODULE-DETAIL-DESIGN",
+      "tests": ["tests/e2e/module-cards.spec.ts", "tests/e2e/marketplace.spec.ts"]
+    },
+    {
       "id": "MODULE-CARDS-AND-DAO-ACTIVATION",
       "tests": ["tests/e2e/module-cards.spec.ts", "tests/unit/access-components.test.ts"]
     },

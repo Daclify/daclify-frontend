@@ -23,6 +23,7 @@ test('browses modules and names from their sidebar pages', async ({ page }) => {
   const main = page.locator('#main');
   await expect(page.getByRole('heading', { name: 'Decide', exact: true })).toBeVisible();
   await expect(main.getByText('Ballots and proposals for a DAO.', { exact: true })).toBeVisible();
+  await page.getByText('Contract details', { exact: true }).click();
   await expect(main.getByText('Code hash', { exact: true })).toBeVisible();
   for (const name of ['Member vote', 'Credit vote', 'Stake vote', 'Advisory poll'])
     await expect(page.getByRole('button', { name: new RegExp(`^${name}\\b`) })).toBeVisible();
@@ -30,6 +31,7 @@ test('browses modules and names from their sidebar pages', async ({ page }) => {
   await page.getByRole('button', { name: 'Decide', exact: true }).click();
   await page.getByRole('button', { name: /^Member vote\b/ }).click();
   await expect(page.getByRole('heading', { name: 'Member vote', exact: true })).toBeVisible();
+  await page.getByText('Contract details', { exact: true }).click();
   await expect(main.getByText('Code hash', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Back to modules', exact: true }).click();
   await page.getByRole('button', { name: 'Works', exact: true }).click();

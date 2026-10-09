@@ -194,6 +194,70 @@ test('renders square illustrated cards and recognises deployed module accounts',
   await page.screenshot({ path: test.info().outputPath('module-cards.png'), fullPage: true });
 });
 
+test('shows illustrated details, pricing and contract disclosure for every module', async ({
+  page,
+}) => {
+  await page.goto('/modules');
+  for (const module of catalogue.modules) {
+    await page.getByRole('button', { name: `View ${module.title} details`, exact: true }).click();
+    await expect(
+      page.getByRole('heading', { name: module.title, level: 1, exact: true }),
+    ).toBeVisible();
+    await expect(page.locator('.module-detail-hero .detail-artwork')).toBeVisible();
+    const activation = page.locator('.detail-activation');
+    await expect(activation.getByText('No usage charge', { exact: true })).toBeVisible();
+    await expect(
+      activation.getByRole('button', { name: `Activate ${module.title}`, exact: true }),
+    ).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'What you can do', exact: true })).toBeVisible();
+    const contract = page.locator('.detail-contract');
+    await expect(contract.locator('summary')).toHaveText('Contract details');
+    await expect(contract.getByText(module.codeHash, { exact: true })).toBeHidden();
+    await contract.locator('summary').click();
+    await expect(contract.getByText(module.codeHash, { exact: true })).toBeVisible();
+    await expect(contract.getByText(module.account, { exact: true })).toBeVisible();
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+    await contract.locator('summary').click();
+    await page.getByRole('button', { name: 'Back to modules', exact: true }).focus();
+    await page.screenshot({
+      path: test.info().outputPath(`detail-${module.account}.png`),
+      fullPage: true,
+    });
+    await page.getByRole('button', { name: 'Back to modules', exact: true }).click();
+  }
+});
+
+test('keeps module identity and search while exploring tools and activating from details', async ({
+  page,
+}) => {
+  await page.goto('/modules');
+  await page.getByLabel('Find a module', { exact: true }).fill('stake vote');
+  await page.getByRole('button', { name: 'View Decide details', exact: true }).click();
+  const credit = page.getByRole('button', { name: /^Credit vote\b/ });
+  await credit.focus();
+  await page.keyboard.press('Enter');
+  await expect(credit).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('heading', { name: 'Decide', level: 1, exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Credit vote', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Activate Decide', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByLabel('Choose a DAO', { exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('button', { name: 'Activate Decide', exact: true })).toBeFocused();
+  await page.getByRole('button', { name: 'Back to modules', exact: true }).click();
+  await expect(page.getByLabel('Find a module', { exact: true })).toHaveValue('stake vote');
+  await expect(page.locator('.catalogue-card')).toHaveCount(1);
+  await page.getByRole('button', { name: 'View Decide details', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Credit vote', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Credit vote\b/ })).toHaveAttribute(
+    'aria-pressed',
+    'false',
+  );
+});
+
 test('chooses between administrator DAOs and respects the locked signer', async ({ page }) => {
   await page.goto('/modules');
   await page.getByRole('button', { name: 'Activate Decide', exact: true }).click();
@@ -378,6 +442,15 @@ test('keeps unknown third-party listings usable without offering an unsupported 
   await expect(page.locator('.catalogue-card')).toHaveCount(1);
   await expect(page.getByText('Extension', { exact: true })).toBeVisible();
   await expect(page.getByText('1.0000 TLOS', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'View Community insights details', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Community insights', level: 1, exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.locator('.detail-activation').getByText('1.0000 TLOS', { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText('A third-party catalogue fixture.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'What you can do', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Activate Community insights', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await expect(
