@@ -6,6 +6,8 @@ Resources presents observed per-payer RAM, actual enforcement, native/card acqui
 
 Status shows shared gateway allowance and operational gates. Context changes clear stale resource reports. Producer packages and versioned help remain coordinated development artifacts; live providers, public rollout and immutable release qualification are still gated.
 
+Consumed the updated module packet with failed-vote migration handling and the retained native-qualified poll Archive decoder. Existing exported votes remain readable across the Decide code update.
+
 ## 0.7.0-alpha.1 — Shared hosting and connected payments
 
 Applied AGPL-3.0-only to first-party code, contracts, SDKs and documentation; preserved third-party licenses. Development packages include the license and source guidance.
