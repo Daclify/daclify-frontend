@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useWorkspace } from '../state/workspace';
 import { api, friendlyError, type ServiceReceipt } from '../api/client';
@@ -25,6 +25,12 @@ import { accountDestination } from '../auth/destination';
 import ProfilePanel from '../components/ProfilePanel.vue';
 import SignInMethods from '../components/SignInMethods.vue';
 import LinkedAccounts from '../components/LinkedAccounts.vue';
+const props = defineProps<{
+  embedded?: boolean;
+  profileDaoId?: string | undefined;
+  profileMemberId?: string | undefined;
+}>();
+const emit = defineEmits<{ 'profile-updated': [] }>();
 const accountTabs = [
   { id: 'keys', label: 'Keys' },
   { id: 'sign-in', label: 'Sign-in' },
@@ -68,17 +74,38 @@ async function copyJoinIdentity() {
   }
 }
 
-const tab = ref<AccountTab>(billingTab(route.query.billing) ? 'service' : 'keys');
+const tab = ref<AccountTab>(
+  props.embedded ? 'profile' : billingTab(route.query.billing) ? 'service' : 'keys',
+);
 const opened = ref<Record<AccountTab, boolean>>({
   keys: true,
   'sign-in': false,
-  profile: false,
+  profile: !!props.embedded,
   linked: false,
   service: true,
 });
 function openTab(next: AccountTab) {
   tab.value = next;
   opened.value = { ...opened.value, [next]: true };
+}
+function navigateTabs(event: KeyboardEvent) {
+  const current = accountTabs.findIndex((item) => item.id === tab.value);
+  const index =
+    event.key === 'ArrowRight'
+      ? (current + 1) % accountTabs.length
+      : event.key === 'ArrowLeft'
+        ? (current + accountTabs.length - 1) % accountTabs.length
+        : event.key === 'Home'
+          ? 0
+          : event.key === 'End'
+            ? accountTabs.length - 1
+            : undefined;
+  if (index === undefined) return;
+  const item = accountTabs[index];
+  if (!item) return;
+  event.preventDefault();
+  openTab(item.id);
+  void nextTick(() => document.getElementById(`account-tab-${item.id}`)?.focus());
 }
 onMounted(async () => {
   if (typeof route.query.telegramPair === 'string') openTab('sign-in');
@@ -291,7 +318,7 @@ function backup() {
 }
 </script>
 <template>
-  <div class="page-heading">
+  <div v-if="!embedded" class="page-heading">
     <div>
       <p class="eyebrow">IDENTITY &amp; RECOVERY</p>
       <h1>{{ heading }}</h1>
@@ -382,7 +409,7 @@ function backup() {
     </button>
   </section>
   <template v-else-if="state.account">
-    <div class="account-tabs" role="tablist" aria-label="Account sections">
+    <div class="account-tabs" role="tablist" @keydown="navigateTabs" aria-label="Account sections">
       <button
         v-for="item in accountTabs"
         :id="`account-tab-${item.id}`"
@@ -515,7 +542,11 @@ function backup() {
       role="tabpanel"
       aria-labelledby="account-tab-profile"
     >
-      <ProfilePanel />
+      <ProfilePanel
+        :dao-id="profileDaoId"
+        :member-id="profileMemberId"
+        @updated="emit('profile-updated')"
+      />
     </div>
     <div
       v-if="opened.linked"

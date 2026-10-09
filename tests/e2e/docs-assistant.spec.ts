@@ -33,6 +33,9 @@ test('handbook assistant shows a source and renders model text safely', async ({
     return route.fulfill({ json });
   });
   await page.goto('/docs');
+  const menu = page.getByRole('button', { name: 'Menu', exact: true });
+  if (await menu.isVisible()) await menu.click();
+  await page.getByRole('button', { name: 'Help', exact: true }).click();
   const assistant = page.getByRole('region', { name: 'Handbook assistant' });
   await expect(assistant.getByText(/Do not include secrets or private content/)).toBeVisible();
   await assistant.getByLabel('Question', { exact: true }).fill('Are documents encrypted?');
@@ -49,6 +52,21 @@ test('handbook assistant shows a source and renders model text safely', async ({
   await expect(
     assistant.getByText('I cover only Daclify documentation.', { exact: true }),
   ).toBeVisible();
+  await expect(assistant.getByRole('link')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Minimize help' }).click();
+  await expect(assistant).toBeHidden();
+  if (await menu.isVisible()) await menu.click();
+  await page.getByRole('button', { name: 'Help', exact: true }).click();
+  await expect(
+    assistant.getByText('I cover only Daclify documentation.', { exact: true }),
+  ).toBeVisible();
+  await page.reload();
+  if (await menu.isVisible()) await menu.click();
+  await page.getByRole('button', { name: 'Help', exact: true }).click();
+  await expect(
+    page.getByText('I cover only Daclify documentation.', { exact: true }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Clear conversation', exact: true }).click();
   await expect(assistant.getByRole('link')).toHaveCount(0);
 });
 
@@ -65,6 +83,9 @@ test('handbook assistant distinguishes missing config from a failed status reque
       : route.fulfill({ json: { configured: false } }),
   );
   await page.goto('/docs');
+  const menu = page.getByRole('button', { name: 'Menu', exact: true });
+  if (await menu.isVisible()) await menu.click();
+  await page.getByRole('button', { name: 'Help', exact: true }).click();
   const assistant = page.getByRole('region', { name: 'Handbook assistant' });
   await expect(
     assistant.getByText('The documentation assistant is not configured on this server.'),
@@ -72,6 +93,8 @@ test('handbook assistant distinguishes missing config from a failed status reque
   await expect(assistant.getByLabel('Question', { exact: true })).toHaveCount(0);
   unavailable = true;
   await page.reload();
+  if (await menu.isVisible()) await menu.click();
+  await page.getByRole('button', { name: 'Help', exact: true }).click();
   await expect(assistant.getByRole('alert')).toBeVisible();
   await expect(
     assistant.getByText('The documentation assistant is not configured on this server.'),

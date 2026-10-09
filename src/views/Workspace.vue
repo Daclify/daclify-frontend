@@ -8,6 +8,8 @@ import { computed, ref, watch, onBeforeUnmount } from 'vue';
 import { useRoute } from 'vue-router';
 import { formatUnits, DaoPresets } from '@daclify/core-protocol';
 import GovernancePanel from '../components/GovernancePanel.vue';
+import PlatformDao from './PlatformDao.vue';
+import { daoPaymentKey, type DaoRef } from '@daclify/core-protocol';
 import { encodeAction, makeInstruction } from '@daclify/core-protocol/sdk';
 import { useWorkspace } from '../state/workspace';
 import { relayInstruction } from '../auth/session';
@@ -40,6 +42,29 @@ const panelKey = computed(() =>
 );
 const preset = computed(() =>
   DaoPresets.find((preset) => preset.id === (dao.value?.purpose ?? 'custom')),
+);
+const platformDao = ref<DaoRef>();
+let platformRequest = 0;
+watch(
+  () => JSON.stringify([state.network?.chainId, state.network?.runtime]),
+  async () => {
+    const request = ++platformRequest;
+    platformDao.value = undefined;
+    try {
+      const status = await api.platformStatus();
+      if (request === platformRequest && status.chain?.chainMatches)
+        platformDao.value = status.chain.platformDao ?? undefined;
+    } catch {
+      /* Normal DAOs do not depend on platform administration availability. */
+    }
+  },
+  { immediate: true },
+);
+const isPlatform = computed(
+  () =>
+    !!dao.value &&
+    !!platformDao.value &&
+    daoPaymentKey(dao.value.reference) === daoPaymentKey(platformDao.value),
 );
 const section = computed(() =>
   typeof route.params.section === 'string' ? route.params.section : 'overview',
@@ -76,6 +101,7 @@ watch(
 );
 onBeforeUnmount(() => {
   tabRequest++;
+  platformRequest++;
 });
 const allTabs: ReadonlyArray<readonly [string, string]> = [
   ['overview', 'Overview'],
@@ -88,12 +114,14 @@ const allTabs: ReadonlyArray<readonly [string, string]> = [
   ['members', 'Members'],
   ['modules', 'Modules'],
   ['settings', 'Settings'],
+  ['platform', 'Platform controls'],
 ];
 const tabs = computed(() =>
   allTabs.filter(
     ([id]) =>
-      !['decide', 'works', 'payroll', 'grants-rounds'].includes(id) ||
-      enabledModules.value.includes(id),
+      (id !== 'platform' || isPlatform.value) &&
+      (!['decide', 'works', 'payroll', 'grants-rounds'].includes(id) ||
+        enabledModules.value.includes(id)),
   ),
 );
 const error = ref('');
@@ -312,6 +340,7 @@ async function rename() {
       </section>
       <GovernancePanel :key="panelKey" :dao="dao" :member="membership" />
     </template>
+    <PlatformDao v-else-if="section === 'platform' && isPlatform" :key="panelKey" />
     <ContentPanel
       v-else-if="['documents', 'members'].includes(section)"
       :key="panelKey"

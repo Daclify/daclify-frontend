@@ -11,7 +11,8 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
-  UserRound,
+  Users,
+  Bot,
 } from '@lucide/vue';
 import { useWorkspace } from './state/workspace';
 import { lockVault, vaultUnlocked } from './auth/session';
@@ -23,6 +24,14 @@ import {
   type DeployedNetwork,
   deploymentNetwork,
 } from './api/networks';
+import HelpWindow from './components/HelpWindow.vue';
+const helpOpen = ref(false),
+  helpStarted = ref(false);
+function toggleHelp() {
+  helpStarted.value = true;
+  helpOpen.value = !helpOpen.value;
+  mobileOpen.value = false;
+}
 const deployment = deploymentNetwork();
 const operator = currentOperator();
 function leaveOperator(destination = '/') {
@@ -103,52 +112,68 @@ onMounted(() => {
       </button>
       <nav id="primary-links" :class="{ 'mobile-open': mobileOpen }">
         <p class="nav-label">WORKSPACE</p>
-        <RouterLink to="/" @click="mobileOpen = false"
+        <RouterLink to="/" aria-label="DAO hub" @click="mobileOpen = false"
           ><LayoutGrid class="nav-icon" aria-hidden="true" /><span class="nav-text"
             >DAO hub</span
           ></RouterLink
         >
-        <a v-if="operator" href="/daclify" @click.prevent="leaveOperator('/daclify')"
+        <a
+          v-if="operator"
+          href="/daclify"
+          aria-label="Daclify DAO"
+          @click.prevent="leaveOperator('/daclify')"
           ><Shield class="nav-icon" aria-hidden="true" /><span class="nav-text"
             >Daclify DAO</span
           ></a
         >
-        <RouterLink v-else to="/daclify" @click="mobileOpen = false"
+        <RouterLink v-else to="/daclify" aria-label="Daclify DAO" @click="mobileOpen = false"
           ><Shield class="nav-icon" aria-hidden="true" /><span class="nav-text"
             >Daclify DAO</span
           ></RouterLink
         >
-        <RouterLink to="/create" @click="mobileOpen = false"
+        <RouterLink to="/create" aria-label="Create DAO" @click="mobileOpen = false"
           ><Plus class="nav-icon" aria-hidden="true" /><span class="nav-text"
             >Create DAO</span
           ></RouterLink
         >
-        <RouterLink to="/modules" @click="mobileOpen = false"
+        <RouterLink to="/modules" aria-label="Modules" @click="mobileOpen = false"
           ><Blocks class="nav-icon" aria-hidden="true" /><span class="nav-text"
             >Modules</span
           ></RouterLink
         >
-        <RouterLink to="/names" @click="mobileOpen = false"
+        <RouterLink to="/names" aria-label="Names" @click="mobileOpen = false"
           ><AtSign class="nav-icon" aria-hidden="true" /><span class="nav-text"
             >Names</span
           ></RouterLink
         >
-        <RouterLink to="/account" @click="mobileOpen = false"
-          ><UserRound class="nav-icon" aria-hidden="true" /><span class="nav-text"
-            >Account</span
+        <RouterLink to="/users" aria-label="Users" @click="mobileOpen = false"
+          ><Users class="nav-icon" aria-hidden="true" /><span class="nav-text"
+            >Users</span
           ></RouterLink
         >
         <p class="nav-label">RESOURCES</p>
-        <RouterLink to="/docs" @click="mobileOpen = false"
+        <RouterLink to="/docs" aria-label="Documentation" @click="mobileOpen = false"
           ><BookOpen class="nav-icon" aria-hidden="true" /><span class="nav-text"
             >Documentation</span
           ></RouterLink
         >
-        <RouterLink to="/status" @click="mobileOpen = false"
+        <RouterLink to="/status" aria-label="Status" @click="mobileOpen = false"
           ><Activity class="nav-icon" aria-hidden="true" /><span class="nav-text"
             >Status</span
           ></RouterLink
         >
+        <button
+          type="button"
+          id="help-launcher"
+          class="nav-help"
+          aria-label="Help"
+          title="Help"
+          :aria-expanded="helpOpen"
+          :aria-controls="helpStarted ? 'help-window' : undefined"
+          @click="toggleHelp"
+        >
+          <Bot class="nav-icon" aria-hidden="true" /><span class="nav-text">Help</span>
+        </button>
       </nav>
       <div class="sidebar-footer">
         <span class="status-dot" aria-hidden="true"></span
@@ -201,7 +226,7 @@ onMounted(() => {
           ><RouterLink
             class="account-link"
             :to="{
-              path: '/account',
+              path: state.account ? '/users/me' : '/account',
               query: route.path === '/account' ? {} : { returnTo: route.fullPath },
             }"
             >{{ state.account ? 'Your account' : 'Sign in' }}</RouterLink
@@ -242,5 +267,6 @@ onMounted(() => {
         <RouterLink to="/docs/license">Source &amp; license</RouterLink>
       </footer>
     </div>
+    <HelpWindow v-if="helpStarted" v-model="helpOpen" />
   </div>
 </template>

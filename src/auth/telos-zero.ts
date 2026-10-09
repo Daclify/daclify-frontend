@@ -205,3 +205,53 @@ export async function nativeGovernance(
   // Broadcast confirmation comes from the configured chain; browser connection alone grants nothing.
   return result.transaction.id.toString();
 }
+
+export async function nativeNamesTransaction(
+  actions: Action[],
+  expectedHash: string,
+  checkContext: () => void = () => {},
+): Promise<string> {
+  const action = actions[0];
+  if (!action) throw new Error('NATIVE_ACTION_REQUIRED');
+  const identity = nativeIdentity(),
+    state = useWorkspace();
+  if (
+    identity.chainId !== state.network?.chainId ||
+    !actions.every(
+      (item) =>
+        item.authorization.length === 1 &&
+        item.authorization[0]?.actor.toString() === identity.account &&
+        item.authorization[0]?.permission.toString() === 'active',
+    )
+  )
+    throw new Error('NATIVE_UNLINKED');
+  const wallet = nativeWallet.value;
+  if (!wallet) throw new Error('NATIVE_WALLET_MISSING');
+  const contract = action.account.toString();
+  const context = JSON.stringify([
+      state.account?.id,
+      state.network?.chainId,
+      state.network?.runtime,
+      nativeWallet.value?.actor.toString(),
+    ]),
+    location = globalThis.location.href;
+  const check = () => {
+    checkContext();
+    if (
+      context !==
+        JSON.stringify([
+          state.account?.id,
+          state.network?.chainId,
+          state.network?.runtime,
+          nativeWallet.value?.actor.toString(),
+        ]) ||
+      wallet !== nativeWallet.value ||
+      location !== globalThis.location.href
+    )
+      throw new Error('WALLET_CONTEXT_CHANGED');
+  };
+  const raw = await wallet.client.v1.chain.get_raw_abi(contract);
+  check();
+  if (raw.code_hash.toString() !== expectedHash) throw new Error('MODULE_CODE_CHANGED');
+  return (await transactNative(actions, true, check)).transaction.id.toString();
+}

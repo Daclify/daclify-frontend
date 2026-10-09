@@ -4,6 +4,40 @@ import { useRoute } from 'vue-router';
 import { PrivateKey } from '@wharfkit/antelope';
 import { api, friendlyError } from '../api/client';
 import { useWorkspace } from '../state/workspace';
+import NamesManager from '../components/NamesManager.vue';
+import { connectNative, nativeIdentity, nativeNamesTransaction } from '../auth/telos-zero';
+import { namePurchaseActions, NamesCodeHash } from '@daclify/core-protocol/sdk';
+import { AtSign, Sparkles, ArrowRight } from '@lucide/vue';
+const mode = ref<'browse' | 'manage'>('browse');
+const idea = ref('');
+const suggestions = computed(() => {
+  const base =
+    idea.value
+      .toLowerCase()
+      .replace(/[^a-z1-5]/g, '')
+      .slice(0, 7) || 'mydao';
+  return [
+    ...new Set([
+      `${base}111111111111`.slice(0, 12),
+      `${base}team11111`.slice(0, 12),
+      ...(service.value?.suffixes ?? [])
+        .slice(0, 4)
+        .map((item) => `${base.slice(0, Math.max(1, 11 - item.suffix.length))}.${item.suffix}`)
+        .filter((name) => name.length <= 12),
+    ]),
+  ];
+});
+function chooseName(name: string) {
+  mode.value = 'browse';
+  accountName.value = name;
+}
+async function reloadService() {
+  try {
+    service.value = await api.names();
+  } catch (cause) {
+    loadError.value = friendlyError(cause);
+  }
+}
 
 const route = useRoute();
 const state = useWorkspace();
@@ -146,6 +180,80 @@ async function copyText(label: string, value: string) {
   }
 }
 
+async function payTlos() {
+  const current = quote.value,
+    pair = keys.value,
+    config = service.value,
+    context = JSON.stringify([
+      state.network?.chainId,
+      state.network?.runtime,
+      state.account?.id,
+      accountName.value,
+    ]);
+  if (!current || !pair || !savedKeys.value || !config?.contract || !config.tokenContract) return;
+  paying.value = true;
+  payError.value = '';
+  try {
+    await connectNative();
+    if (
+      context !==
+        JSON.stringify([
+          state.network?.chainId,
+          state.network?.runtime,
+          state.account?.id,
+          accountName.value,
+        ]) ||
+      pair !== keys.value
+    )
+      throw new Error('WALLET_CONTEXT_CHANGED');
+    const fresh = await api.nameQuote(current.accountName);
+    if (JSON.stringify(fresh) !== JSON.stringify(current)) throw new Error('PRICE_CHANGED');
+    if (
+      context !==
+        JSON.stringify([
+          state.network?.chainId,
+          state.network?.runtime,
+          state.account?.id,
+          accountName.value,
+        ]) ||
+      pair !== keys.value
+    )
+      throw new Error('WALLET_CONTEXT_CHANGED');
+    const actions = namePurchaseActions(
+      config.contract,
+      config.tokenContract,
+      nativeIdentity().account,
+      fresh,
+      pair.ownerPublic,
+      pair.activePublic,
+    );
+    await nativeNamesTransaction(actions, NamesCodeHash, () => {
+      if (
+        context !==
+          JSON.stringify([
+            state.network?.chainId,
+            state.network?.runtime,
+            state.account?.id,
+            accountName.value,
+          ]) ||
+        pair !== keys.value ||
+        !savedKeys.value ||
+        quote.value !== current
+      )
+        throw new Error('WALLET_CONTEXT_CHANGED');
+    });
+    payError.value = '';
+    quote.value = undefined;
+    keys.value = undefined;
+    savedKeys.value = false;
+    await reloadService();
+  } catch (cause) {
+    payError.value = friendlyError(cause);
+  } finally {
+    paying.value = false;
+  }
+}
+
 async function pay() {
   const current = quote.value;
   const pair = keys.value;
@@ -158,6 +266,8 @@ async function pay() {
       ownerKey: pair.ownerPublic,
       activeKey: pair.activePublic,
     });
+    if (pair !== keys.value || quote.value !== current || !savedKeys.value)
+      throw new Error('WALLET_CONTEXT_CHANGED');
     window.location.assign(session.url);
   } catch (error) {
     payError.value = friendlyError(error);
@@ -170,14 +280,59 @@ async function pay() {
     <p class="eyebrow">Telos accounts</p>
     <h1>Names</h1>
     <p class="lede">
-      Check prices and availability for Telos account names, or connect a name you already own.
+      Find your community’s next name. Buy a new Telos account or offer names under a native account
+      you control.
     </p>
     <p v-if="notice" class="alert" role="status">{{ notice }}</p>
     <p v-if="loadError" class="alert" role="alert">{{ loadError }}</p>
-    <div class="panel">
+    <div class="workspace-tabs" role="group" aria-label="Names views">
+      <button type="button" :aria-pressed="mode === 'browse'" @click="mode = 'browse'">
+        Find a name</button
+      ><button type="button" :aria-pressed="mode === 'manage'" @click="mode = 'manage'">
+        Manage & sell
+      </button>
+    </div>
+    <NamesManager
+      v-if="mode === 'manage' && service?.configured"
+      :service="service"
+      @updated="reloadService"
+    />
+    <div v-else class="panel names-browser">
       <p v-if="!service">Reading the chain…</p>
       <p v-else-if="!service.configured">{{ service.reason }}</p>
       <template v-else>
+        <div class="names-discovery">
+          <div>
+            <p class="eyebrow"><Sparkles aria-hidden="true" />A NAME FOR YOUR NEXT CHAPTER</p>
+            <h2>Make it yours</h2>
+            <p>
+              Native account names work across Telos. You can use them with Daclify, but you do not
+              need one to join a DAO.
+            </p>
+            <label for="name-idea">Start with an idea</label
+            ><input
+              id="name-idea"
+              v-model="idea"
+              maxlength="40"
+              placeholder="Your name, project or community"
+            />
+            <div class="name-suggestions">
+              <button
+                v-for="name in suggestions"
+                :key="name"
+                type="button"
+                class="secondary"
+                @click="chooseName(name)"
+              >
+                <AtSign aria-hidden="true" />{{ name }}
+              </button>
+            </div>
+            <p class="field-help">
+              Suggestions are ideas; availability and prices are checked on-chain.
+            </p>
+          </div>
+          <div class="names-art" aria-hidden="true"><AtSign /><span>your.name</span></div>
+        </div>
         <h2>Check a name</h2>
         <form class="name-check" @submit.prevent="checkPrice">
           <label>
@@ -205,6 +360,13 @@ async function pay() {
           <p class="eyebrow">{{ quote.kind === 'basic' ? 'Basic' : 'Premium' }}</p>
           <p class="name-price">{{ quote.price }}</p>
           <p v-if="quote.usdCents > 0">{{ usd(quote.usdCents) }} by card</p>
+          <p v-if="quote.party === 'third-party'" class="notice">
+            Third-party names currently use TLOS. Card checkout awaits seller payment routing.
+          </p>
+          <p v-if="quote.kind === 'premium'" class="field-help">
+            Premium names use native TLOS checkout. A short name still needs its seller’s closed
+            native auction claim.
+          </p>
           <p>Platform fee {{ feeLabel(quote.platformBps) }} · seller {{ quote.seller }}</p>
           <ul class="resource-row">
             <li class="pill">{{ quote.cpuStake }} CPU</li>
@@ -263,20 +425,38 @@ async function pay() {
         </div>
         <h2>Listed names</h2>
         <p v-if="service.listings.length === 0">Nobody has listed one exact name yet.</p>
-        <ul v-else class="market-list">
-          <li v-for="listing in service.listings" :key="listing.accountName">
+        <ul v-else class="market-list names-grid">
+          <li class="name-offer" v-for="listing in service.listings" :key="listing.accountName">
             <strong class="mono">{{ listing.accountName }}</strong>
             <span>{{ listing.seller }}</span>
             <span>{{ listing.price }}</span>
             <span v-if="listing.usdCents > 0">{{ usd(listing.usdCents) }}</span>
-            <span>{{ listing.sold ? 'Sold' : 'For sale' }}</span>
+            <span>{{ listing.sold ? 'Sold' : 'For sale' }}</span
+            ><button
+              v-if="!listing.sold"
+              type="button"
+              class="secondary"
+              @click="chooseName(listing.accountName)"
+            >
+              Check this name <ArrowRight aria-hidden="true" />
+            </button>
           </li>
         </ul>
         <p class="field-help">{{ nameFee }}</p>
         <p v-if="service.cardPayments === false">
           Card payments are not configured on this service.
         </p>
-        <div v-if="quote && quote.usdCents > 0 && service.cardPayments" class="key-once">
+        <div
+          v-if="
+            quote &&
+            (service.contract ||
+              (quote.party === 'first-party' &&
+                quote.kind === 'basic' &&
+                quote.usdCents > 0 &&
+                service.cardPayments))
+          "
+          class="key-once"
+        >
           <button type="button" class="secondary" @click="generateKeys">
             Generate account keys
           </button>
@@ -306,11 +486,34 @@ async function pay() {
               <input v-model="savedKeys" type="checkbox" />
               I have saved both private keys
             </label>
-            <p v-if="!state.account">
+            <button
+              v-if="service.contract && service.tokenContract && quote.price !== '0.0000 TLOS'"
+              type="button"
+              class="secondary"
+              :disabled="!savedKeys || paying"
+              @click="payTlos"
+            >
+              Pay {{ quote.price }} with native wallet
+            </button>
+            <p
+              v-if="
+                quote.party === 'first-party' &&
+                quote.kind === 'basic' &&
+                quote.usdCents > 0 &&
+                service.cardPayments &&
+                !state.account
+              "
+            >
               <RouterLink to="/account">Sign in</RouterLink> to pay by card.
             </p>
             <button
-              v-else
+              v-else-if="
+                quote.party === 'first-party' &&
+                quote.kind === 'basic' &&
+                quote.usdCents > 0 &&
+                service.cardPayments &&
+                state.account
+              "
               type="button"
               :disabled="!savedKeys || paying || quote.accountName !== accountName.trim()"
               @click="pay"
@@ -321,11 +524,10 @@ async function pay() {
           </template>
         </div>
       </template>
-      <p>
-        Connecting a name you already own is the Telos action regsuffix on the names contract. You
-        sign it with that account, accept the fee rule, and set a price in TLOS, dollars, or both.
-        The browser vault cannot sign that action. regname still lists one exact name that is not an
-        account yet.
+      <p class="field-help">
+        Want to offer names? Open
+        <button type="button" class="text-button" @click="mode = 'manage'">Manage & sell</button> to
+        connect your native account or prepare a DAO-controlled listing.
       </p>
     </div>
   </section>

@@ -21,6 +21,7 @@ import {
 import { decodeStoredBytes, verifyStoredFile, downloadFile } from '../content/files';
 import FilePanel from './FilePanel.vue';
 import AdmissionPanel from './AdmissionPanel.vue';
+import MemberDirectory from './MemberDirectory.vue';
 import { useWorkspace } from '../state/workspace';
 import { canSignMember } from '../auth/action-signer';
 const props = defineProps<{
@@ -542,21 +543,7 @@ async function retrieve(document: DaoContent['documents'][number]) {
   >
   <template v-else
     ><AdmissionPanel :key="context" :dao="dao" :member="member" @admitted="refresh" />
-    <div class="dao-grid">
-      <article v-for="memberRow in content?.members" :key="memberRow.id" class="panel">
-        <h3>Member {{ memberRow.id }}</h3>
-        <p>{{ memberRow.native_account || 'Internal account' }}</p>
-        <div class="button-row">
-          <span class="pill">{{
-            memberRow.custody === 0 ? 'User-controlled' : 'Managed recovery'
-          }}</span
-          ><span class="pill">{{ memberRow.active ? 'Active' : 'Inactive' }}</span
-          ><span v-if="memberRow.admin" class="pill">Administrator</span
-          ><span v-if="memberRow.reviewer" class="pill">Reviewer</span>
-        </div>
-        <p>{{ memberRow.credits }} governance credits</p>
-      </article>
-    </div>
+    <MemberDirectory v-if="content" :dao="dao.reference" :members="content.members" />
     <section v-if="isAdmin" class="panel narrow">
       <h3>Manage roles and governance credits</h3>
       <label for="member-target">Member</label

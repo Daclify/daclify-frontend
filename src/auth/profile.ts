@@ -1,6 +1,5 @@
-import { ABI, Serializer } from '@wharfkit/antelope';
-import { CidSchema, NativeAccountSchema } from '@daclify/core-protocol';
-import { z } from 'zod';
+import { CidSchema, NativeAccountSchema, PublicProfileSchema } from '@daclify/core-protocol';
+import { encodeAction } from '@daclify/core-protocol/sdk';
 
 export interface ProfileDraft {
   name: string;
@@ -96,25 +95,8 @@ export function profileJson(draft: ProfileDraft): string {
   return JSON.stringify(value);
 }
 
-const storedProfile = z.strictObject({
-  name: z.string(),
-  fullName: z.string().optional(),
-  location: z.string().optional(),
-  email: z.string().optional(),
-  telegram: z.string().optional(),
-  introduction: z.string().optional(),
-  motto: z.string().optional(),
-  facebook: z.string().optional(),
-  instagram: z.string().optional(),
-  youtube: z.string().optional(),
-  linkedin: z.string().optional(),
-  website: z.string().optional(),
-  avatar: z.string().optional(),
-  background: z.string().optional(),
-});
-
 export function draftFromProfile(value: string): ProfileDraft {
-  const parsed = storedProfile.safeParse(JSON.parse(value));
+  const parsed = PublicProfileSchema.safeParse(JSON.parse(value));
   if (!parsed.success) throw new Error('PROFILE_FIELD');
   const draft = emptyProfile();
   draft.name = parsed.data.name;
@@ -123,29 +105,6 @@ export function draftFromProfile(value: string): ProfileDraft {
   return draft;
 }
 
-const profileAbi = ABI.from({
-  version: 'eosio::abi/1.2',
-  types: [],
-  structs: [
-    {
-      name: 'setprofile',
-      base: '',
-      fields: [
-        { name: 'runtime', type: 'name' },
-        { name: 'dao_id', type: 'uint64' },
-        { name: 'member_id', type: 'uint64' },
-        { name: 'account_name', type: 'name' },
-        { name: 'profile', type: 'string' },
-      ],
-    },
-  ],
-  actions: [],
-  tables: [],
-  ricardian_clauses: [],
-  variants: [],
-  action_results: [],
-});
-
 export function encodeSetprofile(input: {
   runtime: string;
   daoId: string;
@@ -153,15 +112,11 @@ export function encodeSetprofile(input: {
   accountName: string;
   profile: string;
 }): Uint8Array {
-  return Serializer.encode({
-    abi: profileAbi,
-    type: 'setprofile',
-    object: {
-      runtime: input.runtime,
-      dao_id: input.daoId,
-      member_id: input.memberId,
-      account_name: input.accountName,
-      profile: input.profile,
-    },
-  }).array;
+  return encodeAction('setprofile', {
+    runtime: input.runtime,
+    dao_id: input.daoId,
+    member_id: input.memberId,
+    account_name: input.accountName,
+    profile: input.profile,
+  });
 }

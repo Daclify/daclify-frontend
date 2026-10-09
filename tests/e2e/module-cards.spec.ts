@@ -239,9 +239,12 @@ test('keeps module identity and search while exploring tools and activating from
   const credit = page.getByRole('button', { name: /^Credit vote\b/ });
   await credit.focus();
   await page.keyboard.press('Enter');
-  await expect(credit).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'How it works' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Decide', level: 1, exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Credit vote', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Close tool details' }).click();
+  await expect(credit).toBeFocused();
   await page.getByRole('button', { name: 'Activate Decide', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByLabel('Choose a DAO', { exact: true })).toBeVisible();
@@ -253,8 +256,8 @@ test('keeps module identity and search while exploring tools and activating from
   await page.getByRole('button', { name: 'View Decide details', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Credit vote', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /^Credit vote\b/ })).toHaveAttribute(
-    'aria-pressed',
-    'false',
+    'aria-haspopup',
+    'dialog',
   );
 });
 

@@ -20,6 +20,7 @@ import {
 import { ModuleCodeHashes } from '@daclify/modules/sdk';
 import { daoPaymentKey } from '@daclify/core-protocol';
 import ModulesPanel from '../components/ModulesPanel.vue';
+import { toolGuides } from '../help/tools';
 import ActionSigner from '../components/ActionSigner.vue';
 import { useWorkspace } from '../state/workspace';
 import { api, friendlyError } from '../api/client';
@@ -27,6 +28,12 @@ import { api, friendlyError } from '../api/client';
 const workspace = useWorkspace();
 const loadError = ref('');
 const activationDialog = ref<HTMLDialogElement>();
+const toolDialog = ref<HTMLDialogElement>();
+async function openTool(id: string) {
+  selectedOfferId.value = id;
+  await nextTick();
+  toolDialog.value?.showModal();
+}
 const activationAccount = ref('');
 const activationDaoId = ref('');
 const activationBusy = ref(false);
@@ -286,7 +293,8 @@ onMounted(load);
 
 function openModule(account: string, offerId = '') {
   selectedAccount.value = account;
-  selectedOfferId.value = offerId;
+  selectedOfferId.value = '';
+  if (offerId) void openTool(offerId);
 }
 
 function moduleCharge(party: 'first-party' | 'third-party'): string {
@@ -404,29 +412,26 @@ function moduleCharge(party: 'first-party' | 'third-party'): string {
               </div>
               <div class="detail-tool-grid">
                 <button
-                  v-for="(offer, index) in selectedTools"
+                  v-for="offer in selectedTools"
                   :key="offer.id"
                   type="button"
                   class="detail-tool"
-                  :aria-pressed="offer.id === selectedOfferId"
-                  @click="selectedOfferId = offer.id"
+                  aria-haspopup="dialog"
+                  @click="openTool(offer.id)"
                 >
-                  <span class="detail-tool-number" aria-hidden="true">{{
-                    String(index + 1).padStart(2, '0')
-                  }}</span>
+                  <span class="detail-tool-graphic" aria-hidden="true"
+                    ><component
+                      :is="toolGuides[offer.id]?.icon ?? presentation(selected).icon" /><span
+                      class="tool-art-dot"
+                    ></span
+                    ><span class="tool-art-line"></span
+                  ></span>
                   <strong>{{ offer.title }}</strong>
                   <small>{{ offer.summary }}</small>
                   <span class="detail-tool-explore" aria-hidden="true"
-                    >{{ offer.id === selectedOfferId ? 'Selected' : 'Explore tool' }} <ArrowRight
+                    >Explore tool <ArrowRight
                   /></span>
                 </button>
-              </div>
-              <div v-if="selectedOffering" class="detail-selected-tool">
-                <component :is="presentation(selected).icon" aria-hidden="true" />
-                <div>
-                  <h3>{{ selectedOffering.title }}</h3>
-                  <p>{{ selectedOffering.summary }}</p>
-                </div>
               </div>
             </section>
             <section
@@ -565,6 +570,51 @@ function moduleCharge(party: 'first-party' | 'third-party'): string {
       </details>
     </template>
   </section>
+  <dialog
+    ref="toolDialog"
+    class="panel tool-dialog"
+    aria-labelledby="tool-dialog-title"
+    @close="selectedOfferId = ''"
+  >
+    <template v-if="selectedOffering && selected">
+      <header class="tool-dialog-heading">
+        <div>
+          <p class="eyebrow">{{ selected.title }} TOOL</p>
+          <h2 id="tool-dialog-title">{{ selectedOffering.title }}</h2>
+        </div>
+        <button
+          type="button"
+          class="secondary icon-button"
+          aria-label="Close tool details"
+          @click="toolDialog?.close()"
+        >
+          <X aria-hidden="true" />
+        </button>
+      </header>
+      <div class="tool-dialog-body">
+        <p class="lead">{{ selectedOffering.summary }}</p>
+        <template v-if="toolGuides[selectedOffering.id]"
+          ><section class="tool-example">
+            <h3>Put it to work</h3>
+            <p>{{ toolGuides[selectedOffering.id]?.example }}</p>
+          </section>
+          <h3>How it works</h3>
+          <ol class="tool-steps">
+            <li v-for="step in toolGuides[selectedOffering.id]?.steps" :key="step">{{ step }}</li>
+          </ol>
+          <h3>What you need</h3>
+          <p>{{ toolGuides[selectedOffering.id]?.requirements }}</p>
+          <h3>Before you start</h3>
+          <p>{{ toolGuides[selectedOffering.id]?.limits }}</p></template
+        ><RouterLink
+          class="button secondary"
+          :to="`/docs/${presentationId(selected)}`"
+          @click="toolDialog?.close()"
+          >Read the complete guide ↗</RouterLink
+        >
+      </div>
+    </template>
+  </dialog>
   <dialog
     ref="activationDialog"
     class="panel activation-dialog"
@@ -1405,5 +1455,81 @@ function moduleCharge(party: 'first-party' | 'third-party'): string {
   .catalogue-card:hover {
     transform: none;
   }
+}
+</style>
+
+<style scoped>
+.detail-tool-graphic {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 96px;
+  overflow: hidden;
+  border-radius: 12px;
+  background: linear-gradient(140deg, var(--module-tint), transparent);
+}
+.detail-tool-graphic > svg {
+  width: 40px;
+  height: 40px;
+  color: var(--module-accent);
+  z-index: 1;
+}
+.tool-art-dot {
+  position: absolute;
+  left: 24%;
+  top: 20px;
+  border: 1px solid var(--module-accent);
+  opacity: 0.4;
+  border-radius: 50%;
+  width: 64px;
+  height: 64px;
+}
+.tool-art-line {
+  position: absolute;
+  right: 15%;
+  bottom: 24px;
+  width: 80px;
+  border-top: 2px solid var(--module-accent);
+  opacity: 0.4;
+  transform: rotate(-35deg);
+}
+.tool-dialog {
+  width: min(680px, calc(100vw - 32px));
+  max-height: calc(100dvh - 48px);
+  padding: 0;
+  overflow: hidden;
+}
+.tool-dialog-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24px;
+  border-bottom: 1px solid var(--border-default);
+  gap: 16px;
+}
+.tool-dialog-heading h2,
+.tool-dialog-heading p {
+  margin: 0;
+}
+.tool-dialog-heading h2 {
+  margin-top: 8px;
+}
+.tool-dialog-body {
+  overflow-y: auto;
+  max-height: calc(100dvh - 180px);
+  padding: 24px;
+  line-height: 1.7;
+}
+.tool-example {
+  padding: 16px 20px;
+  background: var(--accent-amber-soft);
+  border-radius: 16px;
+}
+.tool-steps {
+  padding-left: 24px;
+}
+.tool-steps li {
+  padding: 0 0 12px 8px;
 }
 </style>

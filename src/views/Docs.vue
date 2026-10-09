@@ -10,7 +10,6 @@ import { api, friendlyError } from '../api/client';
 import { useWorkspace } from '../state/workspace';
 import { documentationBundles, documentationStatus, searchGuides } from '../help/catalog';
 import ReferencePanel from '../components/ReferencePanel.vue';
-import DocsAssistant from '../components/DocsAssistant.vue';
 
 const state = useWorkspace();
 const route = useRoute();
@@ -118,7 +117,6 @@ onUnmounted(() => {
       <p class="field-help">Guides come from the pinned producer packages.</p>
     </div>
   </div>
-  <DocsAssistant />
   <div class="docs-layout">
     <nav class="docs-nav" aria-label="Documentation topics">
       <RouterLink :to="{ path: '/docs', query: route.query }">Handbook overview</RouterLink

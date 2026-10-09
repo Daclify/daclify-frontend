@@ -19,8 +19,11 @@ const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/', component: () => import('./views/Hub.vue') },
+    { path: '/users', component: () => import('./views/Users.vue') },
+    { path: '/users/me', component: () => import('./views/UserDetail.vue') },
+    { path: '/users/:daoId/:memberId', component: () => import('./views/UserDetail.vue') },
     { path: '/account', component: () => import('./views/Account.vue') },
-    { path: '/daclify', component: () => import('./views/PlatformDao.vue') },
+    { path: '/daclify', component: () => import('./views/PlatformEntry.vue') },
     { path: '/status', component: () => import('./views/Status.vue') },
     { path: '/create', component: () => import('./views/CreateDao.vue') },
     { path: '/hosting', component: () => import('./views/Hosting.vue') },

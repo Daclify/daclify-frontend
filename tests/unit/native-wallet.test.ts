@@ -22,13 +22,17 @@ import {
   nativeGovernance,
   nativeRamPurchase,
   nativeTokenPreparation,
+  nativeNamesTransaction,
 } from '../../src/auth/telos-zero';
 import {
   makeInstruction,
   encodeAction,
   runtimeAbi,
   nativeTokenOpenAction,
+  nameSellerAction,
+  NamesCodeHash,
 } from '@daclify/core-protocol/sdk';
+import { API } from '@wharfkit/antelope';
 const chainId = 'ab'.repeat(32),
   key = PrivateKey.generate('K1');
 const wallet = new Session({
@@ -134,6 +138,49 @@ afterEach(() => {
 async function pending() {
   await vi.waitFor(() => expect(started).toBe(true), { timeout: 1000, interval: 1 });
 }
+it('rejects names code drift before asking the wallet to sign', async () => {
+  payoutNetwork();
+  vi.spyOn(wallet.client.v1.chain, 'get_raw_abi').mockResolvedValue(
+    API.v1.GetRawAbiResponse.from({
+      account_name: 'names',
+      code_hash: 'cd'.repeat(32),
+      abi_hash: 'ef'.repeat(32),
+      abi: '',
+    }),
+  );
+  const action = nameSellerAction('names', 'regsuffix', {
+    suffix: 'alice',
+    price: '1.0000 TLOS',
+    usd_cents: 0,
+    accepts_fee_rule: 1,
+  });
+  await expect(nativeNamesTransaction([action], NamesCodeHash)).rejects.toThrow(
+    'MODULE_CODE_CHANGED',
+  );
+  expect(wallet.transact).not.toHaveBeenCalled();
+});
+it('rejects a changed route while names verification is pending', async () => {
+  payoutNetwork();
+  vi.spyOn(wallet.client.v1.chain, 'get_raw_abi').mockImplementation(async () => {
+    globalThis.location.href = 'https://app.example.test/names?changed=1';
+    return API.v1.GetRawAbiResponse.from({
+      account_name: 'names',
+      code_hash: NamesCodeHash,
+      abi_hash: 'ef'.repeat(32),
+      abi: '',
+    });
+  });
+  const action = nameSellerAction('names', 'regsuffix', {
+    suffix: 'alice',
+    price: '1.0000 TLOS',
+    usd_cents: 0,
+    accepts_fee_rule: 1,
+  });
+  await expect(nativeNamesTransaction([action], NamesCodeHash)).rejects.toThrow(
+    'WALLET_CONTEXT_CHANGED',
+  );
+  expect(wallet.transact).not.toHaveBeenCalled();
+});
 const payoutToken = { chainId, contract: 'eosio.token', symbol: 'TLOS', precision: 4 };
 function payoutNetwork() {
   useWorkspace().network = NetworkSchema.parse({

@@ -16,6 +16,8 @@ import { canSignMember } from '../auth/action-signer';
 const signerReady = computed(() => canSignMember(membership.value));
 import { useWorkspace } from '../state/workspace';
 
+const props = defineProps<{ daoId?: string | undefined; memberId?: string | undefined }>();
+const emit = defineEmits<{ updated: [] }>();
 const state = useWorkspace();
 const draft = ref<ProfileDraft>(emptyProfile());
 const savedName = ref('');
@@ -45,8 +47,13 @@ watch([selected, signerReady], () => {
 watch(
   () => state.memberships.map(membershipKey).join('|'),
   () => {
-    if (!state.memberships.some((item) => membershipKey(item) === selected.value))
-      selected.value = state.memberships[0] ? membershipKey(state.memberships[0]) : '';
+    if (!state.memberships.some((item) => membershipKey(item) === selected.value)) {
+      const preferred =
+        state.memberships.find(
+          (item) => item.dao.daoId === props.daoId && item.memberId === props.memberId,
+        ) ?? state.memberships[0];
+      selected.value = preferred ? membershipKey(preferred) : '';
+    }
   },
   { immediate: true },
 );
@@ -101,6 +108,7 @@ async function publish() {
     notice.value = 'Profile published.';
     edited.value = false;
     await state.refresh();
+    emit('updated');
   } catch (cause) {
     error.value = friendlyError(cause);
   } finally {
@@ -112,9 +120,9 @@ async function publish() {
   <section class="panel narrow">
     <h2>Public profile</h2>
     <p>
-      You publish this from your browser vault. The runtime stores one JSON object. Avatar and
-      background are IPFS CIDs, the same identifier a document uses. The image file stays on IPFS.
-      Email and links are public on the chain.
+      Your profile appears publicly in Users and your DAO’s Members section. Avatar and background
+      are IPFS CIDs, the same identifier a document uses. The image file stays on IPFS. Email and
+      links are public on the chain.
     </p>
     <p v-if="!signerReady" class="notice">Connect an authorized signer to edit this profile.</p>
     <p v-else-if="state.memberships.length === 0" class="notice">
@@ -175,7 +183,7 @@ async function publish() {
       <input id="profile-youtube" v-model="draft.youtube" maxlength="300" autocomplete="url" />
       <label for="profile-linkedin">LinkedIn</label>
       <input id="profile-linkedin" v-model="draft.linkedin" maxlength="300" autocomplete="url" />
-      <label for="profile-avatar">Avatar CID</label>
+      <label for="profile-avatar">Avatar image CID</label>
       <input id="profile-avatar" v-model="draft.avatar" spellcheck="false" autocomplete="off" />
       <label for="profile-background">Background CID</label>
       <input

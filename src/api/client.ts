@@ -3,6 +3,7 @@ import { ModuleApiRoutes, VERSION as MODULE_VERSION, type ModuleState } from '@d
 import { ArchiveRoutes } from '@daclify/modules/archive';
 import { z } from 'zod';
 import {
+  PeopleRoutes,
   ContentPageQuerySchema,
   type ContentPageQuery,
   ServiceCheckoutSchema,
@@ -739,6 +740,14 @@ export const api = {
       `/v1/profile?daoId=${IdSchema.parse(daoId)}&memberId=${IdSchema.parse(memberId)}`,
       MemberProfileSchema,
     ),
+  people: (value: z.infer<typeof PeopleRoutes.list.query> = {}) => {
+    const query = PeopleRoutes.list.query.parse(value);
+    const params = new URLSearchParams();
+    if (query.after !== undefined) params.set('after', query.after);
+    if (query.daoId !== undefined) params.set('daoId', query.daoId);
+    if (query.memberId !== undefined) params.set('memberId', query.memberId);
+    return request(PeopleRoutes.list.path + '?' + params, PeopleRoutes.list.response);
+  },
   governance: (daoId: string) =>
     request(
       ApiRoutes.governance.path.replace(':id', IdSchema.parse(daoId)),
@@ -1009,7 +1018,15 @@ export function friendlyError(error: unknown): string {
       NAME_PRICE: 'The card amount does not match the on-chain price.',
       TIER_UNSET: 'That name tier is not set on chain.',
       FEE_UNSET: 'Nameservice fees are not set on this chain yet.',
-      FEE_RULE: 'That listing does not accept the platform fee rule.',
+      FEE_RULE: 'Accept the displayed fee policy before publishing a name listing.',
+      NATIVE_SUFFIX_REQUIRED:
+        'Use the final native suffix owned by this seller. Dotted suffix sellers are not supported.',
+      NAME_CARD_SELLER_UNSUPPORTED:
+        'Third-party names use TLOS until card seller routing is available.',
+      NAME_CARD_PREMIUM_UNSUPPORTED:
+        'Premium names require native TLOS checkout and applicable namespace or auction authority.',
+      PRICE_CHANGED: 'The name price or terms changed. Check the name again before paying.',
+      SELLER: 'Only the native seller authority can change this listing.',
       SUFFIX: 'Connect the suffix account before this name can be sold.',
       CHECKOUT_URL: 'The card checkout address was not accepted.',
       AUTH_AUDIENCE:

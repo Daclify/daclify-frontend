@@ -16,7 +16,6 @@ import {
 import { api, friendlyError } from '../api/client';
 import { relayInstruction } from '../auth/session';
 import { canSignMember } from '../auth/action-signer';
-import ActionSigner from '../components/ActionSigner.vue';
 const signerReady = computed(() => canSignMember(member.value));
 import { useWorkspace } from '../state/workspace';
 const workspace = useWorkspace();
@@ -284,11 +283,10 @@ async function describe() {
 }
 </script>
 <template>
-  <ActionSigner :member="member" />
   <div class="page-heading">
     <div>
       <p class="eyebrow">PLATFORM GOVERNANCE</p>
-      <h1>Daclify DAO</h1>
+      <h2>Platform controls</h2>
       <p class="lead">Manage platform fees and the module catalogue.</p>
     </div>
     <RouterLink to="/status" class="help-link">Platform status ↗</RouterLink>
@@ -299,12 +297,6 @@ async function describe() {
     <h2>Platform workspace</h2>
     <template v-if="dao"
       ><p>DAO {{ dao.daoId }} · {{ dao.contract }}</p>
-      <div class="section-toolbar">
-        <RouterLink class="button" :to="'/dao/' + dao.daoId">Open DAO workspace</RouterLink
-        ><RouterLink :to="'/dao/' + dao.daoId + '/treasury'">Treasury</RouterLink
-        ><RouterLink :to="'/dao/' + dao.daoId + '/decide'">Voting</RouterLink
-        ><RouterLink :to="'/dao/' + dao.daoId + '/settings'">Members and governance</RouterLink>
-      </div>
       <p>
         {{
           member
