@@ -178,6 +178,10 @@ test('protects the last paired controller and prepares an unsigned quorum appoin
   await serve(page);
   await page.goto('/dao/1/settings');
   await expect(page.getByRole('heading', { name: 'Executives and voting rights' })).toBeVisible();
+  const votingToggle = await page
+    .getByRole('checkbox', { name: 'Allow this member to vote' })
+    .boundingBox();
+  expect(votingToggle?.width).toBeLessThanOrEqual(24);
   await expect(
     page.getByText(
       'You are the last paired native executive. Replace your wallet atomically; unlinking is blocked.',
@@ -206,7 +210,9 @@ test('protects the last paired controller and prepares an unsigned quorum appoin
     ],
   });
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
-  await page.screenshot({ path: info.outputPath('executives.png'), fullPage: true });
+  await page
+    .getByRole('region', { name: 'Executives and voting rights' })
+    .screenshot({ path: info.outputPath('executives.png') });
 });
 test('explains bootstrap owner consent and keeps ordinary paired members outside executive powers', async ({
   page,

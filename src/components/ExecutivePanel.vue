@@ -383,7 +383,7 @@ function refresh() {
       <form v-if="member?.admin" @submit.prevent="setVoter">
         <h3>Voting eligibility</h3>
         <label for="voter-member">Member ID</label
-        ><input id="voter-member" v-model="voter" required /><label class="check"
+        ><input id="voter-member" v-model="voter" required /><label class="checkbox"
           ><input v-model="allowed" type="checkbox" />Allow this member to vote</label
         ><button :disabled="!canSign">Sign voting eligibility change</button>
         <p>
