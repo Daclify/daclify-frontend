@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased — installable PWA
+
+Add a standalone web app manifest, maskable Daclify icons and Apple home-screen
+metadata. Users can install the app through supported browsers; it remains
+online-only with no service-worker cache. Document installation and add
+production-build desktop/mobile Chromium installability and icon checks.
+
 ## Unreleased — documentation assistant
 
 Consume the refreshed core handbook with Daclify provider/Telegram setup and unambiguous hosting examples. Explain the assistant's docs-only scope, evidence checks and provider privacy. Failed status requests no longer imply missing configuration. Desktop/mobile regressions cover plain-text answers, source links and status/refusal behavior.

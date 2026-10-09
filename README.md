@@ -31,6 +31,34 @@ DAO creation now offers community, NGO / grants, gaming guild, team / cooperativ
 
 The visual system and its checks are described in [docs/ui/ciq-alignment.md](docs/ui/ciq-alignment.md).
 
+## Install Daclify
+
+The frontend is an installable, online-only PWA. Its manifest opens the DAO hub
+in a standalone window and uses the existing Daclify mark for desktop, Android
+and Apple home-screen icons. Install from the stable HTTPS app domain for your
+network; testnet and production remain separate apps because they use different
+origins.
+
+- **Chrome / Edge on desktop:** Use the browser's install icon or app installation menu.
+- **Chrome on Android:** Open the browser menu and choose Install app or Add to Home screen.
+- **iPhone / iPad:** In Safari, use Share → Add to Home Screen.
+- **Safari on Mac:** Use File → Add to Dock on supported macOS versions.
+
+The browser controls installation availability and prompts. The app needs HTTPS
+(localhost/loopback also works for development). Governance, payments and private
+content still need an online connection. Installation adds no offline actions or
+service-worker cache; a service worker is
+[not required for installability](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable).
+Keep your recovery kit: installation does not back up vault keys, and browser/OS
+app storage may differ from the browser tab's storage.
+
+Run `npm run test:e2e:pwa` to build an isolated production bundle and check
+Chromium's manifest parsing, installability and icon decoding on desktop/mobile.
+This does not perform native OS installation or qualify Safari/iOS login and
+wallet flows. Deploy the entire `dist` folder, including the manifest and icons,
+with the existing SPA route fallback. No additional hosting configuration is
+required for the current root-hosted Netlify app.
+
 Each module card shows its purpose and usage price. **Details** opens an illustrated
 module overview, its included tools, and a pricing/activation panel. Selecting a
 tool shows its description while keeping the module name visible. **Contract
