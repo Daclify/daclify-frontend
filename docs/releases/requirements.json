@@ -39,6 +39,10 @@
     {
       "id": "OPERATOR-ISSUER-ISOLATION",
       "tests": ["tests/unit/operators.test.ts", "tests/unit/auth-audience.test.ts"]
+    },
+    {
+      "id": "DEPLOYED-NETWORK-CONFIGURATION",
+      "tests": ["tests/unit/networks.test.ts", "tests/e2e/networks.spec.ts"]
     }
   ]
 }

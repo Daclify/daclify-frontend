@@ -31,24 +31,22 @@ The visual system and its checks are described in [docs/ui/ciq-alignment.md](doc
 
 ## Local and deployed API
 
-Vite serves the dev build at `http://127.0.0.1:5178`. `public/networks.json` in this repository is `{ "mode": "local" }`. In that mode every API call is a relative `/v1` URL, and Vite proxies it to `http://127.0.0.1:3008`. The service-network switch is hidden. Start the core API before expecting those calls to succeed. The theme browser check does not need the API. Other browser checks do.
+Vite serves the dev build at `http://127.0.0.1:5178`. With no frontend API environment settings, `public/networks.json` keeps `{ "mode": "local" }`: API calls use relative `/v1` URLs, proxied to `http://127.0.0.1:3008`, and the service-network switch stays hidden. Start the core API before expecting those calls to succeed. The theme browser check does not need the API. Other browser checks do.
 
-A deployed static server replaces `networks.json` with exactly two https origins:
+For a static deployment, copy `.env.production.example` to the ignored `.env.production`, confirm both public HTTPS API origins, then build:
 
-```json
-{
-  "production": "https://api.example",
-  "testnet": "https://testnet-api.example"
-}
+```dotenv
+VITE_API_PRODUCTION=https://api.daclify.com
+VITE_API_TESTNET=https://testnet.api.daclify.com
 ```
 
 The switch then offers Production and Testnet. The choice is stored in `localStorage` at `daclify.network` and defaults to production. Each origin must be https, without a username, password, path, query, or hash. Both APIs must set `FRONTEND_ORIGIN` to this frontend’s origin, or the browser calls are rejected. Session cookies on those https APIs are `SameSite=None` so the cross-origin call can include them. CSRF tokens are stored per selected network.
 
-Leave the committed `{ "mode": "local" }` file in the repository. If it is missing, Vite’s fallback can return `index.html` for `/networks.json` and the app will fail closed on an invalid document. `VITE_API_PRODUCTION` and `VITE_API_TESTNET` are a fallback only when `/networks.json` itself returns 404. See `.env.example`.
+Both deployment env settings take precedence over `networks.json`; incomplete or invalid settings fail closed. Leave the committed local-mode file unchanged. Existing deployments without env settings can still provide the two-field network file. Vite embeds `VITE_*` settings during the build: rebuild and redeploy after changing them, and never put secrets there. See [Vite environment setup](https://vite.dev/guide/env-and-mode).
 
 To develop locally against a hosted testnet API, set the development-only `VITE_API_ORIGIN` in `.env.testnet` and run `npm run dev -- --mode testnet`. This single HTTPS origin takes precedence during development and keeps CSRF storage separate. Optional `DACLIFY_TEST_HOST`, `DACLIFY_TEST_HTTPS_CERT` and `DACLIFY_TEST_HTTPS_KEY` support a local trusted HTTPS hostname. The API must explicitly allow that browser origin. Follow core's [same-site login setup](https://github.com/Daclify/daclify-backend-core/blob/main/docs/development.md#local-frontend-with-a-hosted-testnet-api); HTTP localhost alone may lose cross-site login cookies.
 
-Build and verify on the Mac. All three GitHub verification workflows are manual-only; pushing does not start them. For Netlify, upload `dist` with `netlify deploy --no-build --dir=dist --site=YOUR_NETLIFY_PROJECT_ID`. Replace `dist/networks.json` with the actual deployed API origins first; development env overrides do not configure production bundles. The committed `_redirects` supplies SPA routes. Keep Netlify automatic Git builds stopped or unconfigured. See core's [manual deployment instructions](https://github.com/Daclify/daclify-backend-core/blob/main/docs/development.md#local-builds-and-manual-netlify-uploads).
+Build and verify on the Mac. All three GitHub verification workflows are manual-only; pushing does not start them. For Netlify, configure the public API settings before building, then upload `dist` with `netlify deploy --no-build --dir=dist --site=YOUR_NETLIFY_PROJECT_ID`. No output-file edit is needed. The committed `_redirects` supplies SPA routes. Keep Netlify automatic Git builds stopped or unconfigured. See the [Netlify dev guide](docs/netlify-dev.md).
 
 ## Service payment
 

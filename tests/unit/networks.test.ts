@@ -69,6 +69,73 @@ describe('deployed network selection', () => {
     expect(resolveApiUrl('/v1/me')).toBe('https://api.example/v1/me');
   });
 
+  it('uses deployment env settings before the network file and retains network switching', async () => {
+    vi.stubEnv('DEV', false);
+    vi.stubEnv('VITE_API_PRODUCTION', 'https://api.example');
+    vi.stubEnv('VITE_API_TESTNET', 'https://testnet-api.example');
+    const fetch = vi.fn().mockResolvedValue(Response.json({ mode: 'local' }));
+    vi.stubGlobal('fetch', fetch);
+
+    await loadDeployedNetworks();
+
+    expect(fetch).not.toHaveBeenCalled();
+    expect(resolveApiUrl('/v1/me')).toBe('https://api.example/v1/me');
+    expect(csrfStorageKey()).toBe('daclify.csrf.production');
+    chooseNetwork('testnet');
+    expect(resolveApiUrl('/v1/me')).toBe('https://testnet-api.example/v1/me');
+    expect(csrfStorageKey()).toBe('daclify.csrf.testnet');
+  });
+
+  it('keeps the direct development API override ahead of deployment env settings', async () => {
+    vi.stubEnv('DEV', true);
+    vi.stubEnv('VITE_API_ORIGIN', 'https://developer-api.example');
+    vi.stubEnv('VITE_API_PRODUCTION', 'https://api.example');
+    vi.stubEnv('VITE_API_TESTNET', 'https://testnet-api.example');
+    vi.stubGlobal('fetch', vi.fn());
+
+    await loadDeployedNetworks();
+
+    expect(resolveApiUrl('/v1/me')).toBe('https://developer-api.example/v1/me');
+    expect(selectedNetwork()).toBeNull();
+    expect(csrfStorageKey()).toBe('daclify.csrf.dev.https://developer-api.example');
+  });
+
+  it.each([
+    { production: 'https://api.example', testnet: undefined },
+    { production: undefined, testnet: 'https://testnet-api.example' },
+    { production: 'http://api.example', testnet: 'https://testnet-api.example' },
+    { production: 'https://api.example/v1', testnet: 'https://testnet-api.example' },
+    { production: 'https://user:secret@api.example', testnet: 'https://testnet-api.example' },
+    { production: 'https://api.example', testnet: 'https://testnet-api.example?query=1' },
+    { production: 'https://api.example', testnet: 'https://testnet-api.example#fragment' },
+  ])(
+    'rejects incomplete or invalid deployment env settings: %j',
+    async ({ production, testnet }) => {
+      vi.stubEnv('DEV', false);
+      vi.stubEnv('VITE_API_PRODUCTION', production);
+      vi.stubEnv('VITE_API_TESTNET', testnet);
+      const fetch = vi.fn().mockResolvedValue(Response.json({ mode: 'local' }));
+      vi.stubGlobal('fetch', fetch);
+
+      await expect(loadDeployedNetworks()).rejects.toThrow('NETWORKS_INVALID');
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+
+  it('retains local proxy mode when deployment env settings are absent', async () => {
+    vi.stubEnv('DEV', false);
+    vi.stubEnv('VITE_API_PRODUCTION', undefined);
+    vi.stubEnv('VITE_API_TESTNET', undefined);
+    const fetch = vi.fn().mockResolvedValue(Response.json({ mode: 'local' }));
+    vi.stubGlobal('fetch', fetch);
+
+    await loadDeployedNetworks();
+
+    expect(fetch).toHaveBeenCalledWith('/networks.json', { cache: 'no-store' });
+    expect(resolveApiUrl('/v1/me')).toBe('/v1/me');
+    expect(selectedNetwork()).toBeNull();
+  });
+
   it.each([
     'http://api.example',
     'https://api.example/v1',

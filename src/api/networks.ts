@@ -124,9 +124,15 @@ export async function loadDeployedNetworks(): Promise<void> {
     await restoreOperator();
     return;
   }
+  const deployed = viteNetworks();
+  if (deployed) {
+    configureNetworks(deployed);
+    await restoreOperator();
+    return;
+  }
   const response = await fetch('/networks.json', { cache: 'no-store' });
   if (response.status === 404) {
-    configureNetworks(viteNetworks());
+    configureNetworks(null);
     await restoreOperator();
     return;
   }

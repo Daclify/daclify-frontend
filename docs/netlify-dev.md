@@ -8,7 +8,14 @@ Use a separate Netlify project for `https://testnet.app.daclify.com`. Build loca
 
 Keep core, modules and frontend sibling checkouts on `dev`, using Node 24.21+ in Node 24 and npm 11.19+ in npm 11. For a fresh checkout, run core's `node tools/bootstrap.ts` first. When producer SDK/module source changes, rebuild and reinstall the affected packages through that bootstrap before building the frontend.
 
-From `daclify-frontend`, after updating the clean sibling checkouts:
+From `daclify-frontend`, copy `.env.production.example` to the ignored `.env.production` for a new setup. Confirm these public API settings point at the intended services:
+
+```dotenv
+VITE_API_PRODUCTION=https://api.daclify.com
+VITE_API_TESTNET=https://testnet.api.daclify.com
+```
+
+After updating the clean sibling checkouts:
 
 ```sh
 git switch dev
@@ -17,16 +24,9 @@ npm run verify
 npm run build
 ```
 
-Replace **`dist/networks.json`** after every build with these planned API origins, once the intended services are deployed:
+The build embeds both API origins; no `dist/networks.json` edit is needed. These settings take precedence over the existing network file. Set both: incomplete settings and URLs containing HTTP, credentials, paths, queries or fragments are rejected. Leave tracked `public/networks.json` in local mode for development and older deployments.
 
-```json
-{
-  "production": "https://api.daclify.com",
-  "testnet": "https://testnet.api.daclify.com"
-}
-```
-
-Keep tracked `public/networks.json` in local mode. `VITE_API_ORIGIN` works only in Vite development; it does not configure a static deployment. `VITE_API_PRODUCTION` / `VITE_API_TESTNET` are fallbacks only when `/networks.json` returns 404. Never upload backend environment files or place provider secrets in `VITE_*` settings. Existing `dist/_redirects` provides the Vue route fallback.
+For a separate mode file, put both public settings in `.env.testnet` and use `npm run build -- --mode testnet`. `VITE_API_ORIGIN` remains development-only and is ignored by static builds. Restart a development server or rebuild/redeploy static files after env changes. Editing Netlify's environment settings after a local build does not modify the uploaded bundle. Never upload backend environment files or place provider secrets in `VITE_*` settings. Existing `dist/_redirects` provides the Vue route fallback. [Vite environment files and build modes](https://vite.dev/guide/env-and-mode).
 
 ## Create the separate project and domain
 
@@ -61,4 +61,4 @@ netlify deploy --no-build --dir=dist --site=YOUR_DEV_PROJECT_ID --prod
 
 Check the project ID carefully. `--prod` publishes the primary URL of **that project**, so the dedicated dev project stays on the testnet domain; this flag does not select mainnet. `--no-build` prevents the CLI from rebuilding the already prepared directory. Pushing `dev` to GitHub does not upload a manual Netlify deployment. [CLI deploy flags](https://cli.netlify.com/commands/deploy/).
 
-After publishing, check `/networks.json` returns JSON, open `/account` and `/docs` directly, select Testnet and confirm `/status` reports the expected API/chain. Then qualify actual provider login, refresh, logout and payment returns on the custom domain. A draft URL needs separate API/provider authorization and is unsuitable as the default login origin.
+After publishing, open `/account` and `/docs` directly, select Testnet and confirm `/status` and browser network requests report the expected API/chain. Env-configured builds do not request `/networks.json`. Then qualify actual provider login, refresh, logout and payment returns on the custom domain. A draft URL needs separate API/provider authorization and is unsuitable as the default login origin.
