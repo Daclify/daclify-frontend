@@ -101,11 +101,11 @@ test('sidebar order and icon fold control match the workspace navigation', async
     'Hub',
     'Create',
     'Modules',
-    'Names',
     'Users',
     'Documentation',
     'Status',
     'Daclify DAO',
+    'Names',
     'Help',
   ]);
   await expect(navigation.getByText('RESOURCES', { exact: true })).toHaveCount(0);

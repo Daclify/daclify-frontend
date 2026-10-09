@@ -137,11 +137,6 @@ onMounted(() => {
             >Modules</span
           ></RouterLink
         >
-        <RouterLink to="/names" aria-label="Names" @click="mobileOpen = false"
-          ><AtSign class="nav-icon" aria-hidden="true" /><span class="nav-text"
-            >Names</span
-          ></RouterLink
-        >
         <RouterLink to="/users" aria-label="Users" @click="mobileOpen = false"
           ><Users class="nav-icon" aria-hidden="true" /><span class="nav-text"
             >Users</span
@@ -169,6 +164,11 @@ onMounted(() => {
         <RouterLink v-else to="/daclify" aria-label="Daclify DAO" @click="mobileOpen = false"
           ><Shield class="nav-icon" aria-hidden="true" /><span class="nav-text"
             >Daclify DAO</span
+          ></RouterLink
+        >
+        <RouterLink to="/names" aria-label="Names" @click="mobileOpen = false"
+          ><AtSign class="nav-icon" aria-hidden="true" /><span class="nav-text"
+            >Names</span
           ></RouterLink
         >
         <button
