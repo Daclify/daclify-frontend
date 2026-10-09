@@ -14,14 +14,14 @@ export const TELOS_EVM = {
     chainId: 40,
     hex: '0x28',
     name: 'Telos EVM',
-    rpc: 'https://mainnet.telos.net/evm',
+    rpc: 'https://rpc.telos.net',
     explorer: 'https://www.teloscan.io',
   },
   41: {
     chainId: 41,
     hex: '0x29',
     name: 'Telos EVM Testnet',
-    rpc: 'https://testnet.telos.net/evm',
+    rpc: 'https://rpc.testnet.telos.net',
     explorer: 'https://testnet.teloscan.io',
   },
 } as const;
