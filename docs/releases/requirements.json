@@ -1,6 +1,10 @@
 {
   "requirements": [
     {
+      "id": "MODULE-CARDS-AND-DAO-ACTIVATION",
+      "tests": ["tests/e2e/module-cards.spec.ts", "tests/unit/access-components.test.ts"]
+    },
+    {
       "id": "MODULES-AND-NAMES-NAVIGATION",
       "tests": ["tests/e2e/catalogue-navigation.spec.ts", "tests/e2e/marketplace.spec.ts"]
     },

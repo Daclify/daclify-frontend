@@ -26,7 +26,9 @@ const props = defineProps<{
   dao: DaoSummary;
   member: UserMembership | undefined;
   section: string;
+  focusAccount?: string;
 }>();
+const emit = defineEmits<{ busy: [value: boolean] }>();
 const workspace = useWorkspace();
 const data = ref<ModuleState>();
 const governance = ref<GovernanceState>();
@@ -44,6 +46,7 @@ const context = computed(() =>
 );
 const loading = ref(false);
 const busy = ref(false);
+watch(busy, (value) => emit('busy', value), { flush: 'sync' });
 const error = ref('');
 const success = ref('');
 const title = ref('');
@@ -67,6 +70,7 @@ const clock = setInterval(() => {
 }, 1000);
 onBeforeUnmount(() => {
   disposed = true;
+  emit('busy', false);
   generation++;
   clearInterval(clock);
 });
@@ -89,6 +93,12 @@ const names = {
 };
 const canSign = computed(() => !!props.member?.active && signerReady.value && !busy.value);
 const current = computed(() => data.value?.modules.find((m) => m.deployment.id === props.section));
+const listedModules = computed(
+  () =>
+    data.value?.modules.filter(
+      (module) => !props.focusAccount || module.deployment.account === props.focusAccount,
+    ) ?? [],
+);
 const limitedActions = computed(() => {
   const module = current.value;
   if (!module?.enabled) return false;
@@ -704,13 +714,13 @@ const selectedProject = computed(() =>
   <p v-if="success" class="notice" role="status">{{ success }}</p>
   <p v-if="loading" role="status">Reading contract state…</p>
   <template v-if="section === 'modules'"
-    ><div class="section-toolbar">
+    ><div v-if="!focusAccount" class="section-toolbar">
       <h2>DAO modules</h2>
       <RouterLink :to="helpLink('modules')">Permissions &amp; versions ↗</RouterLink>
     </div>
     <div class="dao-grid">
       <article
-        v-for="module in data?.modules"
+        v-for="module in listedModules"
         :key="module.deployment.id"
         class="panel module-card"
       >
@@ -718,7 +728,7 @@ const selectedProject = computed(() =>
           <h3>{{ names[module.deployment.id] }}</h3>
           <span class="pill">{{ module.enabled ? 'Enabled' : 'Available' }}</span>
         </div>
-        <p class="muted">
+        <p v-if="!focusAccount" class="muted">
           v{{ module.deployment.version }} · Interface {{ module.manifest.interfaceVersion }}
         </p>
         <p>
@@ -757,7 +767,7 @@ const selectedProject = computed(() =>
         >
           Enable {{ names[module.deployment.id] }}</button
         ><button
-          v-else-if="module.enabled && member?.admin"
+          v-else-if="module.enabled && member?.admin && !focusAccount"
           class="secondary"
           :disabled="!canSign"
           @click="disable(module)"
@@ -768,9 +778,12 @@ const selectedProject = computed(() =>
         >
       </article>
     </div>
-    <p v-if="data && !data.modules.length" class="notice">
-      No module deployments are configured on this service. Connect a compatible release to enable
-      it.
+    <p v-if="data && !listedModules.length" class="notice">
+      {{
+        focusAccount
+          ? 'This module is not available in this DAO’s configured deployments.'
+          : 'No module deployments are configured on this service. Connect a compatible release to enable it.'
+      }}
     </p></template
   >
   <template v-else

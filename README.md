@@ -21,7 +21,7 @@ DAO creation now offers community, NGO / grants, gaming guild, team / cooperativ
 | `/create`                          | DAO setup, deployment/preset choices and free shared creation              |
 | `/hosting?dao=…`                   | Approved monthly shared member capacity                                    |
 | `/payments?dao=…`                  | DAO merchant setup, module-product payments and receipts                   |
-| `/modules`                         | Module catalogue, tools, filters and details                               |
+| `/modules`                         | Illustrated module cards, search, details and DAO activation               |
 | `/names`                           | Telos account name availability, prices and purchasing                     |
 | `/marketplace`                     | Redirect to Modules; name-payment returns redirect to Names                |
 | `/dao/:id` and `/dao/:id/:section` | Members, ballots, works, grants, payroll, treasury, settings and documents |
@@ -30,6 +30,20 @@ DAO creation now offers community, NGO / grants, gaming guild, team / cooperativ
 | `/status`                          | Safe configuration, capabilities and technical platform details            |
 
 The visual system and its checks are described in [docs/ui/ciq-alignment.md](docs/ui/ciq-alignment.md).
+
+Each module card shows its purpose and usage price. **Details** opens its tools
+and on-chain listing. **Activate** lets you choose a DAO where you are an active
+administrator, review compatibility and requested permissions, unlock or connect
+your matching signer, and enable the module. Activation is a signed DAO action;
+opening the dialog does not change the DAO. Already-enabled modules are marked
+Enabled. Card styles use published SDK code hashes and known first-party titles
+for older builds, so deployed contract account names can vary. Card artwork does
+not establish compatibility; activation verifies the DAO deployment separately.
+
+Run `DACLIFY_TEST_UI_PORT=5398 npx playwright test --config playwright.config.ts
+tests/e2e/module-cards.spec.ts tests/e2e/catalogue-navigation.spec.ts` for the
+isolated desktop/mobile card, dialog, signature, permission and navigation checks.
+The HTTP fixtures do not establish live authorization or chain execution.
 
 ## Local and deployed API
 

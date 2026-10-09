@@ -12,36 +12,34 @@ test('browses modules and names from their sidebar pages', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Decide', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Works', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Payroll', exact: true })).toBeVisible();
-  for (const name of [
-    'Member vote',
-    'Credit vote',
-    'Stake vote',
-    'Advisory poll',
-    'Milestone work',
-    'Salary',
-    'One-time payment',
-  ]) {
-    await expect(page.getByRole('button', { name: new RegExp(`^${name}\\b`) })).toBeVisible();
-  }
   await page.getByLabel('Find a module', { exact: true }).fill('payroll');
   await expect(page.getByRole('button', { name: 'Decide', exact: true })).toBeHidden();
-  await expect(page.getByRole('button', { name: 'Member vote' })).toBeHidden();
-  await expect(page.getByRole('button', { name: /^Salary\b/ })).toBeVisible();
-  await expect(page.getByRole('button', { name: /^One-time payment\b/ })).toBeVisible();
-  await page.getByLabel('Find a module', { exact: true }).fill('vote');
-  await expect(page.getByRole('button', { name: /^Salary\b/ })).toBeHidden();
-  await expect(page.getByRole('button', { name: /^Stake vote\b/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Payroll', exact: true })).toBeVisible();
+  await page.getByLabel('Find a module', { exact: true }).fill('stake vote');
+  await expect(page.getByRole('button', { name: 'Payroll', exact: true })).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Decide', exact: true })).toBeVisible();
   await page.getByLabel('Find a module', { exact: true }).fill('');
   await page.getByRole('button', { name: 'Decide', exact: true }).click();
   const main = page.locator('#main');
   await expect(page.getByRole('heading', { name: 'Decide', exact: true })).toBeVisible();
   await expect(main.getByText('Ballots and proposals for a DAO.', { exact: true })).toBeVisible();
   await expect(main.getByText('Code hash', { exact: true })).toBeVisible();
+  for (const name of ['Member vote', 'Credit vote', 'Stake vote', 'Advisory poll'])
+    await expect(page.getByRole('button', { name: new RegExp(`^${name}\\b`) })).toBeVisible();
   await page.getByRole('button', { name: 'Back to modules', exact: true }).click();
+  await page.getByRole('button', { name: 'Decide', exact: true }).click();
   await page.getByRole('button', { name: /^Member vote\b/ }).click();
   await expect(page.getByRole('heading', { name: 'Member vote', exact: true })).toBeVisible();
   await expect(main.getByText('Code hash', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Back to modules', exact: true }).click();
+  await page.getByRole('button', { name: 'Works', exact: true }).click();
+  await expect(page.getByRole('button', { name: /^Milestone work\b/ })).toBeVisible();
+  await page.getByRole('button', { name: 'Back to modules', exact: true }).click();
+  await page.getByRole('button', { name: 'Payroll', exact: true }).click();
+  await expect(page.getByRole('button', { name: /^Salary\b/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^One-time payment\b/ })).toBeVisible();
+  await page.getByRole('button', { name: 'Back to modules', exact: true }).click();
+  await page.getByText('Usage fees & what’s included', { exact: true }).click();
   await expect(
     page.getByText('Third-party usage charges pay the platform 5%.', { exact: false }),
   ).toBeVisible();
