@@ -105,7 +105,7 @@ Archive supports old document versions and ordinary-poll previews, explicit expo
 
 Bounded hosted-reference recovery rebuilds verified pin ownership and bytes, never billing or missing files. Public card images need explicit public consent and separate signed publication; saved upload requests retry with the same ID after response loss/reload. Period-bound in-app reminders and optional configured email delivery are displayed separately.
 
-The native encrypted-document drill pruned an old version, recreated its owned test database, reconstructed archive/file accounting, decrypted with the original kit, rejected a replacement kit and signed exact original-row restoration. Legacy controller/supported-release qualification, quotas, actual gateway funding/access qualification and immutable 0.8 rollout remain unfinished. Live SMTP/Stripe/Pinata and production deployment remain separate gates. Use `npm run test:e2e:resources` with matching owned API/native/PostgreSQL fixtures; HTTP fixtures are not live-provider proof. See [execution evidence](../daclify-backend-core/docs/evidence/2026-10-08-resource-execution.md).
+The native encrypted-document drill pruned an old version, recreated its owned test database, reconstructed archive/file accounting, decrypted with the original kit, rejected a replacement kit and signed exact original-row restoration. The local quota/migration checks pass; complete supported-release/token qualification, actual gateway funding/access qualification and immutable 0.8 rollout remain unfinished. Live SMTP/Stripe/Pinata and production deployment remain separate gates. Use `npm run test:e2e:resources` with matching owned API/native/PostgreSQL fixtures; HTTP fixtures are not live-provider proof. See [execution evidence](../daclify-backend-core/docs/evidence/2026-10-08-resource-execution.md).
 
 ## License
 
@@ -114,3 +114,5 @@ First-party code, contracts, SDKs and documentation are licensed under
 Third-party files retain their own licenses. Contributions remain owned by their authors.
 
 RAM totals are unavailable during an active legacy migration; the UI explains operator maintenance instead of displaying a partial total. Existing encrypted content, social pairings and signing keys are outside that migration. See [the core migration runbook](../daclify-backend-core/docs/operations/ram-migration.md).
+
+Resources uses the actual deployment guard flag and producer-owned error messages. Missing legacy credentials, financial holds or module completion reserves are operator adoption issues; buying capacity alone cannot satisfy them. The operator must complete the documented adoption/qualification sequence before enabling a guard.
