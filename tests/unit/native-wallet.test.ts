@@ -11,6 +11,8 @@ import {
   Transaction,
   PrivateKey,
   Serializer,
+  SignedTransaction,
+  PackedTransaction,
   type TransactOptions,
 } from '@wharfkit/session';
 import { WalletPluginAnchor } from '@wharfkit/wallet-plugin-anchor';
@@ -19,8 +21,14 @@ import {
   nativeIntentProof,
   nativeGovernance,
   nativeRamPurchase,
+  nativeTokenPreparation,
 } from '../../src/auth/telos-zero';
-import { makeInstruction, encodeAction, runtimeAbi } from '@daclify/core-protocol/sdk';
+import {
+  makeInstruction,
+  encodeAction,
+  runtimeAbi,
+  nativeTokenOpenAction,
+} from '@daclify/core-protocol/sdk';
 const chainId = 'ab'.repeat(32),
   key = PrivateKey.generate('K1');
 const wallet = new Session({
@@ -32,6 +40,15 @@ const tokenAbi = ABI.from({
   version: 'eosio::abi/1.2',
   structs: [
     {
+      name: 'open',
+      base: '',
+      fields: [
+        { name: 'owner', type: 'name' },
+        { name: 'symbol', type: 'symbol' },
+        { name: 'ram_payer', type: 'name' },
+      ],
+    },
+    {
       name: 'transfer',
       base: '',
       fields: [
@@ -42,7 +59,10 @@ const tokenAbi = ABI.from({
       ],
     },
   ],
-  actions: [{ name: 'transfer', type: 'transfer', ricardian_contract: '' }],
+  actions: [
+    { name: 'transfer', type: 'transfer', ricardian_contract: '' },
+    { name: 'open', type: 'open', ricardian_contract: '' },
+  ],
 });
 let options: TransactOptions | undefined,
   started = false,
@@ -52,6 +72,8 @@ beforeEach(() => {
   setActivePinia(createPinia());
   vi.stubGlobal('location', { href: 'https://app.example.test/dao/1/decide' });
   nativeWallet.value = wallet;
+  const client = wallet.client;
+  vi.spyOn(wallet, 'client', 'get').mockReturnValue(client);
   started = false;
   extra = false;
   vi.spyOn(wallet, 'transact').mockImplementation(async (args, selectedOptions) => {
@@ -112,6 +134,91 @@ afterEach(() => {
 async function pending() {
   await vi.waitFor(() => expect(started).toBe(true), { timeout: 1000, interval: 1 });
 }
+const payoutToken = { chainId, contract: 'eosio.token', symbol: 'TLOS', precision: 4 };
+function payoutNetwork() {
+  useWorkspace().network = NetworkSchema.parse({
+    chainId,
+    runtime: 'daclifycore',
+    rpcUrl: 'https://native.example.test',
+    hub: null,
+    environment: 'local',
+    interfaceVersion: 1,
+    coreVersion: '0.7.0-alpha.1',
+    capabilities: [],
+  });
+}
+it('broadcasts only the receiving wallet’s exact owner-funded token preparation', async () => {
+  payoutNetwork();
+  const expected = nativeTokenOpenAction(
+    payoutToken,
+    { chainId, account: 'alice', permission: 'active' },
+    'alice',
+  );
+  const push = vi
+    .spyOn(wallet.client.v1.chain, 'push_transaction')
+    .mockImplementation(async (value) => {
+      const transaction =
+        value instanceof PackedTransaction
+          ? value.getSignedTransaction()
+          : SignedTransaction.from(value);
+      return {
+        transaction_id: transaction.id.toString(),
+        processed: {
+          id: transaction.id.toString(),
+          block_num: 1,
+          block_time: '2026-10-07T12:00:00',
+          receipt: { status: 'executed', cpu_usage_us: 1, net_usage_words: 1 },
+          elapsed: 1,
+          net_usage: 1,
+          scheduled: false,
+          action_traces: [],
+          account_ram_delta: null,
+        },
+      };
+    });
+  const operation = nativeTokenPreparation(payoutToken, 'alice', () => {});
+  await pending();
+  expect(options).toMatchObject({ broadcast: false, allowModify: false });
+  resolveApproval();
+  expect(await operation).toMatch(/^[0-9a-f]{64}$/);
+  expect(push).toHaveBeenCalledOnce();
+  const sent = push.mock.calls[0]?.[0];
+  if (!sent) throw new Error('EXPECTED_TRANSACTION');
+  const transaction =
+    sent instanceof PackedTransaction ? sent.getSignedTransaction() : SignedTransaction.from(sent);
+  expect(transaction.actions).toHaveLength(1);
+  expect(transaction.actions[0]?.equals(expected)).toBe(true);
+});
+it.each(['receiver', 'network', 'token', 'extra-action', 'disconnect'] as const)(
+  'refuses token preparation when %s changes during approval',
+  async (change) => {
+    payoutNetwork();
+    let unchanged = true;
+    extra = change === 'extra-action';
+    const push = vi.spyOn(wallet.client.v1.chain, 'push_transaction');
+    const operation = nativeTokenPreparation(payoutToken, 'alice', () => {
+      if (!unchanged) throw new Error('WALLET_CONTEXT_CHANGED');
+    });
+    await pending();
+    if (change === 'receiver' || change === 'token') unchanged = false;
+    if (change === 'network') {
+      const state = useWorkspace();
+      if (!state.network) throw new Error('EXPECTED_NETWORK');
+      state.network = { ...state.network, chainId: 'cd'.repeat(32) };
+    }
+    if (change === 'disconnect') nativeWallet.value = undefined;
+    resolveApproval();
+    await expect(operation).rejects.toThrow('WALLET_CONTEXT_CHANGED');
+    expect(push).not.toHaveBeenCalled();
+  },
+);
+it('refuses preparation with another receiving wallet before requesting a signature', async () => {
+  payoutNetwork();
+  await expect(nativeTokenPreparation(payoutToken, 'bob', () => {})).rejects.toThrow(
+    'PAYOUT_WALLET_REQUIRED',
+  );
+  expect(wallet.transact).not.toHaveBeenCalled();
+});
 it('returns exact signed intent bytes without allowing the wallet plugin to broadcast', async () => {
   const operation = nativeIntentProof('daclifycore', 'operation-bound intent');
   await pending();

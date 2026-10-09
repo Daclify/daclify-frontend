@@ -116,3 +116,6 @@ Third-party files retain their own licenses. Contributions remain owned by their
 RAM totals are unavailable during an active legacy migration; the UI explains operator maintenance instead of displaying a partial total. Existing encrypted content, social pairings and signing keys are outside that migration. See [the core migration runbook](../daclify-backend-core/docs/operations/ram-migration.md).
 
 Resources uses the actual deployment guard flag and producer-owned error messages. Missing legacy credentials, financial holds or module completion reserves are operator adoption issues; buying capacity alone cannot satisfy them. The operator must complete the documented adoption/qualification sequence before enabling a guard.
+
+
+Treasury now separates receiving-wallet preparation from withdrawal authorization. Choose the receiving native account and use **Prepare receiving wallet** to fund its exact-token balance row, then sign the claim or stake exit. A missing/closed row leaves the transaction unchanged. Late treasury responses cannot cross DAO contexts. See the [native evidence and operating limits](../daclify-backend-core/docs/evidence/2026-10-09-receiving-wallet-ram.md).

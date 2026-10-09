@@ -10,11 +10,14 @@ import {
   type Network,
   RamQuoteSchema,
   type RamQuote,
+  AssetRefSchema,
+  type AssetRef,
 } from '@daclify/core-protocol';
 import {
   encodeAction,
   runtimeAbi,
   nativeRamActions,
+  nativeTokenOpenAction,
   type instruction,
 } from '@daclify/core-protocol/sdk';
 import { api } from '../api/client';
@@ -137,6 +140,26 @@ export async function nativeRamPurchase(
   check();
   const result = await transactNative(nativeRamActions(quote), true, check);
   return result.transaction.id.toString();
+}
+export async function nativeTokenPreparation(
+  value: AssetRef,
+  destination: string,
+  checkContext: () => void,
+): Promise<string> {
+  const token = AssetRefSchema.parse(value),
+    identity = nativeIdentity();
+  const action = nativeTokenOpenAction(token, identity, destination);
+  const check = () => {
+    if (
+      useWorkspace().network?.chainId !== token.chainId ||
+      nativeIdentity().chainId !== token.chainId ||
+      nativeIdentity().account !== destination
+    )
+      throw new Error('WALLET_CONTEXT_CHANGED');
+    checkContext();
+  };
+  check();
+  return (await transactNative(action, true, check)).transaction.id.toString();
 }
 export async function nativeIntentProof(runtime: string, message: string): Promise<NativeProof> {
   const selected = nativeIdentity();

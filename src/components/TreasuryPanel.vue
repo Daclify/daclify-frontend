@@ -11,6 +11,12 @@ import { encodeAction, makeInstruction } from '@daclify/core-protocol/sdk';
 import { api, friendlyError } from '../api/client';
 import { relayInstruction } from '../auth/session';
 import { canSignMember } from '../auth/action-signer';
+import {
+  connectNative,
+  nativeWallet,
+  nativeIdentity,
+  nativeTokenPreparation,
+} from '../auth/telos-zero';
 const signerReady = computed(() => canSignMember(props.member));
 import { prepareExit, prepareExternalEvidence } from '../content/treasury';
 import { useWorkspace } from '../state/workspace';
@@ -27,27 +33,41 @@ const draftChain = ref<Record<string, string>>({});
 const draftPayer = ref<Record<string, string>>({});
 const draftReference = ref<Record<string, string>>({});
 const now = ref(Math.floor(Date.now() / 1000));
+let readRevision = 0,
+  alive = true;
 const timer = setInterval(() => {
   now.value = Math.floor(Date.now() / 1000);
 }, 1000);
-onBeforeUnmount(() => clearInterval(timer));
+onBeforeUnmount(() => {
+  alive = false;
+  readRevision++;
+  clearInterval(timer);
+});
 function units(value: string) {
   return formatUnits(BigInt(value), props.dao.token.precision);
 }
 async function load() {
+  const revision = ++readRevision,
+    context = JSON.stringify(props.dao.reference);
   try {
-    records.value = await api.treasury(props.dao.reference.daoId);
+    const result = await api.treasury(props.dao.reference.daoId);
+    if (revision !== readRevision || context !== JSON.stringify(props.dao.reference)) return;
+    if (JSON.stringify(result.dao) !== context) throw new Error('DAO_REFERENCE');
+    records.value = result;
   } catch (cause) {
+    if (revision !== readRevision || context !== JSON.stringify(props.dao.reference)) return;
     error.value = friendlyError(cause);
   }
 }
 onMounted(load);
 watch(
-  () => props.dao.reference.daoId,
+  () => JSON.stringify(props.dao.reference),
   () => {
     records.value = undefined;
     error.value = '';
     notice.value = '';
+    destination.value = props.member?.nativeAccount ?? '';
+    amount.value = '';
     void load();
   },
 );
@@ -153,6 +173,38 @@ async function exit() {
     busy.value = false;
   }
 }
+async function prepareReceivingWallet() {
+  busy.value = true;
+  error.value = '';
+  notice.value = '';
+  const receiver = destination.value,
+    token = { ...props.dao.token };
+  const context = JSON.stringify([props.dao.reference, token, receiver]);
+  try {
+    const check = () => {
+      if (
+        !alive ||
+        token.chainId !== props.dao.reference.chainId ||
+        context !== JSON.stringify([props.dao.reference, props.dao.token, destination.value])
+      )
+        throw new Error('WALLET_CONTEXT_CHANGED');
+    };
+    if (
+      !nativeWallet.value ||
+      nativeIdentity().account !== receiver ||
+      nativeIdentity().chainId !== token.chainId
+    )
+      await connectNative();
+    check();
+    await nativeTokenPreparation(token, receiver, check);
+    notice.value =
+      'The receiving wallet’s token row was prepared. Use your Daclify account’s signing method to withdraw. Closing that row requires preparing it again.';
+  } catch (cause) {
+    error.value = friendlyError(cause);
+  } finally {
+    busy.value = false;
+  }
+}
 </script>
 <template>
   <div class="section-toolbar">
@@ -218,6 +270,22 @@ async function exit() {
         spellcheck="false"
       /><label for="exit-amount">Withdrawal amount ({{ dao.token.symbol }})</label
       ><input id="exit-amount" v-model="amount" inputmode="decimal" required />
+      <p class="field-help">
+        Before receiving a payment, this account must have a balance row for
+        {{ dao.token.symbol }} ({{ dao.token.precision }} decimal places) on
+        <code>{{ dao.token.contract }}</code
+        >. Connect the receiving account’s native wallet to prepare it once and pay its RAM cost.
+        Preparation does not withdraw funds or pair the wallet. If this is a different wallet from
+        your linked signing account, switch back before signing the withdrawal.
+      </p>
+      <button
+        type="button"
+        class="secondary"
+        :disabled="busy || !destination"
+        @click="prepareReceivingWallet"
+      >
+        Prepare receiving wallet
+      </button>
       <button
         type="button"
         class="secondary"
@@ -260,7 +328,8 @@ async function exit() {
       </button>
       <p v-if="record.status === 1" class="field-help">
         Settlement delivers to the recipient’s linked native account or their internal claim. It
-        does not change the recipient or amount.
+        does not change the recipient or amount. Native recipients must prepare their token balance
+        row before settlement; an unprepared wallet leaves the payment approved and unpaid.
       </p>
       <ul v-if="statements(record.id).length">
         <li v-for="statement in statements(record.id)" :key="statement.id">
