@@ -1058,6 +1058,22 @@ legend {
 .docs-content p {
   line-height: 1.8;
 }
+.permission-diagram {
+  margin: 24px 0;
+}
+.permission-diagram img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
+}
+.permission-diagram figcaption {
+  margin-top: 12px;
+  line-height: 1.6;
+}
+.permission-diagram figcaption a {
+  display: inline-block;
+}
 dl {
   display: grid;
   grid-template-columns: 130px 1fr;

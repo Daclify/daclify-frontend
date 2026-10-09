@@ -6,7 +6,7 @@ The screen consumes the packed protocol from [daclify-backend-core](https://gith
 
 Development uses **`dev`**, with matching core/modules checkouts on `dev`. Feature branches start from `dev` and return there; `main` is updated only on an explicit release request. Follow the [Netlify dev deployment guide](docs/netlify-dev.md) for local builds, the testnet custom domain and backend settings.
 
-Current development version: **0.9.0-alpha.1**, consuming matching core/module protocol, SDK and help packages. Shared creation is free for 10 active-member slots, with administrator-approved graduated monthly capacity above that. Independent contract/server and own-portal choices say Contact for pricing. Optional DAO Connect merchant payments and hosting are separate. Review [upgrade 0.8](../daclify-backend-core/docs/operations/upgrade-0.8.md) and [payment operations](../daclify-backend-core/docs/operations/connected-payments.md). Development checks do not establish live provider/client qualification.
+Current development version: **0.9.0-alpha.2**, consuming matching core/module protocol, SDK and help packages. Shared creation is free for 10 active-member slots, with administrator-approved graduated monthly capacity above that. Independent contract/server and own-portal choices say Contact for pricing. Optional DAO Connect merchant payments and hosting are separate. Review [upgrade 0.8](../daclify-backend-core/docs/operations/upgrade-0.8.md) and [payment operations](../daclify-backend-core/docs/operations/connected-payments.md). Development checks do not establish live provider/client qualification.
 
 The resource-billing-archives development branch includes exact native/card RAM consent, separate prepaid storage, whole-file retention priorities, verified Archive backups/approvals/manual batches, merged anchored history, public logo/cover upload and hosted-reference recovery after SQL loss. Uploading an image and signing its public card update are distinct. Recovery verifies ownership and bytes and restores no Stripe or social-login records. Recorded RAM allocations are visible; enforcement is in native qualification; Resources reports physical obligation and legacy-claim completion holds. Destructive retention and production pruning are disabled until migration, full restoration and provider/release qualification pass. Run `npm run test:e2e:resources` only against its owned local fixture.
 
@@ -143,3 +143,7 @@ Treasury now separates receiving-wallet preparation from withdrawal authorizatio
 ## Executive governance
 
 DAO governance settings show executive offices, paired native accounts, inactivity, pending handover and synchronized native quorum. The final paired controller can replace their wallet atomically; unlinking is disabled and enforced by the contracts. Initial owner transactions are downloaded for external owner/quorum signing, with explanatory in-app documentation.
+
+## Contract permissions in the handbook
+
+`/docs/contract-permissions` contains the bundled, offline contract diagram and searchable shared/independent deployment examples. The full-size SVG is published by core and pinned in the frontend vendor package; no external diagram service is used. `tests/e2e/contract-permissions.spec.ts` checks diagram loading, search, responsive layout and accessibility on desktop and mobile.

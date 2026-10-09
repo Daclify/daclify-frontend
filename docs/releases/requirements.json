@@ -68,6 +68,10 @@
       "id": "WP02-EXECUTIVE-BROWSER",
       "suite": "browser",
       "tests": ["tests/e2e/executives.spec.ts"]
+    },
+    {
+      "id": "DOCS-CONTRACT-PERMISSIONS",
+      "tests": ["tests/e2e/contract-permissions.spec.ts"]
     }
   ]
 }

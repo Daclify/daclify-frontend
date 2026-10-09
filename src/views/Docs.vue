@@ -3,6 +3,7 @@ import { computed, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { IdSchema } from '@daclify/core-protocol';
 import { CoreHelpBundle } from '@daclify/core-protocol/help';
+import permissionDiagram from '@daclify/core-protocol/diagrams/contract-permissions.svg?url';
 import { ModulesHelpBundle } from '@daclify/modules/help';
 import type { ModuleState } from '@daclify/modules';
 import { api, friendlyError } from '../api/client';
@@ -159,6 +160,32 @@ onUnmounted(() => {
           }}
         </p>
         <h2>{{ active.title }}</h2>
+        <figure v-if="active.id === 'contract-permissions'" class="permission-diagram">
+          <img
+            :src="permissionDiagram"
+            alt="Daclify contract permissions and module interaction map"
+          />
+          <figcaption>
+            Illustrated configuration after handover. This is an example, not a live account audit.
+            <a :href="permissionDiagram" target="_blank" rel="noopener">Open full-size diagram</a>
+          </figcaption>
+        </figure>
+        <div v-if="active.id === 'contract-permissions'" class="grid">
+          <section>
+            <h3>Shared deployments</h3>
+            <p>
+              The Daclify DAO controls platform contracts. Your DAO controls its membership,
+              settings and treasury through those contracts.
+            </p>
+          </section>
+          <section>
+            <h3>Independent deployments</h3>
+            <p>
+              Your executives control your runtime and module accounts. Registering with the Hub
+              gives people a way to find your DAO and grants no control over your contracts.
+            </p>
+          </section>
+        </div>
         <p v-for="paragraph in active.paragraphs" :key="paragraph">{{ paragraph }}</p>
         <ul v-if="active.id === 'license'">
           <li><a href="https://github.com/Daclify/daclify-backend-core">Core source</a></li>
