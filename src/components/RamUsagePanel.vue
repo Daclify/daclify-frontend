@@ -144,6 +144,13 @@ onBeforeUnmount(() => sequence++);
       <p>
         <strong>{{ bytes(usage.purchasedBytes) }}</strong> credited by settled RAM purchases.
       </p>
+      <p v-if="usage.completionHolds">
+        <strong>{{ bytes(usage.completionHolds.bytes) }}</strong> physically occupied by
+        {{ usage.completionHolds.rows }} core obligation and claim completion holds. These bytes are
+        already included in retained records, not an extra charge. Full claims can consume their
+        receipt hold; partial withdrawals leave it reserved. Token costs and quota enforcement still
+        require qualification.
+      </p>
       <ul class="plain-list">
         <li v-for="payer in usage.payers" :key="payer.payer">
           <h3>

@@ -67,6 +67,30 @@ watch(() => workspace.network?.chainId, load);
         </li>
       </ul>
     </section>
+    <section v-if="status.gatewayAllowance" class="panel">
+      <h2>Shared gateway allowance</h2>
+      <p>
+        State: {{ status.gatewayAllowance.state }}. This allowance covers this operator’s shared
+        gateway, across its DAOs and background verification jobs.
+      </p>
+      <template v-if="status.gatewayAllowance.fundingQualification === 'operator-attested'">
+        <p>
+          {{ status.gatewayAllowance.reservedBytes }} /
+          {{ status.gatewayAllowance.byteLimit }} bytes reserved;
+          {{ status.gatewayAllowance.requests }} /
+          {{ status.gatewayAllowance.requestLimit }} requests.
+        </p>
+        <p>
+          Period: {{ new Date(status.gatewayAllowance.startsAt ?? '').toLocaleString() }} to
+          {{ new Date(status.gatewayAllowance.endsAt ?? '').toLocaleString() }}.
+        </p>
+      </template>
+      <p class="field-help">
+        Reads stop when the allowance expires or is exhausted. Failed reads retain their
+        reservation. Files stay pinned, and this adds no DAO bandwidth invoice. Funding is attested
+        by the operator; provider payment and access controls require separate verification.
+      </p>
+    </section>
     <details>
       <summary>Technical setup, versions and operating details</summary>
       <section class="panel">

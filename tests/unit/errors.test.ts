@@ -15,6 +15,12 @@ const serviceMessages: Record<string, string> = {
     'This deployment exceeds the current read limit. Configure an indexed read service.',
   STORAGE_UNCONFIGURED: 'Hosted storage is not configured on this service.',
   STORAGE_QUOTA: 'The DAO storage allowance is full. Existing documents remain available.',
+  CONTENT_GATEWAY_ALLOWANCE_REQUIRED:
+    'The operator has not configured an active gateway allowance. Your files remain pinned; contact the operator or use your saved export.',
+  CONTENT_GATEWAY_ALLOWANCE_EXPIRED:
+    'The gateway allowance is outside its funded period. Ask the operator to renew it. Your files remain pinned.',
+  CONTENT_GATEWAY_ALLOWANCE_EXHAUSTED:
+    'The operator’s shared gateway allowance is exhausted. Your files remain pinned; contact the operator or use your saved export.',
   UPLOAD_PENDING:
     'Upload completion is uncertain. Keep the request ID and check completion before starting another upload.',
   UPLOAD_REQUEST_CONFLICT:

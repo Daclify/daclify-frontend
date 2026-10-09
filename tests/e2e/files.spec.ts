@@ -408,8 +408,9 @@ test('previews eligibility, requires export consent and downloads a verified rec
         dao,
         observation: active ? 'active' : 'disabled',
         enforcement: 'disabled',
+        completionHolds: active ? { rows: 1, bytes: '883' } : null,
         policy: null,
-        totalObservedBytes: active ? '1500' : null,
+        totalObservedBytes: active ? '2383' : null,
         purchasedBytes: '4096',
         read: {
           startedAt: '2026-10-08T00:00:00.000Z',
@@ -422,7 +423,7 @@ test('previews eligibility, requires export consent and downloads a verified rec
             moduleId: null,
             sourceVerified: true,
             usage: active
-              ? { identity: '1000', activity: '200', retained: '300', platform: '0' }
+              ? { identity: '1000', activity: '200', retained: '1183', platform: '0' }
               : null,
             purchasedBytes: '4096',
             entitlement: { policy_revision: '1', identity_per_slot: '2048', slots: 10 },
@@ -670,8 +671,11 @@ test('previews eligibility, requires export consent and downloads a verified rec
   });
   await link.click();
   await expect(
-    page.getByText('recorded for this DAO across its payer contracts.', { exact: false }),
+    page.getByText('recorded for this DAO across its metered Daclify contract records.', {
+      exact: false,
+    }),
   ).toBeVisible();
+  await expect(page.getByText(/physically occupied by 1 core obligation/)).toBeVisible();
   const preview = page.getByRole('button', { name: 'Preview archive eligibility', exact: true }),
     select = page.getByLabel('Finalized ballot', { exact: true });
   await expect(preview).toBeDisabled();

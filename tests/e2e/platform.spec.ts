@@ -12,10 +12,33 @@ async function account(page: Parameters<typeof payCreation>[0]) {
   await expect(page.getByText('Vault unlocked', { exact: true })).toBeVisible();
 }
 test('shows safe platform setup and keeps module help in Documentation', async ({ page }) => {
+  // Allowance values are an HTTP fixture; SQL reservation and redaction have separate integration coverage.
+  await page.route('**/v1/platform/status', async (route) => {
+    const response = await route.fetch();
+    const status = ApiRoutes.status.response.parse(await response.json());
+    await route.fulfill({
+      response,
+      json: {
+        ...status,
+        gatewayAllowance: {
+          state: 'available',
+          startsAt: '2026-10-01T00:00:00.000Z',
+          endsAt: '2026-11-01T00:00:00.000Z',
+          byteLimit: '1000',
+          reservedBytes: '100',
+          requestLimit: '10',
+          requests: '1',
+          fundingQualification: 'operator-attested',
+        },
+      },
+    });
+  });
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/status');
   await expect(page.getByRole('heading', { name: 'What you can use here' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Shared gateway allowance' })).toBeVisible();
+  await expect(page.getByText('100 / 1000 bytes reserved; 1 / 10 requests.')).toBeVisible();
   await page.getByText('Technical setup, versions and operating details', { exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Network and versions' })).toBeVisible();
   const menu = page.getByRole('button', { name: 'Menu', exact: true });

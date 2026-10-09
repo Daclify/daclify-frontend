@@ -934,6 +934,12 @@ export function friendlyError(error: unknown): string {
         'Storage cleanup is paused for operator review; its recovery staging is retained.',
       CONTENT_HOSTING_ENDED:
         'Hosting for this file has ended. Restore a separately saved copy or re-pin it.',
+      CONTENT_GATEWAY_ALLOWANCE_REQUIRED:
+        'The operator has not configured an active gateway allowance. Your files remain pinned; contact the operator or use your saved export.',
+      CONTENT_GATEWAY_ALLOWANCE_EXPIRED:
+        'The gateway allowance is outside its funded period. Ask the operator to renew it. Your files remain pinned.',
+      CONTENT_GATEWAY_ALLOWANCE_EXHAUSTED:
+        'The operator’s shared gateway allowance is exhausted. Your files remain pinned; contact the operator or use your saved export.',
       ARCHIVE_PRUNING_DISABLED:
         'The operator has not enabled qualified source pruning. Your records remain on chain.',
       ARCHIVE_APPROVAL_REQUIRED:
