@@ -57,4 +57,16 @@ describe('frontend lint and requirement register', () => {
   it('accepts the committed register', () => {
     expect(loadRequirementRegister(process.cwd())).toBeGreaterThan(0);
   });
+
+  it('recognises test calls without confusing URL globs or strings for comments and tests', () => {
+    const root = mkdtempSync(join(tmpdir(), 'daclify-frontend-requirements-'));
+    const register = { requirements: [{ id: 'URL-GLOBS', tests: ['routes.spec.ts'] }] };
+    writeFileSync(
+      join(root, 'routes.spec.ts'),
+      'const glob = "**/v1/**"; test("route", () => { const other = "**/docs/**"; });',
+    );
+    expect(checkRequirementRegister(root, register)).toBe(1);
+    writeFileSync(join(root, 'routes.spec.ts'), 'const example = \'test("fake", () => {})\';');
+    expect(() => checkRequirementRegister(root, register)).toThrow('REQUIREMENT_TEST_EMPTY');
+  });
 });

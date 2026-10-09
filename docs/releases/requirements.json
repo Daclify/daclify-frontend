@@ -84,6 +84,18 @@
     {
       "id": "DOCS-CONTRACT-PERMISSIONS",
       "tests": ["tests/e2e/contract-permissions.spec.ts"]
+    },
+    {
+      "id": "DAXI-BROAD-SCOPE-AND-SOURCES",
+      "tests": ["tests/e2e/docs-assistant.spec.ts", "tests/unit/documentation.test.ts"]
+    },
+    {
+      "id": "STATUS-TABS-AND-AI-CONFIGURATION",
+      "tests": ["tests/e2e/status-tabs.spec.ts"]
+    },
+    {
+      "id": "SDK-ONLY-MODULE-COMPATIBILITY",
+      "tests": ["tests/unit/module-release.test.ts"]
     }
   ]
 }

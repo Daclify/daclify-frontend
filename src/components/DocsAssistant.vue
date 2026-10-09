@@ -92,10 +92,11 @@ async function ask() {
 }
 </script>
 <template>
-  <section class="docs-assistant" aria-label="Handbook assistant">
+  <section class="docs-assistant" aria-label="Daxi assistant">
     <p class="field-help">
-      Ask about Daclify or its documented setup. The assistant cannot see your vault or DAO records.
-      Do not include secrets or private content. AI can make mistakes; review the linked guide.
+      I'm Daxi. Ask me about Daclify, Telos or DAOs. A little less jargon, a little more progress. I
+      cannot see your vault or live DAO records. Do not include secrets or private content. AI can
+      make mistakes; review the linked guide.
     </p>
     <div
       ref="transcript"
@@ -110,22 +111,20 @@ async function ask() {
         class="help-message"
         :class="message.role"
       >
-        <strong>{{ message.role === 'user' ? 'You' : 'Daclify Help' }}</strong>
+        <strong>{{ message.role === 'user' ? 'You' : 'Daxi Help' }}</strong>
         <p>{{ message.text }}</p>
         <RouterLink v-if="message.topicId" :to="`/docs/${message.topicId}`"
           >Open {{ message.title }}</RouterLink
         >
       </article>
       <p v-if="!messages.length" class="muted">
-        Try “How do I join a DAO?” or “How do I pair my wallet?”
+        Try “What is a DAO?”, “How are Telos Zero and EVM different?” or “How do I pair my wallet?”
       </p>
-      <p v-if="busy" role="status">Checking the handbook…</p>
+      <p v-if="busy" role="status">Daxi is checking the guides…</p>
     </div>
     <p v-if="error" class="alert" role="alert">{{ error }}</p>
-    <p v-if="configured === undefined && !error" role="status">Checking the handbook assistant…</p>
-    <p v-else-if="configured === false" class="notice">
-      The documentation assistant is not configured on this server.
-    </p>
+    <p v-if="configured === undefined && !error" role="status">Checking Daxi…</p>
+    <p v-else-if="configured === false" class="notice">Daxi is not configured on this server.</p>
     <form v-else-if="configured === true" @submit.prevent="ask">
       <label for="docs-question">Question</label
       ><textarea
@@ -134,7 +133,7 @@ async function ask() {
         maxlength="500"
         rows="2"
         required
-        placeholder="How can we help with Daclify?"
+        placeholder="Ask Daxi about Daclify, Telos or DAOs…"
       />
       <div class="button-row">
         <button :disabled="busy || question.trim().length < 2">

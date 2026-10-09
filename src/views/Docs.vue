@@ -212,6 +212,15 @@ onUnmounted(() => {
           </section>
         </div>
         <p v-for="paragraph in active.paragraphs" :key="paragraph">{{ paragraph }}</p>
+        <section v-if="active.sources?.length" class="guide-sources">
+          <h3>Sources & further reading</h3>
+          <ul>
+            <li v-for="source in active.sources" :key="source.url">
+              <a :href="source.url" target="_blank" rel="noopener noreferrer">{{ source.title }}</a>
+              <span class="muted">· Reviewed {{ source.reviewedAt }}</span>
+            </li>
+          </ul>
+        </section>
         <ul v-if="active.id === 'license'">
           <li><a href="https://github.com/Daclify/daclify-backend-core">Core source</a></li>
           <li><a href="https://github.com/Daclify/daclify-backend-modules">Module source</a></li>

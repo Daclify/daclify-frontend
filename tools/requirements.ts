@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import ts from 'typescript';
 
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -21,11 +22,23 @@ export function checkRequirementRegister(root: string, register: unknown): numbe
       if (path.relative(root, absolute).startsWith('..'))
         throw new Error(`REQUIREMENT_PATH: ${testPath}`);
       if (!existsSync(absolute)) throw new Error(`REQUIREMENT_TEST_MISSING: ${testPath}`);
-      const source = readFileSync(absolute, 'utf8')
-        .replace(/\/\*[\s\S]*?\*\//g, '')
-        .replace(/^\s*\/\/.*$/gm, '');
-      if (!/\b(?:it|test)\s*\(/.test(source))
-        throw new Error(`REQUIREMENT_TEST_EMPTY: ${testPath}`);
+      const source = ts.createSourceFile(
+        absolute,
+        readFileSync(absolute, 'utf8'),
+        ts.ScriptTarget.Latest,
+      );
+      let hasTest = false;
+      const visit = (node: ts.Node) => {
+        if (
+          ts.isCallExpression(node) &&
+          ts.isIdentifier(node.expression) &&
+          ['it', 'test'].includes(node.expression.text)
+        )
+          hasTest = true;
+        ts.forEachChild(node, visit);
+      };
+      visit(source);
+      if (!hasTest) throw new Error(`REQUIREMENT_TEST_EMPTY: ${testPath}`);
     }
   }
   return register.requirements.length;

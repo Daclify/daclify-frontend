@@ -1,8 +1,8 @@
 import { expect, it } from 'vitest';
-import { Catalog, ModuleStateSchema, VERSION } from '@daclify/modules';
+import { Catalog, ModuleStateSchema } from '@daclify/modules';
 import { ModuleCodeHashes } from '@daclify/modules/sdk';
 import { verifiedModuleRelease } from '../../src/api/client';
-it('does not grant new frontend actions from an older API’s otherwise verified module response', () => {
+it('accepts the unchanged contract release after an SDK update and rejects older unsupported binaries', () => {
   const manifest = Catalog.find((m) => m.id === 'decide');
   if (!manifest) throw new Error('FIXTURE_MANIFEST');
   const state = ModuleStateSchema.parse({
@@ -12,7 +12,7 @@ it('does not grant new frontend actions from an older API’s otherwise verified
         deployment: {
           id: 'decide',
           account: 'decide',
-          version: VERSION,
+          version: manifest.version,
           codeHash: ModuleCodeHashes.decide,
         },
         manifest,
@@ -31,7 +31,10 @@ it('does not grant new frontend actions from an older API’s otherwise verified
     entries: [],
     controls: [],
   });
-  expect(verifiedModuleRelease(state).modules[0]?.codeVerified).toBe(true);
+  expect(verifiedModuleRelease(state).modules[0]).toMatchObject({
+    compatible: true,
+    codeVerified: true,
+  });
   const older = structuredClone(state);
   const deployment = older.modules[0]?.deployment;
   if (!deployment) throw new Error('FIXTURE_MODULE');

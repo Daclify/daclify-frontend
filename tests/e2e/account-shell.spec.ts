@@ -35,12 +35,10 @@ test('shows the handbook assistant without sending a question', async ({ page })
   const menu = page.getByRole('button', { name: 'Menu', exact: true });
   if (await menu.isVisible()) await menu.click();
   await page.getByRole('button', { name: 'Help', exact: true }).click();
-  await expect(
-    page.getByRole('complementary', { name: 'Daclify Help', exact: true }),
-  ).toBeVisible();
+  await expect(page.getByRole('complementary', { name: 'Daxi Help', exact: true })).toBeVisible();
   await expect(
     page
-      .getByText('The documentation assistant is not configured on this server.', { exact: true })
+      .getByText('Daxi is not configured on this server.', { exact: true })
       .or(page.getByLabel('Question', { exact: true })),
   ).toBeVisible();
   await noOverflow(page);

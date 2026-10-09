@@ -353,7 +353,7 @@ test('Help can be moved, resized, minimized and reopened without exposing anothe
   await page.goto('/users');
   await menu(page);
   await page.getByRole('button', { name: 'Help', exact: true }).click();
-  const help = page.getByRole('complementary', { name: 'Daclify Help', exact: true });
+  const help = page.getByRole('complementary', { name: 'Daxi Help', exact: true });
   await help.getByLabel('Question', { exact: true }).fill('How do I pair a wallet?');
   await help.getByRole('button', { name: 'Ask', exact: true }).click();
   await expect(

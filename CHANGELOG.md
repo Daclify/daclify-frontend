@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.0-alpha.6 development — Daxi and tabbed Status
+
+Present Daxi in the floating help window with Daclify, Telos and DAO scope. Show reviewed Telos/DAO guide sources and preserve plain-text answers, bounded browser history and identity/network separation. Consume refreshed development SDK/help packages. Module compatibility follows the unchanged contract release, rather than the SDK version, while older unsupported versions and wrong hashes remain rejected.
+
+Replace the long Status view with accessible Overview, Network, Contracts, Fees, Services and AI Daxi Help tabs. Retain contract authorities, hashes, network mismatch and integration configuration; remove public migration listings. Show public AI models/scope/knowledge version, distinguish AI status failure from missing configuration and open the existing help window. Correct obsolete creation-fee headlines to free shared creation and contact pricing for independent deployments.
+
 ## Unreleased — welcome page and grouped handbook
 
 Add a branded welcome page at `/` with guest and signed-in shortcuts. Move DAO
@@ -19,9 +25,9 @@ metadata. Users can install the app through supported browsers; it remains
 online-only with no service-worker cache. Document installation and add
 production-build desktop/mobile Chromium installability and icon checks.
 
-## Unreleased — documentation assistant
+## Unreleased — initial documentation assistant
 
-Consume the refreshed core handbook with Daclify provider/Telegram setup and unambiguous hosting examples. Explain the assistant's docs-only scope, evidence checks and provider privacy. Failed status requests no longer imply missing configuration. Desktop/mobile regressions cover plain-text answers, source links and status/refusal behavior.
+Consume the refreshed core handbook with Daclify provider/Telegram setup and unambiguous hosting examples. Document its initial Daclify handbook scope, evidence checks and provider privacy; alpha.6 above broadens that scope. Failed status requests no longer imply missing configuration. Desktop/mobile regressions cover plain-text answers, source links and status/refusal behavior.
 
 ## 0.8.0-alpha.1 development candidate — Resources and Archive
 

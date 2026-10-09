@@ -1,5 +1,5 @@
 import { ModuleCodeHashes } from '@daclify/modules/sdk';
-import { ModuleApiRoutes, VERSION as MODULE_VERSION, type ModuleState } from '@daclify/modules';
+import { ModuleApiRoutes, CONTRACT_VERSION, type ModuleState } from '@daclify/modules';
 import { ArchiveRoutes } from '@daclify/modules/archive';
 import { z } from 'zod';
 import {
@@ -205,7 +205,7 @@ export function verifiedModuleRelease(state: ModuleState): ModuleState {
     ...state,
     modules: state.modules.map((module) => ({
       ...module,
-      compatible: module.compatible && module.deployment.version === MODULE_VERSION,
+      compatible: module.compatible && module.deployment.version === CONTRACT_VERSION,
       codeVerified:
         module.codeVerified &&
         module.deployment.codeHash === ModuleCodeHashes[module.deployment.id],
@@ -1078,8 +1078,8 @@ export function friendlyError(error: unknown): string {
       PASSKEY_LINKED: 'That passkey is already paired with an account.',
       PASSKEY_LIMIT: 'This account already has the maximum number of passkeys.',
       RATE_LIMIT: 'Too many requests. Wait a moment and try again.',
-      DOCS_AGENT_UNAVAILABLE: 'The documentation assistant is not configured on this server.',
-      DOCS_AGENT_FAILED: 'The documentation assistant could not answer. Try again.',
+      DOCS_AGENT_UNAVAILABLE: 'Daxi is not configured on this server.',
+      DOCS_AGENT_FAILED: 'Daxi could not answer. Try again.',
       EVM_SIGNATURE_INVALID: 'The Telos EVM signature was rejected.',
       EVM_CHALLENGE_INVALID: 'The Telos EVM link expired. Try again.',
       EVM_LINKED: 'That Telos EVM address is already linked to another account.',

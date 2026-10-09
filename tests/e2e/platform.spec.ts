@@ -39,7 +39,7 @@ test('shows safe platform setup and keeps module help in Documentation', async (
   await expect(page.getByRole('heading', { name: 'What you can use here' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Shared gateway allowance' })).toBeVisible();
   await expect(page.getByText('100 / 1000 bytes reserved; 1 / 10 requests.')).toBeVisible();
-  await page.getByText('Technical setup, versions and operating details', { exact: true }).click();
+  await page.getByRole('tab', { name: 'Network', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Network and versions' })).toBeVisible();
   const menu = page.getByRole('button', { name: 'Menu', exact: true });
   if (await menu.isVisible()) await menu.click();

@@ -95,7 +95,7 @@ watch(
     class="help-window"
     :class="{ expanded }"
     :style="windowStyle"
-    aria-label="Daclify Help"
+    aria-label="Daxi Help"
     @keydown.esc="open = false"
   >
     <header class="help-window-bar">
@@ -109,7 +109,7 @@ watch(
         @pointercancel="drag = undefined"
         @keydown="keyMove"
       >
-        <Bot aria-hidden="true" /><strong>Daclify Help</strong><Move aria-hidden="true" />
+        <Bot aria-hidden="true" /><strong>Daxi Help</strong><Move aria-hidden="true" />
       </button>
       <button
         type="button"

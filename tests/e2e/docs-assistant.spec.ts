@@ -21,7 +21,7 @@ test('handbook assistant shows a source and renders model text safely', async ({
           status: 'outside',
           topicId: null,
           title: null,
-          answer: 'I cover only Daclify documentation.',
+          answer: 'I can help with Daclify, Telos and DAOs.',
         }
       : {
           status: 'answered',
@@ -36,7 +36,7 @@ test('handbook assistant shows a source and renders model text safely', async ({
   const menu = page.getByRole('button', { name: 'Menu', exact: true });
   if (await menu.isVisible()) await menu.click();
   await page.getByRole('button', { name: 'Help', exact: true }).click();
-  const assistant = page.getByRole('region', { name: 'Handbook assistant' });
+  const assistant = page.getByRole('region', { name: 'Daxi assistant' });
   await expect(assistant.getByText(/Do not include secrets or private content/)).toBeVisible();
   await assistant.getByLabel('Question', { exact: true }).fill('Are documents encrypted?');
   await assistant.getByRole('button', { name: 'Ask', exact: true }).click();
@@ -50,7 +50,7 @@ test('handbook assistant shows a source and renders model text safely', async ({
   await assistant.getByLabel('Question', { exact: true }).fill('Unrelated question?');
   await assistant.getByRole('button', { name: 'Ask', exact: true }).click();
   await expect(
-    assistant.getByText('I cover only Daclify documentation.', { exact: true }),
+    assistant.getByText('I can help with Daclify, Telos and DAOs.', { exact: true }),
   ).toBeVisible();
   await expect(assistant.getByRole('link')).toHaveCount(1);
   await page.getByRole('button', { name: 'Minimize help' }).click();
@@ -58,13 +58,13 @@ test('handbook assistant shows a source and renders model text safely', async ({
   if (await menu.isVisible()) await menu.click();
   await page.getByRole('button', { name: 'Help', exact: true }).click();
   await expect(
-    assistant.getByText('I cover only Daclify documentation.', { exact: true }),
+    assistant.getByText('I can help with Daclify, Telos and DAOs.', { exact: true }),
   ).toBeVisible();
   await page.reload();
   if (await menu.isVisible()) await menu.click();
   await page.getByRole('button', { name: 'Help', exact: true }).click();
   await expect(
-    page.getByText('I cover only Daclify documentation.', { exact: true }),
+    page.getByText('I can help with Daclify, Telos and DAOs.', { exact: true }),
   ).toBeVisible();
   await page.getByRole('button', { name: 'Clear conversation', exact: true }).click();
   await expect(assistant.getByRole('link')).toHaveCount(0);
@@ -86,18 +86,55 @@ test('handbook assistant distinguishes missing config from a failed status reque
   const menu = page.getByRole('button', { name: 'Menu', exact: true });
   if (await menu.isVisible()) await menu.click();
   await page.getByRole('button', { name: 'Help', exact: true }).click();
-  const assistant = page.getByRole('region', { name: 'Handbook assistant' });
-  await expect(
-    assistant.getByText('The documentation assistant is not configured on this server.'),
-  ).toBeVisible();
+  const assistant = page.getByRole('region', { name: 'Daxi assistant' });
+  await expect(assistant.getByText('Daxi is not configured on this server.')).toBeVisible();
   await expect(assistant.getByLabel('Question', { exact: true })).toHaveCount(0);
   unavailable = true;
   await page.reload();
   if (await menu.isVisible()) await menu.click();
   await page.getByRole('button', { name: 'Help', exact: true }).click();
   await expect(assistant.getByRole('alert')).toBeVisible();
-  await expect(
-    assistant.getByText('The documentation assistant is not configured on this server.'),
-  ).toHaveCount(0);
+  await expect(assistant.getByText('Daxi is not configured on this server.')).toHaveCount(0);
   await expect(assistant.getByLabel('Question', { exact: true })).toHaveCount(0);
+});
+
+test('Daxi answers a Telos question and opens its reviewed source guide', async ({ page }) => {
+  await page.route('**/v1/docs/agent', (route) => route.fulfill({ json: { configured: true } }));
+  await page.route('**/v1/docs/ask', (route) => {
+    expect(route.request().postDataJSON()).toEqual({
+      question: 'How are Telos Zero and EVM different?',
+    });
+    return route.fulfill({
+      json: {
+        status: 'answered',
+        topicId: 'telos',
+        title: 'Telos Zero and Telos EVM explained',
+        answer: 'Telos Zero uses Antelope; Telos EVM supports Ethereum-compatible applications.',
+      },
+    });
+  });
+  await page.goto('/');
+  const menu = page.getByRole('button', { name: 'Menu', exact: true });
+  if (await menu.isVisible()) await menu.click();
+  await page.getByRole('button', { name: 'Help', exact: true }).click();
+  const assistant = page.getByRole('region', { name: 'Daxi assistant' });
+  await expect(assistant.getByText(/I'm Daxi\. Ask me about Daclify, Telos or DAOs/)).toBeVisible();
+  await assistant
+    .getByLabel('Question', { exact: true })
+    .fill('How are Telos Zero and EVM different?');
+  await assistant.getByRole('button', { name: 'Ask', exact: true }).click();
+  await assistant.getByRole('link', { name: 'Open Telos Zero and Telos EVM explained' }).click();
+  await expect(page).toHaveURL(/\/docs\/telos$/);
+  await page.getByRole('button', { name: 'Minimize help' }).click();
+  const sources = page.locator('.guide-sources');
+  await expect(sources.getByRole('heading', { name: 'Sources & further reading' })).toBeVisible();
+  await expect(sources.getByRole('link', { name: 'Telos Zero' })).toHaveAttribute(
+    'href',
+    'https://docs.telos.net/zero/telos_zero/',
+  );
+  await expect(sources.getByRole('link', { name: 'Telos Zero' })).toHaveAttribute(
+    'rel',
+    'noopener noreferrer',
+  );
+  await expect(sources.getByText('· Reviewed 2026-10-09')).toHaveCount(3);
 });
