@@ -50,6 +50,7 @@ const router = createRouter({
     },
     { path: '/dao/:id/:section?', component: () => import('./views/Workspace.vue') },
     { path: '/docs/:topic?', component: () => import('./views/Docs.vue') },
+    { path: '/:pathMatch(.*)*', component: () => import('./views/NotFound.vue') },
   ],
 });
 createApp(App).use(createPinia()).use(router).mount('#app');

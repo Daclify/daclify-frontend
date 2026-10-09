@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.0-alpha.7 development — audit and recovery navigation
+
+Unknown app URLs now show an accessible recovery page with Home and Hub links. The optional manual verification workflow installs the committed vendored packages directly, removing private sibling checkouts and contract compilation. Consume module SDK 0.9.0-alpha.7 with core protocol 0.9.0-alpha.6 and unchanged module contracts 0.9.0-alpha.5. No automatic GitHub CI or deployment is enabled.
+
 ## 0.9.0-alpha.6 development — Daxi and tabbed Status
 
 Present Daxi in the floating help window with Daclify, Telos and DAO scope. Show reviewed Telos/DAO guide sources and preserve plain-text answers, bounded browser history and identity/network separation. Consume refreshed development SDK/help packages. Module compatibility follows the unchanged contract release, rather than the SDK version, while older unsupported versions and wrong hashes remain rejected.
