@@ -90,6 +90,61 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/v1/marketplace', (route) => route.fulfill({ json: catalogue }));
   await page.route('**/v1/names', (route) => route.fulfill({ json: names }));
 });
+test('sidebar order and icon fold control match the workspace navigation', async ({ page }) => {
+  await page.goto('/');
+  await openMenu(page);
+  const navigation = page
+    .getByRole('complementary', { name: 'Primary navigation' })
+    .getByRole('navigation');
+  await expect(navigation.locator(':scope > a, :scope > button')).toHaveText([
+    'My DAO',
+    'Hub',
+    'Create',
+    'Modules',
+    'Names',
+    'Users',
+    'Documentation',
+    'Status',
+    'Daclify DAO',
+    'Help',
+  ]);
+  await expect(navigation.getByText('RESOURCES', { exact: true })).toHaveCount(0);
+  await expect(navigation.getByText('WORKSPACE', { exact: true })).toHaveCount(0);
+  await expect(page.locator('.nav-fold + .sidebar-footer')).toHaveCount(1);
+  await expect(
+    page.getByRole('button', { name: 'Fold menu', exact: true, includeHidden: true }),
+  ).toHaveText('');
+  await navigation.getByRole('link', { name: 'My DAO', exact: true }).click();
+  await expect(page).toHaveURL(/\/\?mine=1$/);
+  await expect(page.getByRole('button', { name: 'My communities', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await openMenu(page);
+  await expect(navigation.getByRole('link', { name: 'My DAO', exact: true })).toHaveAttribute(
+    'aria-current',
+    'page',
+  );
+  await expect(navigation.getByRole('link', { name: 'Hub', exact: true })).not.toHaveAttribute(
+    'aria-current',
+    'page',
+  );
+  await navigation.getByRole('link', { name: 'Hub', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'All DAOs', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await openMenu(page);
+  await expect(navigation.getByRole('link', { name: 'Hub', exact: true })).toHaveAttribute(
+    'aria-current',
+    'page',
+  );
+  await expect(navigation.getByRole('link', { name: 'My DAO', exact: true })).not.toHaveAttribute(
+    'aria-current',
+    'page',
+  );
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+});
 
 test('opens separate Modules and Names pages from the sidebar', async ({ page }) => {
   const reads: string[] = [];

@@ -17,7 +17,7 @@ test('reserves and cancels work, then settles disabled payroll and withdraws the
   await expect(page.getByRole('heading', { name: 'Your account' })).toBeVisible();
   const menu = page.getByRole('button', { name: 'Menu', exact: true });
   if (await menu.isVisible()) await menu.click();
-  await page.getByRole('link', { name: 'Create DAO', exact: true }).click();
+  await page.getByRole('link', { name: 'Create', exact: true }).click();
   await page.getByLabel('DAO name').fill(`Payment fixture ${Date.now()}`);
   await payCreation(page, 'custom');
   await expect(page.getByRole('heading', { name: 'Workspace overview' })).toBeVisible();

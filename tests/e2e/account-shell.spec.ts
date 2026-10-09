@@ -19,20 +19,25 @@ test('folds the side menu to icons on a wide screen', async ({ page }, testInfo)
   await fold.click();
   await expect(page.getByRole('button', { name: 'Expand menu', exact: true })).toBeVisible();
   const rail = await page.locator('.sidebar').boundingBox();
-  const label = await page.locator('nav .nav-text', { hasText: 'DAO hub' }).boundingBox();
+  const label = await page.locator('nav .nav-text', { hasText: 'Hub' }).boundingBox();
   expect(rail?.width ?? 999).toBeLessThan(90);
   expect(label?.width ?? 999).toBeLessThan(8);
-  await expect(page.getByRole('link', { name: 'DAO hub', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Hub', exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByRole('button', { name: 'Expand menu', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Expand menu', exact: true }).click();
-  await expect(page.locator('nav .nav-text', { hasText: 'DAO hub' })).toBeVisible();
+  await expect(page.locator('nav .nav-text', { hasText: 'Hub' })).toBeVisible();
   await noOverflow(page);
 });
 
 test('shows the handbook assistant without sending a question', async ({ page }) => {
   await page.goto('/docs');
-  await expect(page.getByRole('heading', { name: 'Ask the handbook', exact: true })).toBeVisible();
+  const menu = page.getByRole('button', { name: 'Menu', exact: true });
+  if (await menu.isVisible()) await menu.click();
+  await page.getByRole('button', { name: 'Help', exact: true }).click();
+  await expect(
+    page.getByRole('complementary', { name: 'Daclify Help', exact: true }),
+  ).toBeVisible();
   await expect(
     page
       .getByText('The documentation assistant is not configured on this server.', { exact: true })

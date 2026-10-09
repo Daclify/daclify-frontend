@@ -8,6 +8,7 @@ import {
   Blocks,
   AtSign,
   LayoutGrid,
+  Network,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
@@ -105,35 +106,30 @@ onMounted(() => {
       >
         Menu
       </button>
-      <button type="button" class="nav-fold" :aria-expanded="!folded" @click="toggleFold">
-        <PanelLeftClose v-if="!folded" class="nav-icon" aria-hidden="true" />
-        <PanelLeftOpen v-else class="nav-icon" aria-hidden="true" />
-        <span class="nav-text">{{ folded ? 'Expand menu' : 'Fold menu' }}</span>
-      </button>
       <nav id="primary-links" :class="{ 'mobile-open': mobileOpen }">
-        <p class="nav-label">WORKSPACE</p>
-        <RouterLink to="/" aria-label="DAO hub" @click="mobileOpen = false"
+        <RouterLink
+          :to="{ path: '/', query: { mine: '1' } }"
+          aria-label="My DAO"
+          :exact-active-class="route.query.mine === '1' ? 'router-link-exact-active' : ''"
+          :aria-current-value="route.query.mine === '1' ? 'page' : 'false'"
+          @click="mobileOpen = false"
+          ><Network class="nav-icon" aria-hidden="true" /><span class="nav-text"
+            >My DAO</span
+          ></RouterLink
+        >
+        <RouterLink
+          to="/"
+          aria-label="Hub"
+          :exact-active-class="route.query.mine === '1' ? '' : 'router-link-exact-active'"
+          :aria-current-value="route.query.mine === '1' ? 'false' : 'page'"
+          @click="mobileOpen = false"
           ><LayoutGrid class="nav-icon" aria-hidden="true" /><span class="nav-text"
-            >DAO hub</span
+            >Hub</span
           ></RouterLink
         >
-        <a
-          v-if="operator"
-          href="/daclify"
-          aria-label="Daclify DAO"
-          @click.prevent="leaveOperator('/daclify')"
-          ><Shield class="nav-icon" aria-hidden="true" /><span class="nav-text"
-            >Daclify DAO</span
-          ></a
-        >
-        <RouterLink v-else to="/daclify" aria-label="Daclify DAO" @click="mobileOpen = false"
-          ><Shield class="nav-icon" aria-hidden="true" /><span class="nav-text"
-            >Daclify DAO</span
-          ></RouterLink
-        >
-        <RouterLink to="/create" aria-label="Create DAO" @click="mobileOpen = false"
+        <RouterLink to="/create" aria-label="Create" @click="mobileOpen = false"
           ><Plus class="nav-icon" aria-hidden="true" /><span class="nav-text"
-            >Create DAO</span
+            >Create</span
           ></RouterLink
         >
         <RouterLink to="/modules" aria-label="Modules" @click="mobileOpen = false"
@@ -151,7 +147,6 @@ onMounted(() => {
             >Users</span
           ></RouterLink
         >
-        <p class="nav-label">RESOURCES</p>
         <RouterLink to="/docs" aria-label="Documentation" @click="mobileOpen = false"
           ><BookOpen class="nav-icon" aria-hidden="true" /><span class="nav-text"
             >Documentation</span
@@ -160,6 +155,20 @@ onMounted(() => {
         <RouterLink to="/status" aria-label="Status" @click="mobileOpen = false"
           ><Activity class="nav-icon" aria-hidden="true" /><span class="nav-text"
             >Status</span
+          ></RouterLink
+        >
+        <a
+          v-if="operator"
+          href="/daclify"
+          aria-label="Daclify DAO"
+          @click.prevent="leaveOperator('/daclify')"
+          ><Shield class="nav-icon" aria-hidden="true" /><span class="nav-text"
+            >Daclify DAO</span
+          ></a
+        >
+        <RouterLink v-else to="/daclify" aria-label="Daclify DAO" @click="mobileOpen = false"
+          ><Shield class="nav-icon" aria-hidden="true" /><span class="nav-text"
+            >Daclify DAO</span
           ></RouterLink
         >
         <button
@@ -175,6 +184,18 @@ onMounted(() => {
           <Bot class="nav-icon" aria-hidden="true" /><span class="nav-text">Help</span>
         </button>
       </nav>
+      <button
+        type="button"
+        class="nav-fold"
+        :aria-label="folded ? 'Expand menu' : 'Fold menu'"
+        :title="folded ? 'Expand menu' : 'Fold menu'"
+        :aria-expanded="!folded"
+        aria-controls="primary-links"
+        @click="toggleFold"
+      >
+        <PanelLeftClose v-if="!folded" class="nav-icon" aria-hidden="true" />
+        <PanelLeftOpen v-else class="nav-icon" aria-hidden="true" />
+      </button>
       <div class="sidebar-footer">
         <span class="status-dot" aria-hidden="true"></span
         ><span class="sidebar-meta"

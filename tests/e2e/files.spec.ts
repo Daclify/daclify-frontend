@@ -41,7 +41,7 @@ async function createWorkspace(page: Page, encrypted = false) {
   await page.getByRole('button', { name: 'Finish account setup' }).click();
   await expect(page.getByRole('heading', { name: 'Your account' })).toBeVisible();
   await openMenu(page);
-  await page.getByRole('link', { name: 'Create DAO', exact: true }).click();
+  await page.getByRole('link', { name: 'Create', exact: true }).click();
   await page.getByLabel('DAO name').fill(`File fixture ${Date.now()}`);
   if (encrypted) await page.getByLabel('Privacy policy').selectOption('encrypted-user-controlled');
   await payCreation(page);
@@ -88,7 +88,7 @@ test('resumes a verified public upload after a lost response and a browser reloa
   await expect(page.getByText('Vault unlocked', { exact: true })).toBeVisible();
   await expect(page).toHaveURL(/\/dao\/\d+\/documents$/);
   await openMenu(page);
-  await page.getByRole('link', { name: 'DAO hub', exact: true }).click();
+  await page.getByRole('link', { name: 'Hub', exact: true }).click();
   await expect(page).toHaveURL(/^http:\/\/127\.0\.0\.1:[0-9]+\/$/);
   await page
     .getByRole('link')

@@ -54,7 +54,7 @@ test('walletless account and real DAO creation flow', async ({ page }) => {
   const saved = await page.evaluate(() => localStorage.getItem('daclify.vault.v1'));
   expect(saved).not.toContain('PVT_');
   await openMenu(page);
-  await page.getByRole('link', { name: 'Create DAO', exact: true }).click();
+  await page.getByRole('link', { name: 'Create', exact: true }).click();
   await page.getByLabel('DAO name').fill(`Browser DAO ${Date.now()}`);
   await page
     .getByLabel('Description')
@@ -128,7 +128,7 @@ test('recovers the same account and DAO membership on a fresh browser', async ({
   const backup = await page.evaluate(() => localStorage.getItem('daclify.vault.v1'));
   if (!backup || !id) throw new Error('Recovery fixture unavailable');
   await openMenu(page);
-  await page.getByRole('link', { name: 'Create DAO', exact: true }).click();
+  await page.getByRole('link', { name: 'Create', exact: true }).click();
   const title = `Recovery DAO ${Date.now()}`;
   await page.getByLabel('DAO name').fill(title);
   await payCreation(page, 'custom');
@@ -170,7 +170,7 @@ test('keeps private JSON encrypted on chain and clears plaintext when keys lock'
   await page.getByRole('button', { name: 'Finish account setup' }).click();
   await expect(page.getByRole('heading', { name: 'Your account' })).toBeVisible();
   await openMenu(page);
-  await page.getByRole('link', { name: 'Create DAO', exact: true }).click();
+  await page.getByRole('link', { name: 'Create', exact: true }).click();
   await page.getByLabel('DAO name').fill(`Encrypted browser DAO ${Date.now()}`);
   await page.getByLabel('Privacy policy').selectOption('encrypted-user-controlled');
   await payCreation(page, 'custom');

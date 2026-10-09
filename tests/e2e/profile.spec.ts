@@ -28,7 +28,7 @@ test('publishes a public profile from the unlocked vault', async ({ page }, test
   await page.getByRole('button', { name: 'Finish account setup' }).click();
   await expect(page.getByText('Vault unlocked', { exact: true })).toBeVisible();
   await openMenu(page);
-  await page.getByRole('link', { name: 'Create DAO', exact: true }).click();
+  await page.getByRole('link', { name: 'Create', exact: true }).click();
   await page.getByLabel('DAO name').fill(`Profile DAO ${name}`);
   await page.getByLabel('Description').fill('A DAO used to publish a member profile.');
   await payCreation(page);

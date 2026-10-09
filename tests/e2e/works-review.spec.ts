@@ -33,7 +33,7 @@ test('hands work between two internal accounts, requests a revision, approves an
   test.setTimeout(45000);
   await account(page);
   await menu(page);
-  await page.getByRole('link', { name: 'Create DAO', exact: true }).click();
+  await page.getByRole('link', { name: 'Create', exact: true }).click();
   const title = `Review fixture ${Date.now()}`;
   await page.getByLabel('DAO name').fill(title);
   await payCreation(page, 'custom');
@@ -71,7 +71,7 @@ test('hands work between two internal accounts, requests a revision, approves an
     await contributor.getByRole('button', { name: 'Unlock and sign in' }).click();
     await expect(contributor.getByText('Vault unlocked', { exact: true })).toBeVisible();
     await menu(contributor);
-    await contributor.getByRole('link', { name: 'DAO hub', exact: true }).click();
+    await contributor.getByRole('link', { name: 'Hub', exact: true }).click();
     await contributor
       .getByRole('link')
       .filter({ has: contributor.getByRole('heading', { name: title, exact: true }) })

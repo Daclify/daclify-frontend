@@ -22,7 +22,7 @@ test('authors grant consent, an election and enforced admission through real sig
   await page.getByRole('button', { name: 'Finish account setup' }).click();
   await expect(page.getByRole('heading', { name: 'Your account' })).toBeVisible();
   await openMenu(page);
-  await page.getByRole('link', { name: 'Create DAO', exact: true }).click();
+  await page.getByRole('link', { name: 'Create', exact: true }).click();
   await page.getByLabel('DAO name').fill('Module authoring ' + Date.now());
   await payCreation(page, 'custom');
   const dao = /\/dao\/([0-9]+)/.exec(page.url())?.[1];
@@ -77,7 +77,7 @@ test('authors grant consent, an election and enforced admission through real sig
   await expect(page.getByText('Self-nomination recorded.', { exact: true })).toBeVisible();
   // The open vote locks membership changes; finish admission in a separate fresh DAO.
   await openMenu(page);
-  await page.getByRole('link', { name: 'Create DAO', exact: true }).click();
+  await page.getByRole('link', { name: 'Create', exact: true }).click();
   await page.getByLabel('DAO name').fill('Admission authoring ' + Date.now());
   await payCreation(page, 'custom');
   const admission = /\/dao\/([0-9]+)/.exec(page.url())?.[1];
