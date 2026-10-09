@@ -1,6 +1,10 @@
 {
   "requirements": [
     {
+      "id": "STANDALONE-FRONTEND-SDK-PACKAGES",
+      "tests": ["tests/unit/sdk-packages.test.ts"]
+    },
+    {
       "id": "VAULT-RECOVERY",
       "tests": ["tests/unit/vault.test.ts"]
     },

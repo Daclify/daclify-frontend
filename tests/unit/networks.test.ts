@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../../src/api/client';
 import { NetworkSchema } from '@daclify/core-protocol';
 import {
@@ -31,6 +31,11 @@ function memory(): Storage {
 
 const storage = memory();
 Object.assign(globalThis, { localStorage: storage, sessionStorage: memory() });
+
+beforeEach(() => {
+  for (const key of ['VITE_NETWORK', 'VITE_API_ORIGIN', 'VITE_API_PRODUCTION', 'VITE_API_TESTNET'])
+    vi.stubEnv(key, undefined);
+});
 
 afterEach(() => {
   vi.unstubAllGlobals();
