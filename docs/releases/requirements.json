@@ -42,7 +42,11 @@
     },
     {
       "id": "DEPLOYED-NETWORK-CONFIGURATION",
-      "tests": ["tests/unit/networks.test.ts", "tests/e2e/networks.spec.ts"]
+      "tests": [
+        "tests/unit/networks.test.ts",
+        "tests/e2e/networks.spec.ts",
+        "tests/e2e/network-lock.spec.ts"
+      ]
     }
   ]
 }

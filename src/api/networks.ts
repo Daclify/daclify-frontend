@@ -4,6 +4,7 @@ import {
   daoPaymentKey,
   type DaoRef,
   type DirectoryEntry,
+  type Network,
 } from '@daclify/core-protocol';
 let operator: DirectoryEntry | null = null;
 export function currentOperator(): DirectoryEntry | null {
@@ -64,15 +65,30 @@ export interface DeployedEndpoints {
 
 let endpoints: DeployedEndpoints | null = null;
 let developmentOrigin: string | null = null;
+let fixedNetwork: DeployedNetwork | null = null;
+let fixedOrigin: string | null = null;
+
+export function deploymentNetwork(): DeployedNetwork | null {
+  return fixedNetwork;
+}
+
+export function matchesDeployment(network: Network): boolean {
+  return (
+    !fixedNetwork || network.environment === (fixedNetwork === 'production' ? 'mainnet' : 'testnet')
+  );
+}
 
 export function configureNetworks(value: DeployedEndpoints | null): void {
   endpoints = value;
   developmentOrigin = null;
+  fixedNetwork = null;
+  fixedOrigin = null;
   operator = null;
   rejectedOperator = false;
 }
 
 export function selectedNetwork(): DeployedNetwork | null {
+  if (fixedNetwork) return fixedNetwork;
   if (!endpoints) return null;
   const stored = globalThis.localStorage.getItem('daclify.network');
   if (stored === 'testnet' || stored === 'production') return stored;
@@ -80,6 +96,7 @@ export function selectedNetwork(): DeployedNetwork | null {
 }
 
 export function chooseNetwork(name: DeployedNetwork): void {
+  if (fixedNetwork) throw new Error('NETWORK_LOCKED');
   if (!endpoints) throw new Error('NETWORKS_UNCONFIGURED');
   globalThis.localStorage.setItem('daclify.network', name);
   closeOperator();
@@ -98,6 +115,7 @@ export function resolveApiUrl(path: string): string {
   return resolveCentralApiUrl(path);
 }
 export function resolveCentralApiUrl(path: string): string {
+  if (fixedOrigin) return `${fixedOrigin}${path}`;
   const selected = selectedNetwork();
   if (!selected || !endpoints) return `${developmentOrigin ?? ''}${path}`;
   return `${endpoints[selected]}${path}`;
@@ -116,6 +134,18 @@ export function parseNetworkFile(value: unknown): DeployedEndpoints | null {
 }
 
 export async function loadDeployedNetworks(): Promise<void> {
+  const fixed = viteValue('VITE_NETWORK');
+  if (fixed) {
+    if (fixed !== 'testnet' && fixed !== 'production') throw new Error('NETWORKS_INVALID');
+    const origin = publicHttpsOrigin(
+      viteValue(fixed === 'testnet' ? 'VITE_API_TESTNET' : 'VITE_API_PRODUCTION'),
+    );
+    configureNetworks(null);
+    fixedNetwork = fixed;
+    fixedOrigin = origin;
+    await restoreOperator();
+    return;
+  }
   const development = import.meta.env.DEV ? viteValue('VITE_API_ORIGIN') : undefined;
   if (development) {
     const origin = publicHttpsOrigin(development);

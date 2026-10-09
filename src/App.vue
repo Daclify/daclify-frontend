@@ -20,7 +20,9 @@ import {
   currentOperator,
   closeOperator,
   type DeployedNetwork,
+  deploymentNetwork,
 } from './api/networks';
+const deployment = deploymentNetwork();
 const operator = currentOperator();
 function leaveOperator(destination = '/') {
   lockVault();
@@ -161,7 +163,7 @@ onMounted(() => {
         >
         <div class="topbar-account">
           <div
-            v-if="networkChoice"
+            v-if="networkChoice && !deployment"
             class="network-switch"
             role="group"
             aria-label="Service network"
@@ -181,6 +183,9 @@ onMounted(() => {
               Testnet
             </button>
           </div>
+          <span v-else-if="deployment" class="pill" role="status" aria-label="Deployment network">{{
+            deployment === 'testnet' ? 'Testnet' : 'Production'
+          }}</span>
           <span class="pill" :class="{ success: vaultUnlocked }">{{
             vaultUnlocked ? 'Vault unlocked' : 'Vault locked'
           }}</span
@@ -216,7 +221,14 @@ onMounted(() => {
           <button type="button" @click="reloadPage">Reload page</button
           ><RouterLink class="button secondary" to="/">Back to DAO hub</RouterLink>
         </section>
-        <RouterView v-else />
+        <RouterView v-else-if="!deployment || state.network" />
+        <p v-else class="notice" role="status">
+          {{
+            state.loading
+              ? 'Verifying the deployment network…'
+              : 'The workspace is unavailable until its network connection is verified.'
+          }}
+        </p>
       </main>
       <footer class="page-footer">
         <span>Built for communities that make things happen.</span

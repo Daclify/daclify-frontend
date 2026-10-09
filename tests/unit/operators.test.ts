@@ -87,6 +87,29 @@ it('drops a removed registration on reload without sending credentials to the ol
   ).toBe(true);
 });
 
+it('does not restore an operator from a central service outside the deployment network', async () => {
+  values.set(
+    'daclify.operator',
+    JSON.stringify({ entry, network: 'testnet', expires: Date.now() + 3600000 }),
+  );
+  vi.stubEnv('DEV', false);
+  vi.stubEnv('VITE_NETWORK', 'testnet');
+  vi.stubEnv('VITE_API_TESTNET', 'https://central.example');
+  vi.stubEnv('VITE_API_PRODUCTION', 'https://mainnet.example');
+  const fetch = vi
+    .spyOn(globalThis, 'fetch')
+    .mockResolvedValue(Response.json({ ...source, environment: 'mainnet' }));
+
+  await loadDeployedNetworks();
+
+  expect(currentOperator()).toBeNull();
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(fetch).toHaveBeenCalledWith(
+    'https://central.example/v1/network',
+    expect.objectContaining({ credentials: 'omit' }),
+  );
+});
+
 it('requires explicit Hub selection before another DAO can be signed or read', () => {
   approveOperator(entry);
   expect(() => assertOperatorDao(entry.reference)).not.toThrow();

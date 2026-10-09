@@ -66,7 +66,13 @@ import {
   type EvmRelay,
 } from '@daclify/core-protocol';
 import type { instruction } from '@daclify/core-protocol/sdk';
-import { csrfStorageKey, resolveApiUrl, currentOperator, assertOperatorDao } from './networks';
+import {
+  csrfStorageKey,
+  resolveApiUrl,
+  currentOperator,
+  assertOperatorDao,
+  matchesDeployment,
+} from './networks';
 import { AuthChallengePaths, validateAuthChallenge } from '../auth/audience';
 import {
   HostingRoutes,
@@ -152,11 +158,13 @@ async function request<T>(
     throw new ApiFailure(error.success ? error.data.code : 'SERVICE_UNAVAILABLE');
   }
   const result = schema.parse(body);
-  if (operator && path === ApiRoutes.network.path) {
+  if (path === ApiRoutes.network.path) {
     const network = ApiRoutes.network.response.parse(result);
+    if (!matchesDeployment(network)) throw new ApiFailure('NETWORK_MISMATCH');
     if (
-      network.chainId !== operator.reference.chainId ||
-      network.runtime !== operator.reference.contract
+      operator &&
+      (network.chainId !== operator.reference.chainId ||
+        network.runtime !== operator.reference.contract)
     )
       throw new ApiFailure('OPERATOR_DAO');
   }
@@ -884,6 +892,8 @@ export function friendlyError(error: unknown): string {
   if (error instanceof ApiFailure) {
     const messages: Record<string, string> = {
       ...ContractFailureMessages,
+      NETWORK_MISMATCH:
+        'The connected service is using a different network from this app. Ask the operator to correct the API configuration.',
       ASSET_UNAVAILABLE:
         'The token contract, symbol or precision is not available on this chain. Correct the treasury asset before preparing payment.',
       RESPONSE_INVALID:

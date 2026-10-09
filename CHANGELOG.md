@@ -10,6 +10,8 @@ Consumed the updated module packet with failed-vote migration handling and the r
 
 Deployed API origins now use `VITE_API_PRODUCTION` and `VITE_API_TESTNET` before the legacy network file, removing manual edits after the build. Incomplete or invalid settings fail closed; local proxy mode and the direct development override remain supported. Added a production env example and updated Netlify/local deployment instructions.
 
+`VITE_NETWORK=testnet|production` locks a deployment to its matching API origin, ignoring saved choices and hiding the switch. Mismatched API environments block workspace screens and independent-operator restoration. Unlocked local/legacy setups remain supported.
+
 ## 0.7.0-alpha.1 — Shared hosting and connected payments
 
 Applied AGPL-3.0-only to first-party code, contracts, SDKs and documentation; preserved third-party licenses. Development packages include the license and source guidance.

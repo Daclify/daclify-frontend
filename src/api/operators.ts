@@ -10,7 +10,7 @@ import {
 } from '@daclify/core-protocol';
 import { RuntimeCodeHash, RuntimeRawAbiHash } from '@daclify/core-protocol/sdk';
 import { z } from 'zod';
-import { approveOperator, resolveCentralApiUrl } from './networks';
+import { approveOperator, resolveCentralApiUrl, matchesDeployment } from './networks';
 export async function validateOperator(value: DirectoryEntry, source: Network): Promise<void> {
   const entry = DirectoryEntrySchema.parse(value);
   if (
@@ -99,6 +99,7 @@ export async function verifyRegisteredOperator(value: DirectoryEntry): Promise<D
     return response.json();
   };
   const source = NetworkSchema.parse(await publicRead('/v1/network'));
+  if (!matchesDeployment(source)) throw new Error('NETWORK_MISMATCH');
   let after: string | undefined, entry: DirectoryEntry | undefined;
   const seen = new Set<string>();
   do {

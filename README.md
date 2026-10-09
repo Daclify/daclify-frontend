@@ -33,18 +33,18 @@ The visual system and its checks are described in [docs/ui/ciq-alignment.md](doc
 
 Vite serves the dev build at `http://127.0.0.1:5178`. With no frontend API environment settings, `public/networks.json` keeps `{ "mode": "local" }`: API calls use relative `/v1` URLs, proxied to `http://127.0.0.1:3008`, and the service-network switch stays hidden. Start the core API before expecting those calls to succeed. The theme browser check does not need the API. Other browser checks do.
 
-For a static deployment, copy `.env.production.example` to the ignored `.env.production`, confirm both public HTTPS API origins, then build:
+For a production static deployment, copy `.env.production.example` to the ignored `.env.production`, confirm the public HTTPS API origin, then build:
 
 ```dotenv
+VITE_NETWORK=production
 VITE_API_PRODUCTION=https://api.daclify.com
-VITE_API_TESTNET=https://testnet.api.daclify.com
 ```
 
-The switch then offers Production and Testnet. The choice is stored in `localStorage` at `daclify.network` and defaults to production. Each origin must be https, without a username, password, path, query, or hash. Both APIs must set `FRONTEND_ORIGIN` to this frontend’s origin, or the browser calls are rejected. Session cookies on those https APIs are `SameSite=None` so the cross-origin call can include them. CSRF tokens are stored per selected network.
+For the testnet frontend, set `VITE_NETWORK=testnet` and `VITE_API_TESTNET=https://testnet.api.daclify.com` in `.env.testnet`, then use `npm run build -- --mode testnet`. A fixed deployment requires only its matching API origin, ignores saved browser selections and the direct development override, and replaces the switch with a network badge. A mismatched API environment keeps workspace screens closed; production expects the API's `mainnet` environment. Current independent-operator registration checks must also match the fixed environment.
 
-Both deployment env settings take precedence over `networks.json`; incomplete or invalid settings fail closed. Leave the committed local-mode file unchanged. Existing deployments without env settings can still provide the two-field network file. Vite embeds `VITE_*` settings during the build: rebuild and redeploy after changing them, and never put secrets there. See [Vite environment setup](https://vite.dev/guide/env-and-mode).
+Every configured origin must be HTTPS without credentials, path, query or hash. The API must allow the actual frontend origin. Session cookies remain scoped to their API host and CSRF tokens to the network. Without `VITE_NETWORK`, configuring both origins retains the legacy Production/Testnet switch and saved browser choice, defaulting to Production; with all env settings absent, local proxy/file behavior remains available. Invalid lock values or missing matching origins fail closed. Leave the committed local-mode file unchanged. Vite embeds `VITE_*` settings during the build: rebuild/redeploy after edits, and never put secrets there. See [Vite environment setup](https://vite.dev/guide/env-and-mode).
 
-To develop locally against a hosted testnet API, set the development-only `VITE_API_ORIGIN` in `.env.testnet` and run `npm run dev -- --mode testnet`. This single HTTPS origin takes precedence during development and keeps CSRF storage separate. Optional `DACLIFY_TEST_HOST`, `DACLIFY_TEST_HTTPS_CERT` and `DACLIFY_TEST_HTTPS_KEY` support a local trusted HTTPS hostname. The API must explicitly allow that browser origin. Follow core's [same-site login setup](https://github.com/Daclify/daclify-backend-core/blob/main/docs/development.md#local-frontend-with-a-hosted-testnet-api); HTTP localhost alone may lose cross-site login cookies.
+To develop locally against a hosted testnet API without a deployment lock, leave `VITE_NETWORK` unset, set the development-only `VITE_API_ORIGIN` in `.env.testnet` and run `npm run dev -- --mode testnet`. This single HTTPS origin takes precedence during development and keeps CSRF storage separate. Optional `DACLIFY_TEST_HOST`, `DACLIFY_TEST_HTTPS_CERT` and `DACLIFY_TEST_HTTPS_KEY` support a local trusted HTTPS hostname. The API must explicitly allow that browser origin. Follow core's [same-site login setup](https://github.com/Daclify/daclify-backend-core/blob/dev/docs/development.md#local-frontend-with-a-hosted-testnet-api); HTTP localhost alone may lose cross-site login cookies.
 
 Build and verify on the Mac. All three GitHub verification workflows are manual-only; pushing does not start them. For Netlify, configure the public API settings before building, then upload `dist` with `netlify deploy --no-build --dir=dist --site=YOUR_NETLIFY_PROJECT_ID`. No output-file edit is needed. The committed `_redirects` supplies SPA routes. Keep Netlify automatic Git builds stopped or unconfigured. See the [Netlify dev guide](docs/netlify-dev.md).
 
@@ -55,6 +55,8 @@ The account screen lists receipts from `GET /v1/billing/receipts` and can start 
 The amount is the Stripe Price configured on the API. This repository does not contain a price.
 
 ## Checks
+
+`npx playwright test --config playwright.network-lock.config.ts` covers locked testnet selection, reload, the hidden switch and wrong-network workspace blocking on desktop/mobile with HTTP fixtures. It starts its own Vite server on 5308 and performs no live chain or payment operation.
 
 Node 24.21 or later, and npm 11.19 or later.
 

@@ -2,16 +2,16 @@
 
 Use a separate Netlify project for `https://testnet.app.daclify.com`. Build locally from `dev` and upload the prebuilt `dist` directory. This follows the chosen local-build workflow. The frontend currently consumes ignored tarballs from its two private sibling repositories; importing only the frontend repository into Netlify does not provide those dependencies.
 
-`dev` selects source code, not the blockchain. The current deployed app offers Production and Testnet and defaults to Production in a new browser. Select **Testnet** before signing in or taking actions. A testnet hostname alone does not force testnet. A production connection error before switching is expected if that API is not deployed yet.
+`dev` selects source code; `VITE_NETWORK=testnet` selects and locks the deployed app's network. Saved Production choices are ignored, the network switch is hidden and only the testnet API setting is required. The app shows a Testnet badge and keeps workspace screens closed if the API reports another environment.
 
 ## Build on the Mac
 
 Keep core, modules and frontend sibling checkouts on `dev`, using Node 24.21+ in Node 24 and npm 11.19+ in npm 11. For a fresh checkout, run core's `node tools/bootstrap.ts` first. When producer SDK/module source changes, rebuild and reinstall the affected packages through that bootstrap before building the frontend.
 
-From `daclify-frontend`, copy `.env.production.example` to the ignored `.env.production` for a new setup. Confirm these public API settings point at the intended services:
+From `daclify-frontend`, set these public values in the ignored frontend `.env.testnet`, confirming the API address points at the intended service:
 
 ```dotenv
-VITE_API_PRODUCTION=https://api.daclify.com
+VITE_NETWORK=testnet
 VITE_API_TESTNET=https://testnet.api.daclify.com
 ```
 
@@ -21,12 +21,12 @@ After updating the clean sibling checkouts:
 git switch dev
 git pull --ff-only origin dev
 npm run verify
-npm run build
+npm run build -- --mode testnet
 ```
 
-The build embeds both API origins; no `dist/networks.json` edit is needed. These settings take precedence over the existing network file. Set both: incomplete settings and URLs containing HTTP, credentials, paths, queries or fragments are rejected. Leave tracked `public/networks.json` in local mode for development and older deployments.
+The build embeds the locked network and its API origin; no `dist/networks.json` edit is needed. The lock takes precedence over direct development overrides, saved selections and the existing network file. Invalid lock values, missing selected origins and URLs containing HTTP, credentials, paths, queries or fragments are rejected. Leave tracked `public/networks.json` in local mode for development and older deployments.
 
-For a separate mode file, put both public settings in `.env.testnet` and use `npm run build -- --mode testnet`. `VITE_API_ORIGIN` remains development-only and is ignored by static builds. Restart a development server or rebuild/redeploy static files after env changes. Editing Netlify's environment settings after a local build does not modify the uploaded bundle. Never upload backend environment files or place provider secrets in `VITE_*` settings. Existing `dist/_redirects` provides the Vue route fallback. [Vite environment files and build modes](https://vite.dev/guide/env-and-mode).
+For the separate mainnet project, use frontend `.env.production` with `VITE_NETWORK=production` and `VITE_API_PRODUCTION=https://api.daclify.com`, then run `npm run build`. Production expects the API to report `mainnet`. Restart a development server or rebuild/redeploy static files after env changes. Editing Netlify's environment settings after a local build does not modify the uploaded bundle. Never upload backend environment files or place provider secrets in `VITE_*` settings. Existing `dist/_redirects` provides the Vue route fallback. [Vite environment files and build modes](https://vite.dev/guide/env-and-mode).
 
 ## Create the separate project and domain
 
@@ -61,4 +61,4 @@ netlify deploy --no-build --dir=dist --site=YOUR_DEV_PROJECT_ID --prod
 
 Check the project ID carefully. `--prod` publishes the primary URL of **that project**, so the dedicated dev project stays on the testnet domain; this flag does not select mainnet. `--no-build` prevents the CLI from rebuilding the already prepared directory. Pushing `dev` to GitHub does not upload a manual Netlify deployment. [CLI deploy flags](https://cli.netlify.com/commands/deploy/).
 
-After publishing, open `/account` and `/docs` directly, select Testnet and confirm `/status` and browser network requests report the expected API/chain. Env-configured builds do not request `/networks.json`. Then qualify actual provider login, refresh, logout and payment returns on the custom domain. A draft URL needs separate API/provider authorization and is unsuitable as the default login origin.
+After publishing, open `/account` and `/docs` directly, confirm the Testnet badge and absent switch, then check `/status` and browser network requests report the expected API/chain. Locked builds do not request `/networks.json`. Then qualify actual provider login, refresh, logout and payment returns on the custom domain. A draft URL needs separate API/provider authorization and is unsuitable as the default login origin.
