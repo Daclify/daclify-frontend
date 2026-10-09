@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased — documentation assistant
+
+Consume the refreshed core handbook with Daclify provider/Telegram setup and unambiguous hosting examples. Explain the assistant's docs-only scope, evidence checks and provider privacy. Failed status requests no longer imply missing configuration. Desktop/mobile regressions cover plain-text answers, source links and status/refusal behavior.
+
 ## 0.8.0-alpha.1 development candidate — Resources and Archive
 
 Resources presents observed per-payer RAM, actual enforcement, native/card acquisition, separate pinned storage agreements, approved capacity, grace and curation. Archive flows include export consent, verified backup download, approval/revocation, constrained pruning, history recovery and exact restoration. Treasury offers full-claim selection for emergency exits; partial withdrawals still need ordinary RAM.

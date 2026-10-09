@@ -12,6 +12,8 @@ Edit product text in the owning backend repo's `docs/guides/topics.json`, regene
 
 ## Presentation and recovery
 
+The assistant uses backend-configured models to answer from the bundled handbook and rejects unrelated or unsupported requests. `/docs/docs-assistant` explains its scope, provider privacy, limits and Telegram commands/replies. App AI needs no frontend provider key; group support additionally requires the API webhook and an approved-group allowlist. See the [operator runbook](../../daclify-backend-core/docs/operations/docs-assistant.md). A configured indicator is not a live-provider qualification. The UI keeps failed status requests distinct from missing configuration and renders responses as plain text with a validated topic link.
+
 [Visual system](ui/ciq-alignment.md) documents the supplied CIQ/MIQ design source and Daclify adaptations. [Original visual plan](superpowers/plans/2026-10-05-ciq-visual-alignment.md) is a historical design record.
 
 The browser owns user-controlled signing/decryption keys and keeps only encrypted local envelopes at rest. Provider sessions and wallet-only access do not unlock private content. Original-kit recovery, separate wallet approval, stale-account handling and creation gating are covered by unit/crypto and desktop/mobile recovery regressions. One user's kit never restores other members' keys. See core's [recovery runbook](https://github.com/Daclify/daclify-backend-core/blob/main/docs/disaster-recovery.md) for per-user requirements and lost social pairings.

@@ -43,15 +43,16 @@ async function ask() {
   <section class="panel docs-assistant" aria-label="Handbook assistant">
     <h2>Ask the handbook</h2>
     <p class="field-help">
-      A decision model picks one guide, then a language model answers from that guide. It does not
-      see your vault, balances, or DAO records.
+      Ask about Daclify or its documented setup. Answers use the bundled handbook and are checked
+      against the selected guide. Review the source; AI can make mistakes. The assistant cannot see
+      your vault, balances, or DAO records. Do not include secrets or private content.
     </p>
     <p v-if="error" class="alert" role="alert">{{ error }}</p>
     <p v-if="configured === undefined && !error" role="status">Checking the handbook assistant…</p>
-    <p v-else-if="!configured" class="notice">
+    <p v-else-if="configured === false" class="notice">
       The documentation assistant is not configured on this server.
     </p>
-    <form v-else @submit.prevent="ask">
+    <form v-else-if="configured === true" @submit.prevent="ask">
       <label for="docs-question">Question</label>
       <textarea
         id="docs-question"
