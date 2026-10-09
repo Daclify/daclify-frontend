@@ -966,6 +966,8 @@ export function friendlyError(error: unknown): string {
       ARCHIVE_UNAVAILABLE: 'Archive preview is not configured on this operator.',
       RESOURCE_UNAVAILABLE: 'RAM reporting is not configured on this operator.',
       RESOURCE_UNQUALIFIED: 'This deployment does not match the qualified RAM accounting code.',
+      RAM_MIGRATION_ACTIVE:
+        'The operator is completing the RAM migration. Totals will be available after all contracts are verified.',
       RESOURCE_SCOPE_LIMIT:
         'The RAM report exceeded its complete-read bound. Ask the operator to review the deployment.',
       RESOURCE_SOURCE_CHANGED: 'A contract changed during the RAM read. Refresh the report.',
