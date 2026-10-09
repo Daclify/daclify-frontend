@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — Resources and Archive
+## 0.8.0-alpha.1 development candidate — Resources and Archive
 
 Resources presents observed per-payer RAM, actual enforcement, native/card acquisition, separate pinned storage agreements, approved capacity, grace and curation. Archive flows include export consent, verified backup download, approval/revocation, constrained pruning, history recovery and exact restoration. Treasury offers full-claim selection for emergency exits; partial withdrawals still need ordinary RAM.
 
