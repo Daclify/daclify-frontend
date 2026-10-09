@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased — Resources and Archive
+
+Resources presents observed per-payer RAM, actual enforcement, native/card acquisition, separate pinned storage agreements, approved capacity, grace and curation. Archive flows include export consent, verified backup download, approval/revocation, constrained pruning, history recovery and exact restoration. Treasury offers full-claim selection for emergency exits; partial withdrawals still need ordinary RAM.
+
+Status shows shared gateway allowance and operational gates. Context changes clear stale resource reports. Producer packages and versioned help remain coordinated development artifacts; live providers, public rollout and immutable release qualification are still gated.
+
 ## 0.7.0-alpha.1 — Shared hosting and connected payments
 
 Applied AGPL-3.0-only to first-party code, contracts, SDKs and documentation; preserved third-party licenses. Development packages include the license and source guidance.
