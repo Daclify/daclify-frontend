@@ -1,6 +1,10 @@
 {
   "requirements": [
     {
+      "id": "INSTALLABLE-PWA",
+      "tests": ["tests/e2e/pwa.spec.ts"]
+    },
+    {
       "id": "MODULE-DETAIL-DESIGN",
       "tests": ["tests/e2e/module-cards.spec.ts", "tests/e2e/marketplace.spec.ts"]
     },
