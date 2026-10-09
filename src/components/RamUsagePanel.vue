@@ -148,8 +148,8 @@ onBeforeUnmount(() => sequence++);
         <strong>{{ bytes(usage.completionHolds.bytes) }}</strong> physically occupied by
         {{ usage.completionHolds.rows }} core obligation and claim completion holds. These bytes are
         already included in retained records, not an extra charge. Full claims can consume their
-        receipt hold; partial withdrawals leave it reserved. Token costs and quota enforcement still
-        require qualification.
+        receipt hold; partial withdrawals require ordinary capacity and leave it reserved. Public
+        token behavior and complete release qualification remain separate checks.
       </p>
       <ul class="plain-list">
         <li v-for="payer in usage.payers" :key="payer.payer">
@@ -172,8 +172,13 @@ onBeforeUnmount(() => sequence++);
           <p v-if="payer.allocation">
             Recorded allocation: activity {{ bytes(payer.allocation.activity) }} · identity
             {{ bytes(payer.allocation.identity) }} · completion budget
-            {{ bytes(payer.allocation.completion) }}. Quota enforcement is disabled; this is not a
-            guarantee that outstanding work has reserved completion RAM.
+            {{ bytes(payer.allocation.completion) }}.
+            {{
+              usage.enforcement === 'active'
+                ? 'DAO growth limits are active. Ordinary writes cannot use the additional completion budget.'
+                : 'DAO growth limits are disabled on this deployment.'
+            }}
+            Recorded budgets alone do not prove that every outstanding workflow has a physical hold.
           </p>
           <p
             v-if="payer.entitlement && payer.entitlement.identity_per_slot !== '0'"

@@ -407,7 +407,7 @@ test('previews eligibility, requires export consent and downloads a verified rec
       json: ApiRoutes.ramUsage.response.parse({
         dao,
         observation: active ? 'active' : 'disabled',
-        enforcement: 'disabled',
+        enforcement: active ? 'active' : 'disabled',
         completionHolds: active ? { rows: 1, bytes: '883' } : null,
         policy: null,
         totalObservedBytes: active ? '2383' : null,
@@ -426,6 +426,9 @@ test('previews eligibility, requires export consent and downloads a verified rec
               ? { identity: '1000', activity: '200', retained: '1183', platform: '0' }
               : null,
             purchasedBytes: '4096',
+            allocation: active
+              ? { activity: '262144', identity: '20480', completion: '32768' }
+              : null,
             entitlement: { policy_revision: '1', identity_per_slot: '2048', slots: 10 },
             globalQuotaBytes: '1000000',
             globalUsedBytes: '10000',
@@ -676,6 +679,7 @@ test('previews eligibility, requires export consent and downloads a verified rec
     }),
   ).toBeVisible();
   await expect(page.getByText(/physically occupied by 1 core obligation/)).toBeVisible();
+  await expect(page.getByText('DAO growth limits are active.', { exact: false })).toBeVisible();
   const preview = page.getByRole('button', { name: 'Preview archive eligibility', exact: true }),
     select = page.getByLabel('Finalized ballot', { exact: true });
   await expect(preview).toBeDisabled();
