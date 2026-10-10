@@ -117,7 +117,7 @@ const nameFee = computed(() => {
 const basicTier = computed(() => service.value?.tiers.find((tier) => tier.kind === 'basic'));
 const notice = computed(() => {
   if (route.query.names === 'submitted') {
-    return 'The card payment was submitted. The Telos account appears after the chain records the sale.';
+    return 'Payment submitted. Your account is created after payment verification. Keep your receipt; contact support if creation is delayed.';
   }
   if (route.query.names === 'cancelled')
     return 'The card payment was cancelled. No account was created.';
@@ -394,6 +394,21 @@ async function pay() {
                 : 'reference price'
             }}
           </p>
+          <p v-if="quote.kind === 'basic' && quote.party === 'first-party'" class="field-help">
+            Prices include the RAM, CPU and NET shown below. Card and TLOS totals reflect their
+            payment costs and update with current resource and TLOS prices.
+          </p>
+          <p
+            v-if="
+              service.cardPayments &&
+              quote.kind === 'basic' &&
+              quote.party === 'first-party' &&
+              quote.usdCents === 0
+            "
+            class="field-help"
+          >
+            A card price is temporarily unavailable. Native wallet checkout is available below.
+          </p>
           <p v-if="!service.cardPayments" class="field-help">
             Card checkout is not enabled on this deployment. Use the native wallet option after
             saving your keys.
@@ -527,7 +542,12 @@ async function pay() {
             <article v-if="basicTier" class="offer-group">
               <h2>Basic name</h2>
               <p class="name-price">
-                {{ basicTier.usdCents > 0 ? usd(basicTier.usdCents) : basicTier.price }}
+                {{
+                  basicTier.usdCents > 0
+                    ? usd(basicTier.usdCents) +
+                      (service.cardPayments ? ' by card' : ' reference price')
+                    : basicTier.price
+                }}
               </p>
               <p v-if="basicTier.tlosQuote">
                 {{ basicTier.tlosQuote }} in TLOS, including a
@@ -545,7 +565,10 @@ async function pay() {
                 <li class="pill">{{ basicTier.netStake }} NET</li>
                 <li class="pill">{{ ramLabel(basicTier.ramBytes) }} of RAM</li>
               </ul>
-              <p>A basic name is 12 characters and has no dot.</p>
+              <p>
+                A basic name is 12 characters and has no dot. Totals include account resources and
+                adjust with current resource and TLOS prices.
+              </p>
             </article>
             <article class="offer-group">
               <h2>Premium name</h2>

@@ -112,6 +112,9 @@ test('name purchase places quote and key backup before optional listings', async
   await expect(page.locator('.quote-card')).toContainText(priceQuote.accountName);
   await expect(page.locator('.quote-card')).toContainText('Card checkout is not enabled');
   await expect(
+    page.getByText('Prices include the RAM, CPU and NET shown below.', { exact: false }),
+  ).toBeVisible();
+  await expect(
     page.getByRole('heading', { name: 'Secure your new account', exact: true }),
   ).toBeVisible();
   await expect(
