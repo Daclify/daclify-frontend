@@ -124,6 +124,28 @@ test('name purchase places quote and key backup before optional listings', async
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: test.info().outputPath('name-purchase.png'), fullPage: true });
 });
+test('a third-party buyer sees resource deductions and commission on the full sale price', async ({
+  page,
+}) => {
+  await page.route('**/v1/names/quote?*', (route) =>
+    route.fulfill({
+      json: NameQuoteSchema.parse({
+        ...priceQuote,
+        party: 'third-party',
+        seller: 'bob',
+        platformBps: 500,
+        listed: true,
+      }),
+    }),
+  );
+  await page.goto('/names');
+  await page.getByLabel('Telos account name', { exact: true }).fill(priceQuote.accountName);
+  await expect(page.locator('.quote-card')).toContainText('Your total includes account resources.');
+  await expect(page.locator('.quote-card')).toContainText(
+    /minus actual RAM, CPU and NET costs and a 5% fee on the full price/,
+  );
+  await expect(page.locator('.quote-card')).toContainText('Third-party names currently use TLOS.');
+});
 test('a delayed clipboard result cannot mark replacement keys as copied', async ({ page }) => {
   await page.route('**/v1/names/quote?*', (route) => route.fulfill({ json: priceQuote }));
   await page.goto('/names');

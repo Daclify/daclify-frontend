@@ -1,0 +1,39 @@
+{
+  "verifiedAt": "2026-10-10T15:37:57.072Z",
+  "url": "https://testnet.app.daclify.com/names",
+  "scope": "Public deployed frontend and real API; unsigned export only, no wallet signing or blockchain broadcast",
+  "reports": [
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "basicMinimum": "71.5910 TLOS",
+      "usdReferenceMinimumCents": 142,
+      "sellerResourceDeductionVisible": true,
+      "commissionOnFullSaleVisible": true,
+      "defaultAtFloor": true,
+      "belowFloorExportRejected": true,
+      "exactFloorUnsignedExportAccepted": true,
+      "accessibilityViolations": 0,
+      "pageErrors": 0,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "basicMinimum": "71.5910 TLOS",
+      "usdReferenceMinimumCents": 142,
+      "sellerResourceDeductionVisible": true,
+      "commissionOnFullSaleVisible": true,
+      "defaultAtFloor": true,
+      "belowFloorExportRejected": true,
+      "exactFloorUnsignedExportAccepted": true,
+      "accessibilityViolations": 0,
+      "pageErrors": 0,
+      "horizontalOverflow": false
+    }
+  ]
+}
