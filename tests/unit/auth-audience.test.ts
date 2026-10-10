@@ -1,12 +1,24 @@
 import { expect, it } from 'vitest';
 import { PrivateKey } from '@wharfkit/antelope';
+import { generateKeyPairSync } from 'node:crypto';
+import { EncryptionPublicKeySchema } from '@daclify/core-protocol';
 import { validateAuthChallenge } from '../../src/auth/audience';
 const origin = 'https://app.example',
   audience = 'https://api.example',
   id = '00000000-0000-4000-8000-000000000001',
   expires = new Date(Date.now() + 300000).toISOString(),
   key = PrivateKey.generate('K1').toPublic().toString();
-it('rejects signing a login challenge issued for another API or key', () => {
+const jwk = generateKeyPairSync('ec', { namedCurve: 'prime256v1' }).publicKey.export({
+  format: 'jwk',
+});
+const encryptionKey = EncryptionPublicKeySchema.parse({
+  kty: 'EC',
+  crv: 'P-256',
+  x: jwk.x,
+  y: jwk.y,
+});
+const identity = { signingKey: key, encryptionKey };
+it('refuses legacy login challenges before signing', () => {
   const message = {
     domain: 'daclify.login.v2',
     origin,
@@ -15,18 +27,32 @@ it('rejects signing a login challenge issued for another API or key', () => {
     signingKey: key,
     expires,
   };
-  const body = { id, expires, message: JSON.stringify(message) };
-  expect(() =>
-    validateAuthChallenge('/v1/auth/challenge', body, { signingKey: key }, origin, audience),
-  ).not.toThrow();
   expect(() =>
     validateAuthChallenge(
       '/v1/auth/challenge',
-      body,
-      { signingKey: key },
+      { id, expires, message: JSON.stringify(message) },
+      identity,
       origin,
-      'https://other.example',
+      audience,
     ),
+  ).toThrow();
+});
+it('rejects signing a login challenge issued for another API or key', () => {
+  const message = {
+    domain: 'daclify.login.v3',
+    encryptionKey,
+    origin,
+    audience,
+    challenge: id,
+    signingKey: key,
+    expires,
+  };
+  const body = { id, expires, message: JSON.stringify(message) };
+  expect(() =>
+    validateAuthChallenge('/v1/auth/challenge', body, identity, origin, audience),
+  ).not.toThrow();
+  expect(() =>
+    validateAuthChallenge('/v1/auth/challenge', body, identity, origin, 'https://other.example'),
   ).toThrow('AUTH_AUDIENCE');
   expect(() =>
     validateAuthChallenge(
@@ -38,9 +64,53 @@ it('rejects signing a login challenge issued for another API or key', () => {
           signingKey: PrivateKey.generate('K1').toPublic().toString(),
         }),
       },
-      { signingKey: key },
+      identity,
       origin,
       audience,
+    ),
+  ).toThrow();
+});
+it('rejects an encryption key substitution or changed challenge identity before signing', () => {
+  const other = generateKeyPairSync('ec', { namedCurve: 'prime256v1' }).publicKey.export({
+    format: 'jwk',
+  });
+  const replacement = EncryptionPublicKeySchema.parse({
+    kty: 'EC',
+    crv: 'P-256',
+    x: other.x,
+    y: other.y,
+  });
+  const message = {
+    ...identity,
+    domain: 'daclify.login.v3',
+    origin,
+    audience,
+    challenge: id,
+    expires,
+  };
+  for (const changed of [
+    { ...message, encryptionKey: replacement },
+    { ...message, challenge: '00000000-0000-4000-8000-000000000002' },
+    { ...message, expires: new Date(Date.parse(expires) + 1).toISOString() },
+  ]) {
+    expect(() =>
+      validateAuthChallenge(
+        '/v1/auth/challenge',
+        { id, expires, message: JSON.stringify(changed) },
+        identity,
+        origin,
+        audience,
+      ),
+    ).toThrow('AUTH_AUDIENCE');
+  }
+  expect(() =>
+    validateAuthChallenge(
+      '/v1/auth/challenge',
+      { id, expires, message: JSON.stringify(message) },
+      identity,
+      origin,
+      audience,
+      Date.parse(expires) + 1,
     ),
   ).toThrow();
 });

@@ -14,7 +14,13 @@ import {
   UserMembershipSchema,
   VERSION,
 } from '@daclify/core-protocol';
-import { Catalog, ModuleApiRoutes, ModulePermissions, ModuleStateSchema } from '@daclify/modules';
+import {
+  Catalog,
+  CONTRACT_VERSION,
+  ModuleApiRoutes,
+  ModulePermissions,
+  ModuleStateSchema,
+} from '@daclify/modules';
 import { ModuleCodeHashes } from '@daclify/modules/sdk';
 import { encodeAction, instructionDigest } from '@daclify/core-protocol/sdk';
 import { createVault } from '../../src/auth/vault.js';
@@ -119,7 +125,7 @@ function moduleState(daoId: string, verified = true, enabled = daoId === '2') {
         deployment: {
           id: 'decide',
           account: 'daclifydecid',
-          version: VERSION,
+          version: CONTRACT_VERSION,
           codeHash: verified ? ModuleCodeHashes.decide : 'ab'.repeat(32),
         },
         manifest: Catalog.find((module) => module.id === 'decide'),
@@ -335,7 +341,8 @@ test('signs the selected DAO activation and refreshes its state without closing 
     const id = '22222222-2222-4222-8222-222222222222';
     const expires = new Date(Date.now() + 120000).toISOString();
     const message = LoginMessageSchema.parse({
-      domain: 'daclify.login.v2',
+      domain: 'daclify.login.v3',
+      encryptionKey: account.encryptionKey,
       origin,
       audience: origin,
       challenge: id,

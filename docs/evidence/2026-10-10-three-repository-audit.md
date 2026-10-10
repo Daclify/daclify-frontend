@@ -1,6 +1,6 @@
 # Frontend audit — 2026-10-10
 
-The [complete cross-repository report](https://github.com/Daclify/daclify-backend-core/blob/dev/docs/evidence/2026-10-10-three-repository-audit.md) contains findings and the pending coordinated login-protocol decision.
+The [complete cross-repository report](https://github.com/Daclify/daclify-backend-core/blob/dev/docs/evidence/2026-10-10-three-repository-audit.md) contains findings and the login finding and its subsequent approved fix.
 
 Reviewed workspace refresh/account guards, vault/private-content context, sign-in/pairing controls, member/profile presentation, module/fee screens, handbook/help and deployment tooling. The frontend continues to consume canonical core/module schemas and to rely on backend/contract authorization.
 
@@ -10,4 +10,4 @@ Removed obsolete manual workflow private-token/sibling/Docker rebuild steps. Ver
 
 Verified: `npm run verify` (33 files / 163 tests and Vue template checks), `npm run format:check`, `npm run build`; 20 desktop/mobile Playwright checks across recovery, homepage, Status and safe Daxi rendering; fresh standalone install/verification/testnet build without backend checkouts or a package token. Dependency audit reported zero advisories. Existing test formatting was corrected without changing behavior.
 
-Remaining: lazy Docs/reference chunk warning, roughly 508 KB minified / 73 KB gzip. No threshold suppression or speculative chunk framework was added. Browser provider responses were fixtures; no live wallet/social/payment or actual Netlify/GitHub deployment was qualified. First-login identity binding needs the coordinated change described in the core report; existing account keys were not changed.
+Remaining: lazy Docs/reference chunk warning, roughly 508 KB minified / 73 KB gzip. No threshold suppression or speculative chunk framework was added. Browser provider responses were fixtures; no live wallet/social/payment or actual Netlify/GitHub deployment was qualified. First-login identity binding was subsequently approved and implemented; see [the v3 follow-up](2026-10-10-login-key-binding.md). The results above describe the original audit checkpoint.

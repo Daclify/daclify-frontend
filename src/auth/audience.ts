@@ -71,7 +71,8 @@ export function validateAuthChallenge(
       context.audience !== audience ||
       context.challenge !== challenge.id ||
       context.expires !== challenge.expires ||
-      context.signingKey !== request.signingKey
+      context.signingKey !== request.signingKey ||
+      JSON.stringify(context.encryptionKey) !== JSON.stringify(request.encryptionKey)
     )
       throw new Error('AUTH_AUDIENCE');
   } else if (path === '/v1/account/control') {

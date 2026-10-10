@@ -17,9 +17,16 @@ function memoryStorage(): Storage {
   };
 }
 Object.assign(globalThis, { localStorage: memoryStorage(), sessionStorage: memoryStorage() });
-import { PrivateKey } from '@wharfkit/antelope';
+import { PrivateKey, PublicKey, Signature } from '@wharfkit/antelope';
 import { generateKeyPairSync, randomUUID } from 'node:crypto';
-import { AccountSchema, type Account } from '@daclify/core-protocol';
+import {
+  AccountSchema,
+  ChallengeRequestSchema,
+  LoginRequestSchema,
+  LoginMessageSchema,
+  type Account,
+} from '@daclify/core-protocol';
+import { configureNetworks } from '../../src/api/networks';
 import { api } from '../../src/api/client';
 import { createVault } from '../../src/auth/vault';
 import {
@@ -48,6 +55,7 @@ afterEach(() => {
   sessionStorage.clear();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  configureNetworks(null);
 });
 describe('provider sessions leave the user-controlled vault locked', () => {
   it.each(['removed', 'replaced'] as const)(
@@ -165,3 +173,84 @@ it('does not unlock keys or replace CSRF state when the account changes while va
   expect(sessionStorage.getItem('daclify.csrf')).toBe('b'.repeat(43));
   setActivePinia(undefined);
 });
+
+it('sends and signs both existing vault public keys through the real API client', async () => {
+  const origin = 'http://localhost:5208';
+  vi.stubGlobal('window', { location: { origin } });
+  configureNetworks(null);
+  const created = await createVault(password);
+  saveVault(created);
+  const identity = {
+    signingKey: created.signingPublicKey,
+    encryptionKey: created.encryptionPublicKey,
+  };
+  const owned = AccountSchema.parse({ ...identity, id: randomUUID(), custody: 'user-controlled' });
+  const id = randomUUID(),
+    expires = new Date(Date.now() + 60000).toISOString();
+  const message = JSON.stringify(
+    LoginMessageSchema.parse({
+      ...identity,
+      domain: 'daclify.login.v3',
+      origin,
+      audience: origin,
+      challenge: id,
+      expires,
+    }),
+  );
+  const fetcher = vi.fn<typeof fetch>().mockImplementation(async (url, options) => {
+    if (typeof options?.body !== 'string') throw new Error('Missing fixture request body');
+    const body: unknown = JSON.parse(options.body);
+    if (String(url) === '/v1/auth/challenge') {
+      expect(ChallengeRequestSchema.parse(body)).toEqual(identity);
+      return Response.json({ id, expires, message });
+    }
+    expect(String(url)).toBe('/v1/auth/login');
+    const proof = LoginRequestSchema.parse(body);
+    expect(proof.encryptionKey).toEqual(created.encryptionPublicKey);
+    expect(proof.challengeId).toBe(id);
+    expect(
+      Signature.from(proof.signature).verifyMessage(
+        new TextEncoder().encode(message),
+        PublicKey.from(created.signingPublicKey),
+      ),
+    ).toBe(true);
+    return Response.json({ account: owned, csrfToken: csrf });
+  });
+  vi.stubGlobal('fetch', fetcher);
+  expect(await unlockAndLogin(password)).toEqual(owned);
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  expect(vaultUnlocked.value).toBe(true);
+  expect(sessionStorage.getItem('daclify.csrf')).toBe(csrf);
+});
+
+it.each(['legacy', 'substituted'] as const)(
+  'does not sign or submit a %s challenge from the API',
+  async (change) => {
+    const origin = 'http://localhost:5208';
+    vi.stubGlobal('window', { location: { origin } });
+    configureNetworks(null);
+    const created = await createVault(password),
+      other = await createVault(password);
+    saveVault(created);
+    const id = randomUUID(),
+      expires = new Date(Date.now() + 60000).toISOString();
+    const message = JSON.stringify({
+      domain: change === 'legacy' ? 'daclify.login.v2' : 'daclify.login.v3',
+      signingKey: created.signingPublicKey,
+      encryptionKey:
+        change === 'substituted' ? other.encryptionPublicKey : created.encryptionPublicKey,
+      origin,
+      audience: origin,
+      challenge: id,
+      expires,
+    });
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json({ id, expires, message }));
+    vi.stubGlobal('fetch', fetcher);
+    await expect(unlockAndLogin(password)).rejects.toThrow();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(vaultUnlocked.value).toBe(false);
+    expect(sessionStorage.getItem('daclify.csrf')).toBeNull();
+  },
+);

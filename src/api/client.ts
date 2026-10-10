@@ -710,12 +710,16 @@ export const api = {
       ? page.daos.filter((d) => daoPaymentKey(d.reference) === daoPaymentKey(operator.reference))
       : page.daos;
   },
-  challenge: (signingKey: string) =>
-    request(ApiRoutes.challenge.path, ApiRoutes.challenge.response, { signingKey }),
+  challenge: (input: z.infer<typeof ApiRoutes.challenge.input>) =>
+    request(
+      ApiRoutes.challenge.path,
+      ApiRoutes.challenge.response,
+      ApiRoutes.challenge.input.parse(input),
+    ),
   login: async (
     challengeId: string,
     signature: string,
-    encryptionKey: Account['encryptionKey'],
+    encryptionKey: z.infer<typeof ApiRoutes.login.input>['encryptionKey'],
   ) => {
     const result = await request(ApiRoutes.login.path, ApiRoutes.login.response, {
       challengeId,

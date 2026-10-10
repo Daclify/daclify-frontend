@@ -187,7 +187,10 @@ export async function unlockAndLogin(password: string, current?: Account): Promi
       throw new Error('ACCOUNT_KEY_MISMATCH');
     account = acceptProviderSession(session.account, session.csrfToken);
   } else {
-    const challenge = await api.challenge(vault.signingPublicKey);
+    const challenge = await api.challenge({
+      signingKey: vault.signingPublicKey,
+      encryptionKey: vault.encryptionPublicKey,
+    });
     account = await api.login(
       challenge.id,
       signing.signMessage(new TextEncoder().encode(challenge.message)).toString(),

@@ -130,7 +130,8 @@ test('requires admin access, a current signer and explicit monthly consent befor
           : [],
       };
     else if (path === '/v1/auth/challenge') {
-      key = ChallengeRequestSchema.parse(body).signingKey;
+      const identity = ChallengeRequestSchema.parse(body);
+      key = identity.signingKey;
       const id = randomUUID(),
         expires = new Date(Date.now() + 300000).toISOString();
       response = {
@@ -138,7 +139,8 @@ test('requires admin access, a current signer and explicit monthly consent befor
         expires,
         message: JSON.stringify(
           LoginMessageSchema.parse({
-            domain: 'daclify.login.v2',
+            domain: 'daclify.login.v3',
+            encryptionKey: identity.encryptionKey,
             origin,
             audience: origin,
             challenge: id,
