@@ -42,7 +42,7 @@ Published **92 checked files** to the existing Caddy frontend on **9091**. Asset
 
 Real public HTTPS checks against **https://testnet.app.daclify.com/status**, without API interception, passed on desktop and phone through the external HAProxy. Saved production preference cannot override the Testnet deployment. The real chain/database cards read Reachable. All six sections pass selected Axe and width checks; refresh preserves the selected Contracts tab, expanded authorities and keyboard focus. Open Daxi Help works without submitting a question. **28 loaded public assets** match the checked build byte-for-byte; no browser errors or HTTP 5xx were observed. API/frontend/PostgreSQL user services are active. A bundle scan checked **12 configured credential values** and found zero matches.
 
-Publication to GitHub is recorded in the plan's delivery ledger after the actual push attempt. The deployment is testnet; no production/main release occurred.
+Implementation is committed locally on `dev` as **65649cb**. `git push origin dev` failed because the server could not obtain GitHub credentials (`could not read Username ... No such device or address`). GitHub publication requires write authentication. The deployment is testnet; no production/main release occurred.
 
 ## Remaining limits
 

@@ -42,7 +42,8 @@ Files: development version/changelog, requirement register if necessary, and `do
 
 - [x] Run `npm run verify`, formatting and the testnet build. Run related Daxi/theme regressions. Expected: no failures; record existing build warnings honestly.
 - [x] Review the final diff inline; record results and limitations. Increment only the frontend development version; retain pinned producer versions.
-- [ ] Serve the checked build on the existing testnet frontend, verify public HTTPS Status and linked assets, then commit/push `dev` and confirm the remote ref. No production/main release.
+- [x] Serve the checked build on the existing testnet frontend, verify public HTTPS Status and linked assets, then commit on `dev`. No production/main release.
+- [ ] Push `dev` and confirm the remote ref — blocked by missing GitHub write authentication.
 
 ## Execution ledger
 
@@ -52,3 +53,4 @@ Files: development version/changelog, requirement register if necessary, and `do
 - Task 2 verification: complete — combined committed Help + Status snapshot passes lint/typecheck, 168 unit tests, formatting, testnet build and 56 desktop/mobile cases. The strengthened database check separately passes both projects.
 - Final review: self-review, per workspace prohibition on delegation. No outstanding critical/important findings. Provider qualification and physical assistive-technology testing remain outside this UI task.
 - Testnet delivery: complete — published checked files, real public HTTPS desktop/mobile checks pass, 28 loaded assets match, selected Axe scans report zero violations. [Evidence](../../evidence/2026-10-10-status-experience.md).
+- Git delivery: implementation committed locally as `65649cb`. Actual `git push origin dev` failed with `fatal: could not read Username for 'https://github.com': No such device or address`. Configure write authentication on this server before retrying; existing local Help commits are preserved.
