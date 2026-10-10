@@ -66,4 +66,4 @@ Self-review performed inline under the workspace's prohibition on delegation. Ch
 
 The graph shows returned authority relationships, not a calculation of effective/transitive control or contract call dependencies. External accounts may be unexpanded; action links are absent from the platform status schema. RAM/CPU/NET are account totals shared by hosted DAOs. Resource snapshots are later than the displayed platform permission snapshot. Primary semantics were checked against [Antelope accounts and permissions](https://docs.antelope.io/docs/latest/protocol/accounts_and_permissions/) and the installed [WharfKit APIClient](https://wharfkit.com/docs/antelope/api-client).
 
-Git delivery: final dev commit/push pending. The unrelated sign-in/recovery work remains unstaged by this task.
+Git delivery: implementation committed as `a0b51e0` and successfully pushed to `origin/dev`. This final ledger update is a separate documentation commit. The unrelated sign-in/recovery work remains unstaged by this task.

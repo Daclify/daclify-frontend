@@ -47,7 +47,7 @@
 
 - [x] Register acceptance tests and add concise feature guidance/evidence.
 - [x] Run `npm run verify`, formatting on changed files, `npm run build -- --outDir .artifacts/contract-map-dist`; expected no failures, report actual warnings.
-- [ ] Review the complete diff inline for the five review-focus items. Record limits and decisions, commit only task files on dev, and attempt the repository-required dev push.
+- [x] Review the complete diff inline for the five review-focus items. Record limits and decisions, commit only task files on dev, and attempt the repository-required dev push.
 
 ## Execution ledger
 
@@ -63,4 +63,4 @@
 - Task-only default unit run initially timed out two existing vault crypto cases under concurrent load; rerun with `npm test -- --maxWorkers=4` passes 192/192 without changing tests/timeouts/cryptography. Lint, Vue/type checks, formatting and ordinary/testnet builds pass. Existing Docs chunk-size warning remains.
 - Self-review complete, inline under workspace prohibition on delegation: hierarchy/threshold semantics, public-data boundaries, resource precision/failure/replay, full diagnostics and keyboard/narrow-screen access checked. No outstanding important findings.
 - Testnet: task-only checked artifacts installed with a backup and prior assets retained. Public HTTPS and actual configured RPC reads verified; screenshots/evidence recorded. No production or native-authority change.
-- Git delivery: pending final commit and dev push.
+- Git delivery: implementation commit `a0b51e0` pushed successfully to `origin/dev`. Used the established `Codex <codex@localhost>` commit identity as command-scoped settings; repository/global identity config remains unchanged. This final evidence update is a separate documentation commit on the same branch.
