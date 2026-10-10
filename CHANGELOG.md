@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.0-alpha.4 development — account entry
+
+Separate returning sign-in, new user-controlled accounts and recovery in a responsive layout with creation/recovery shortcuts. Offer saved vault unlock first and reveal one paired sign-in form at a time. Keep password generation/copy, explicit visibility control, backup acknowledgment, original-kit recovery, full return destinations and authenticated account tabs. Place unavailable managed signup in an expandable explanation.
+
+Distinguish provider lookup failure from missing configuration, with retry and clear pending feedback. Split email address/code steps; allow resend and changing the address. Coordinate busy state across wallet/provider and vault flows. Mount legacy Telegram only when selected and configured; clean up its callback on exit. Preserve custody, challenge validation, authorization and decryption boundaries. No API, contract, dependency or provider-configuration changes.
+
+Add desktop/mobile browser regressions using canonical synthetic HTTP and real disposable browser cryptography; update passkey entry selection and wallet-recovery fixtures to the existing challenge v2/audience schemas. Record responsive, keyboard, accessibility, recovery and live-provider limits.
+
 ## 0.10.0-alpha.3 development — DAO workspace and configuration
 
 Group daily DAO navigation separately from setup. Replace generic Decide/Works advertising with actual installed tools, paused/deployment-review labels and scoped retry. Show readable role/privacy context, real member/treasury statistics, governance credits and personal claim/stake destinations. Keep inactive memberships matched by complete DAO reference so existing exit links remain available. Put the unchanged signer/wallet controls in a native keyboard-accessible disclosure.

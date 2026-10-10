@@ -44,6 +44,7 @@ test('pairs a passkey and email with an existing vault', async ({ page }) => {
   ).toBeVisible();
   await page.getByRole('tab', { name: 'Keys', exact: true }).click();
   await page.getByRole('button', { name: 'Sign out' }).click();
+  await page.getByRole('button', { name: 'Passkey', exact: true }).click();
   await page.getByRole('button', { name: 'Sign in with a passkey' }).click();
   await expect(page.getByText(serverId, { exact: true })).toBeVisible();
   await expect(page.getByLabel('Vault password', { exact: true })).toBeVisible();

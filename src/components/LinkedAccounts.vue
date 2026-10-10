@@ -9,7 +9,7 @@ import { acceptProviderSession, lockVault } from '../auth/session';
 import { selectedSigner } from '../auth/action-signer';
 import { connectEvm, signEvmMessage, TELOS_EVM, type TelosEvmChainId } from '../auth/telos-evm';
 const props = withDefaults(defineProps<{ mode?: 'enter' | 'manage' }>(), { mode: 'manage' }),
-  emit = defineEmits<{ authenticated: [account: Account] }>();
+  emit = defineEmits<{ authenticated: [account: Account]; busy: [active: boolean] }>();
 const router = useRouter();
 const state = useWorkspace(),
   chainId = ref<TelosEvmChainId>(41),
@@ -20,6 +20,7 @@ const state = useWorkspace(),
   notice = ref('');
 let disposed = false,
   revision = 0;
+watch(busy, (active) => emit('busy', active), { flush: 'sync' });
 const context = () => JSON.stringify([props.mode, state.account?.id]);
 watch(
   () => state.network?.environment,
@@ -53,6 +54,7 @@ onMounted(() => {
 onUnmounted(() => {
   disposed = true;
   revision++;
+  emit('busy', false);
 });
 async function useWallet() {
   if (

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { ArrowUpRight, KeyRound, ShieldCheck, LifeBuoy } from '@lucide/vue';
 import { useWorkspace } from '../state/workspace';
 import { api, friendlyError, type ServiceReceipt } from '../api/client';
 import { formatReceiptAmount, hostedCheckoutUrl } from '../api/billing';
@@ -50,6 +51,13 @@ const route = useRoute();
 const router = useRouter();
 const destination = computed(() => accountDestination(route.query.returnTo));
 const state = useWorkspace();
+watch(restoring, (active) => {
+  void nextTick(() =>
+    document
+      .getElementById(active ? 'kit' : state.account ? 'account-tab-keys' : 'recover-account')
+      ?.focus(),
+  );
+});
 const joinIdentity = computed(() =>
   state.account && state.account.signingKey !== null
     ? JSON.stringify(
@@ -173,6 +181,7 @@ const created = ref<CreatedVault>();
 const acknowledged = ref(false);
 const recoveryCopied = ref(false);
 const busy = ref(false);
+const providerBusy = ref(false);
 const error = ref('');
 const heading = computed(() =>
   restoring.value
@@ -239,6 +248,7 @@ async function copyPassword() {
   }
 }
 async function create() {
+  if (busy.value || providerBusy.value) return;
   busy.value = true;
   error.value = '';
   try {
@@ -271,6 +281,7 @@ async function finish() {
   created.value = undefined;
 }
 async function unlock() {
+  if (providerBusy.value) return;
   busy.value = true;
   error.value = '';
   try {
@@ -318,11 +329,13 @@ function backup() {
 }
 </script>
 <template>
-  <div v-if="!embedded" class="page-heading">
+  <div v-if="!embedded" class="page-heading account-heading">
     <div>
       <p class="eyebrow">IDENTITY &amp; RECOVERY</p>
       <h1>{{ heading }}</h1>
-      <p class="lead">An internal account works without creating an account on the blockchain.</p>
+      <p class="lead">
+        One Daclify identity for your communities. A blockchain account is optional.
+      </p>
     </div>
     <RouterLink class="help-link" to="/docs/accounts">Account help ↗</RouterLink>
   </div>
@@ -334,12 +347,7 @@ function backup() {
     Sign-in method removed. Its sessions were revoked; sign in with a remaining method.
   </p>
   <p v-if="error" class="alert" role="alert">{{ error }}</p>
-  <SignInMethods
-    v-if="!state.account && !created && !restoring"
-    mode="enter"
-    @authenticated="onSignedIn"
-  />
-  <section v-if="restoring" class="panel narrow">
+  <section v-if="restoring" class="panel narrow account-flow">
     <h2>Restore your existing keys</h2>
     <p>
       Choose your encrypted kit and enter its separate recovery credential. A new password protects
@@ -352,6 +360,7 @@ function backup() {
         type="file"
         accept="application/json,.json"
         required
+        :disabled="busy"
         @change="selectKit"
       /><label for="recover-credential">Recovery credential</label
       ><input
@@ -360,6 +369,7 @@ function backup() {
         type="password"
         autocomplete="off"
         required
+        :disabled="busy"
       /><label for="recover-password">New vault password</label
       ><input
         id="recover-password"
@@ -368,15 +378,18 @@ function backup() {
         autocomplete="new-password"
         minlength="12"
         required
+        :disabled="busy"
       /><label v-if="saved" class="checkbox"
         ><input v-model="replacementAcknowledged" type="checkbox" required />I have backed up the
         account currently on this device</label
       ><button :disabled="busy || !kitText">
         {{ busy ? 'Restoring…' : 'Restore and sign in' }}</button
-      ><button type="button" class="text-button" @click="restoring = false">Cancel recovery</button>
+      ><button type="button" class="text-button" :disabled="busy" @click="restoring = false">
+        Cancel recovery
+      </button>
     </form>
   </section>
-  <section v-else-if="created" class="panel narrow">
+  <section v-else-if="created" class="panel narrow account-flow">
     <h2>Keep access on a new device</h2>
     <p>
       Your password unlocks this device. Your encrypted recovery kit and separate credential restore
@@ -584,79 +597,353 @@ function backup() {
       </div>
     </section>
   </template>
-  <section v-else-if="saved" class="panel narrow">
-    <h2>Use your Daclify keys</h2>
-    <p>Unlock your local encrypted vault to prove ownership of your account.</p>
-    <form @submit.prevent="unlock">
-      <label for="unlock">Vault password</label
-      ><input
-        id="unlock"
-        v-model="password"
-        type="password"
-        autocomplete="current-password"
-        required
-      /><button :disabled="busy">{{ busy ? 'Unlocking…' : 'Unlock and sign in' }}</button>
-    </form>
-    <RouterLink class="help-link" to="/docs/recovery">Recover on a new device ↗</RouterLink>
-  </section>
-  <div v-else class="two-column">
-    <section class="panel">
-      <span class="pill success">User-controlled</span>
-      <h2>You hold the keys</h2>
-      <p>
-        Your signing and decryption keys are encrypted in your browser. Keep a recovery kit: losing
-        it and your password means losing access.
-      </p>
-      <form @submit.prevent="create">
-        <label for="password">Vault password</label>
-        <div class="password-field">
-          <input
-            id="password"
-            v-model="password"
-            :type="passwordVisible ? 'text' : 'password'"
-            minlength="12"
-            autocomplete="new-password"
-            spellcheck="false"
-            required
-            @input="passwordCopied = false"
-          />
-          <div class="field-actions">
-            <button type="button" aria-label="Generate vault password" @click="generatePassword">
-              Generate
-            </button>
-            <button
-              type="button"
-              aria-label="Copy vault password"
-              :disabled="password.length === 0"
-              @click="copyPassword"
-            >
-              {{ passwordCopied ? 'Copied' : 'Copy' }}
-            </button>
+  <div v-else class="account-access">
+    <nav class="account-shortcuts" aria-label="Account options">
+      <a v-if="!saved" href="#new-account">Create an account <ArrowUpRight aria-hidden="true" /></a>
+      <a href="#recover-account">Recovery options <ArrowUpRight aria-hidden="true" /></a>
+    </nav>
+    <div class="account-entry">
+      <section class="panel account-returning" aria-labelledby="returning-title" :inert="busy">
+        <div class="account-section-title">
+          <KeyRound aria-hidden="true" />
+          <div>
+            <h2 id="returning-title">Welcome back</h2>
+            <p>Sign in to continue to your communities.</p>
           </div>
         </div>
-        <p class="field-help">At least 12 characters. Generate one, then copy it.</p>
-        <button :disabled="busy">
-          {{ busy ? 'Encrypting vault…' : 'Create encrypted vault' }}
-        </button>
-      </form>
-    </section>
-    <section class="panel">
-      <span class="pill">Managed recovery</span>
-      <h2>Recovery through a service</h2>
-      <p>
-        An operator can recover managed signing and decryption access. This is a different trust
-        model and is excluded from DAOs that require user-controlled keys.
-      </p>
-      <p class="notice">Provider setup is required before managed accounts can be offered.</p>
-      <button disabled>Managed signup unavailable</button
-      ><RouterLink class="help-link" to="/docs/accounts">Compare account modes ↗</RouterLink>
-    </section>
+        <div v-if="saved" class="local-vault">
+          <span class="pill success">Saved on this device</span>
+          <h3>Use your Daclify keys</h3>
+          <p>Your vault password unlocks signing and decryption keys in this browser.</p>
+          <form @submit.prevent="unlock">
+            <label for="unlock">Vault password</label
+            ><input
+              id="unlock"
+              v-model="password"
+              type="password"
+              autocomplete="current-password"
+              required
+              :disabled="busy || providerBusy"
+            />
+            <button :disabled="busy || providerBusy">
+              {{ busy ? 'Unlocking…' : 'Unlock and sign in' }}
+            </button>
+          </form>
+        </div>
+        <SignInMethods mode="enter" @authenticated="onSignedIn" @busy="providerBusy = $event" />
+      </section>
+      <section
+        v-if="!saved"
+        id="new-account"
+        class="panel account-new"
+        aria-labelledby="new-title"
+        tabindex="-1"
+      >
+        <div class="account-section-title">
+          <ShieldCheck aria-hidden="true" />
+          <div>
+            <h2 id="new-title">New to Daclify?</h2>
+            <p>Create your identity, then join or start a DAO.</p>
+          </div>
+        </div>
+        <span class="pill success">User-controlled</span>
+        <h3>You hold the keys</h3>
+        <p>
+          Your keys are encrypted in this browser. You’ll save a recovery kit before finishing
+          setup. No blockchain account is needed.
+        </p>
+        <form @submit.prevent="create">
+          <label for="password">Vault password</label>
+          <div class="password-field">
+            <input
+              id="password"
+              v-model="password"
+              :type="passwordVisible ? 'text' : 'password'"
+              minlength="12"
+              autocomplete="new-password"
+              spellcheck="false"
+              required
+              :disabled="busy || providerBusy"
+              @input="passwordCopied = false"
+            />
+            <div class="field-actions">
+              <button
+                type="button"
+                aria-label="Generate vault password"
+                :disabled="busy || providerBusy"
+                @click="generatePassword"
+              >
+                Generate
+              </button>
+              <button
+                type="button"
+                aria-label="Copy vault password"
+                :disabled="busy || providerBusy || password.length === 0"
+                @click="copyPassword"
+              >
+                {{ passwordCopied ? 'Copied' : 'Copy' }}
+              </button>
+            </div>
+          </div>
+          <div class="account-password-help">
+            <p class="field-help">
+              At least 12 characters. Generate one or use your password manager.
+            </p>
+            <button
+              type="button"
+              class="text-button"
+              :aria-label="passwordVisible ? 'Hide vault password' : 'Show vault password'"
+              :aria-pressed="passwordVisible"
+              :disabled="busy || providerBusy"
+              @click="passwordVisible = !passwordVisible"
+            >
+              {{ passwordVisible ? 'Hide' : 'Show' }}
+            </button>
+          </div>
+          <button :disabled="busy || providerBusy">
+            {{ busy ? 'Encrypting vault…' : 'Create encrypted vault' }}
+          </button>
+        </form>
+        <details class="managed-recovery">
+          <summary>Managed recovery option</summary>
+          <span class="pill">Managed recovery</span>
+          <h3>Recovery through a service</h3>
+          <p>
+            An operator can recover managed signing and decryption access. This is a different trust
+            model and is excluded from DAOs that require user-controlled keys.
+          </p>
+          <p class="notice">Provider setup is required before managed accounts can be offered.</p>
+          <button disabled>Managed signup unavailable</button
+          ><RouterLink class="help-link" to="/docs/accounts"
+            >Compare account modes <ArrowUpRight aria-hidden="true"
+          /></RouterLink>
+        </details>
+      </section>
+      <aside v-else class="panel account-key-guide" aria-labelledby="key-guide-title">
+        <ShieldCheck aria-hidden="true" />
+        <h2 id="key-guide-title">Your keys stay with you</h2>
+        <p>
+          Signing in with email, Telegram or a passkey opens your account without unlocking this
+          device’s vault.
+        </p>
+        <p>
+          A linked blockchain wallet can authorize supported DAO actions. Encrypted documents still
+          need your granted decryption keys.
+        </p>
+        <p>
+          Keep your recovery kit and its separate credential. They restore your original keys on a
+          new device.
+        </p>
+        <RouterLink class="help-link" to="/docs/accounts"
+          >Account and key guide <ArrowUpRight aria-hidden="true"
+        /></RouterLink>
+      </aside>
+    </div>
+    <aside class="account-recovery" aria-labelledby="recovery-choice-title">
+      <LifeBuoy aria-hidden="true" />
+      <div>
+        <h2 id="recovery-choice-title">Moving devices or restoring access?</h2>
+        <p>
+          Use your encrypted recovery kit and its separate credential to restore your existing keys.
+        </p>
+      </div>
+      <button
+        id="recover-account"
+        class="secondary"
+        :disabled="busy || providerBusy"
+        @click="restoring = true"
+      >
+        Recover from an encrypted kit
+      </button>
+    </aside>
+    <p class="account-access-note">
+      An account gets you into Daclify. Each DAO controls membership, voting rights and permissions
+      separately. <RouterLink to="/docs/accounts">How access works</RouterLink>
+    </p>
   </div>
-  <button
-    v-if="!state.account && !created && !restoring"
-    class="text-button"
-    @click="restoring = true"
-  >
-    Recover from an encrypted kit
-  </button>
 </template>
+<style scoped>
+.account-heading h1 {
+  font-size: clamp(2rem, 3vw, 2.5rem);
+}
+.account-heading .lead {
+  font-size: 1rem;
+  max-width: 65ch;
+}
+.account-access {
+  display: grid;
+  gap: 24px;
+}
+.account-shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+}
+.account-shortcuts a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  font-size: 0.875rem;
+}
+.account-shortcuts svg {
+  width: 16px;
+  height: 16px;
+}
+#new-account,
+#recover-account {
+  scroll-margin-top: 24px;
+}
+.account-entry {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr));
+  gap: 24px;
+  align-items: start;
+}
+.account-entry > .panel {
+  margin: 0;
+  min-width: 0;
+}
+.account-entry p,
+.account-flow p {
+  font-size: 0.875rem;
+}
+.account-entry h2,
+.account-flow h2 {
+  font-size: 1.25rem;
+}
+.account-entry h3 {
+  font-size: 1rem;
+  margin-top: 20px;
+}
+.account-section-title {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  margin-bottom: 24px;
+}
+.account-section-title > svg,
+.account-key-guide > svg {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  color: var(--accent-amber);
+}
+.account-section-title h2 {
+  margin: 0 0 8px;
+}
+.account-section-title p {
+  color: var(--text-secondary);
+  margin: 0;
+}
+.account-entry label,
+.account-flow label {
+  font-size: 0.875rem;
+}
+.account-entry button,
+.account-flow button {
+  min-height: 44px;
+}
+.account-entry form > button {
+  margin-top: 16px;
+}
+.account-entry .field-actions button {
+  padding-inline: 10px;
+  font-size: 0.8125rem;
+}
+.account-entry .password-field {
+  flex-wrap: wrap;
+}
+.account-entry .password-field input {
+  min-width: min(100%, 10rem);
+}
+.account-entry .field-actions {
+  margin-left: auto;
+}
+.account-password-help {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.account-password-help p {
+  flex: 1;
+}
+.account-password-help button {
+  flex: none;
+  font-size: 0.875rem;
+}
+.local-vault {
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border-default);
+  margin-bottom: 24px;
+}
+.local-vault h3 {
+  margin-bottom: 8px;
+}
+.managed-recovery {
+  border-top: 1px solid var(--border-default);
+  margin-top: 24px;
+  padding-top: 12px;
+}
+.managed-recovery summary {
+  min-height: 44px;
+  font-size: 0.875rem;
+}
+.account-recovery {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+  padding: 20px;
+  border: 1px solid var(--border-warm);
+  border-radius: var(--radius-lg);
+  background: var(--surface-panel);
+}
+.account-recovery > svg {
+  width: 24px;
+  height: 24px;
+  color: var(--accent-amber);
+  flex: none;
+}
+.account-recovery > div {
+  flex: 1;
+  min-width: min(100%, 18rem);
+}
+.account-recovery h2 {
+  font-size: 1rem;
+  margin: 0 0 6px;
+}
+.account-recovery p {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+.account-access-note {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  margin: 0;
+}
+.account-entry .help-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.account-entry .help-link svg {
+  width: 16px;
+  height: 16px;
+}
+.account-flow {
+  max-width: 42rem;
+}
+.account-flow form > button {
+  margin-top: 16px;
+}
+@media (max-width: 440px) {
+  .account-entry > .panel {
+    padding: 20px;
+  }
+  .account-recovery > button {
+    width: 100%;
+  }
+}
+</style>

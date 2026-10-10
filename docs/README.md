@@ -1,6 +1,6 @@
 # Frontend documentation
 
-Current development application: **0.10.0-alpha.3**, consuming core **0.10.0-alpha.1** and modules **0.9.0-alpha.8** SDK/help packages. Development uses `dev`. See the [repository README](../README.md) for routes, local development, account recovery and test phases, and the [Netlify dev guide](netlify-dev.md) for the separate testnet site.
+Current development application: **0.10.0-alpha.4**, consuming core **0.10.0-alpha.1** and modules **0.9.0-alpha.8** SDK/help packages. Development uses `dev`. See the [repository README](../README.md) for routes, local development, account recovery and test phases, and the [Netlify dev guide](netlify-dev.md) for the separate testnet site.
 
 ## Help inside the application
 
@@ -28,6 +28,8 @@ The recovery explanation is `/docs/recovery`; accounts, providers, documents, tr
 Edit product text in the owning backend repo's `docs/guides/topics.json`, regenerate its docs, rebuild the public development packages and reinstall consumers through core's sibling bootstrap. Do not hard-code a second copy of guides or API schemas here. Keep stable topic IDs so existing UI links continue to work. Core's [documentation index](https://github.com/Daclify/daclify-backend-core/blob/main/docs/README.md) explains generation and versioning.
 
 ## Presentation and recovery
+
+The [account entry experience](evidence/2026-10-10-account-entry-experience.md) groups returning sign-in, user-controlled creation and recovery. Saved keys take precedence. Provider forms open on selection, email codes have retry/change-address steps and failed configuration lookup is distinct from an unavailable provider. Account-flow controls coordinate pending requests; Telegram embeds mount only when needed and clean up on exit. Mobile shortcuts retain the intended return destination. Provider sessions leave user-controlled keys locked; recovery still needs the original encrypted kit and separate credential. Managed signup remains unavailable until its backend is configured.
 
 Daxi uses backend-configured models to answer Daclify, Telos and DAO education questions from reviewed guides, with helpful explanations and occasional light humour. Unrelated or unsupported requests remain outside scope. Telos/DAO guides show reviewed source links; these are versioned learning notes, not a live website crawl. `/docs/docs-assistant` explains its scope, provider privacy, limits and Telegram commands/replies. Status → AI Daxi Help shows public model names, knowledge version and configuration; the other Status tabs cover network/contracts/fees/services, without a migration listing. App AI needs no frontend provider key; group support additionally requires the API webhook and an approved-group allowlist. See the [operator runbook](../../daclify-backend-core/docs/operations/docs-assistant.md). A configured indicator is not a live-provider qualification. The UI keeps failed status requests distinct from missing configuration and renders responses as plain text with a validated topic link.
 

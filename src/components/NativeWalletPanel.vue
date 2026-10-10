@@ -10,7 +10,7 @@ import { useWorkspace } from '../state/workspace';
 import { selectedSigner } from '../auth/action-signer';
 import { z } from 'zod';
 const props = defineProps<{ mode: 'enter' | 'manage' }>(),
-  emit = defineEmits<{ authenticated: [account: Account] }>();
+  emit = defineEmits<{ authenticated: [account: Account]; busy: [active: boolean] }>();
 const state = useWorkspace(),
   links = ref<z.infer<typeof NativeLinksSchema>['links']>([]),
   busy = ref(false),
@@ -20,6 +20,7 @@ const label = computed(() =>
   props.mode === 'enter' ? 'Continue with Telos Zero' : 'Pair Telos Zero',
 );
 const router = useRouter();
+watch(busy, (active) => emit('busy', active), { flush: 'sync' });
 let disposed = false,
   revision = 0;
 const context = () => JSON.stringify([props.mode, state.account?.id]);
@@ -53,6 +54,7 @@ onMounted(() => {
 onUnmounted(() => {
   disposed = true;
   revision++;
+  emit('busy', false);
 });
 async function useWallet() {
   const stamp = context(),

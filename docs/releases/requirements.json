@@ -1,6 +1,18 @@
 {
   "requirements": [
     {
+      "id": "ACCOUNT-ENTRY-AND-PROVIDER-CHOICES",
+      "tests": [
+        "tests/e2e/account-entry-experience.spec.ts",
+        "tests/e2e/sign-in-methods.spec.ts",
+        "tests/e2e/wallet-recovery.spec.ts",
+        "tests/unit/provider-session.test.ts",
+        "tests/unit/auth-audience.test.ts",
+        "tests/unit/telegram-login.test.ts",
+        "tests/unit/vault.test.ts"
+      ]
+    },
+    {
       "id": "DAO-WORKSPACE-AND-CONFIGURATION",
       "tests": [
         "tests/e2e/dao-workspace-experience.spec.ts",

@@ -1,10 +1,11 @@
 import { expect, test, type Page } from '@playwright/test';
-import { z } from 'zod';
 import { PrivateKey, PublicKey, Signature } from '@wharfkit/antelope';
 import {
   ApiRoutes,
   VaultAttachMessageSchema,
   AccountControlMessageSchema,
+  AccountControlRequestSchema,
+  AccountControlProofSchema,
   type Account,
 } from '@daclify/core-protocol';
 const id = 'ea8725ba-243d-4dd4-8455-c9f6da55cbfe',
@@ -75,8 +76,9 @@ async function fixture(page: Page) {
       message = JSON.stringify(
         VaultAttachMessageSchema.parse({
           ...input,
-          domain: 'daclify.vault-attach.v1',
+          domain: 'daclify.vault-attach.v2',
           origin: new URL(page.url()).origin,
+          audience: new URL(route.request().url()).origin,
           accountId: id,
           id: intentId,
           expires,
@@ -85,9 +87,7 @@ async function fixture(page: Page) {
       return route.fulfill({ json: { id: intentId, message, expires } });
     }
     if (path === '/v1/account/control') {
-      const input = z
-        .object({ path: z.string(), bodyHash: z.string() })
-        .parse(route.request().postDataJSON());
+      const input = AccountControlRequestSchema.parse(route.request().postDataJSON());
       const challengeId = crypto.randomUUID(),
         expires = new Date(Date.now() + 300000).toISOString();
       return route.fulfill({
@@ -97,8 +97,9 @@ async function fixture(page: Page) {
           message: JSON.stringify(
             AccountControlMessageSchema.parse({
               ...input,
-              domain: 'daclify.account-control.v1',
+              domain: 'daclify.account-control.v2',
               origin: new URL(page.url()).origin,
+              audience: new URL(route.request().url()).origin,
               accountId: id,
               signingKey: null,
               challengeId,
@@ -118,14 +119,12 @@ async function fixture(page: Page) {
           PublicKey.from(identity.signingKey),
         ),
       ).toBe(true);
-      const proof = z
-        .object({
-          kind: z.literal('evm'),
-          chainId: z.literal(41),
-          address: z.string(),
-          signature: z.string(),
-        })
-        .parse(JSON.parse(route.request().headers()['x-account-proof'] ?? '{}'));
+      const proof = AccountControlProofSchema.parse(
+        JSON.parse(route.request().headers()['x-account-proof'] ?? '{}'),
+      );
+      expect(proof.kind).toBe('evm');
+      if (proof.kind !== 'evm') throw new Error('Fixture requires EVM account control');
+      expect(proof.chainId).toBe(41);
       expect(proof.address.toLowerCase()).toBe(address);
       account = {
         id,
