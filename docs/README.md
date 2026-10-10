@@ -45,6 +45,8 @@ The browser owns user-controlled signing/decryption keys and keeps only encrypte
 
 ## Verification and limits
 
+Status shows separate chain identity, database, shared-setup and TLOS quote checks. A successful platform read does not qualify its configured providers. Refresh retains the selected diagnostics and marks previous readings when it fails; Daxi metadata settles independently. Public authority and gateway conditions use keyboard-accessible disclosures. See the [Status experience evidence](evidence/2026-10-10-status-experience.md).
+
 `npm run verify` checks source lint, Vue templates/TypeScript and unit tests; `npm run build` creates the static app. Playwright is separate, with paid/research native fixture phases and explicit mock-only recovery/presentation selections described in the README. [Requirements](releases/requirements.json), [changelog](../CHANGELOG.md) and core's [recovery evidence](https://github.com/Daclify/daclify-backend-core/blob/main/docs/evidence/2026-10-07-wallet-recovery.md) record actual coverage.
 
 Real provider consent, Google browser login, real Anchor/EVM client qualification, independent operator cookie/CORS qualification, durable managed custody and hosted backup/proxy operations remain open. A successful local build or a configured provider does not close those gates. Bundle loading still needs measurement on target browsers; this update makes no performance claim.

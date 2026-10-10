@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.0-alpha.6 development — Status clarity and refresh recovery
+
+Surface chain identity, database reads, shared setup and TLOS rate freshness in distinct check cards. Keep successful readings, selected tabs, public-authority disclosures and keyboard focus during refresh; label retained readings after failure and offer recovery. Platform readings render independently of slow or failed Daxi metadata. Clear readings on network/runtime/RPC changes and reject older responses.
+
+Use readable gateway/service qualification states, exact gateway counters, explicit missing diagnostics and comfortable responsive tab targets. Preserve all existing fees, hashes, permissions, limits and Daxi help. No API, provider, contract, dependency or configuration changes. Extend desktop/mobile browser regressions for failures, context changes, keyboard, accessibility and enlarged text.
+
 ## 0.10.0-alpha.5 development — handbook discovery and reading
 
 Use the existing six guide collections as the overview without a duplicate sidebar. Show full-text search results with canonical paragraph previews; keep search/collection state in the URL so back/reload restores it. Preserve DAO and other route context. Provide clear empty/reset and unknown-guide recovery states.

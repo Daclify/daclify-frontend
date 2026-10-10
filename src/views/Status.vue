@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import type { PlatformStatus } from '@daclify/core-protocol';
-import { Bot } from '@lucide/vue';
+import { ArrowRight, Bot, Database, Globe, RefreshCw, Server, TrendingUp } from '@lucide/vue';
 import { api, friendlyError } from '../api/client';
 import { useWorkspace } from '../state/workspace';
 const workspace = useWorkspace();
@@ -9,7 +9,79 @@ const status = ref<PlatformStatus>();
 const assistant = ref<Awaited<ReturnType<typeof api.docsAgent>>>();
 const error = ref(''),
   agentError = ref(''),
-  busy = ref(false);
+  platformBusy = ref(false),
+  agentBusy = ref(false);
+const busy = computed(() => platformBusy.value || agentBusy.value);
+const readableChain = computed(
+  () => status.value?.rpc === 'reachable' && status.value.chain?.chainMatches === true,
+);
+const configuredServices = computed(
+  () => status.value?.services.filter((service) => service.configured).length ?? 0,
+);
+const checks = computed(() => {
+  const value = status.value;
+  if (!value) return [];
+  return [
+    {
+      label: 'Chain RPC',
+      icon: Globe,
+      value:
+        value.rpc === 'unconfigured'
+          ? 'Not configured'
+          : value.rpc !== 'reachable'
+            ? 'Unavailable'
+            : value.chain?.chainMatches === false
+              ? 'Wrong chain'
+              : readableChain.value
+                ? 'Reachable'
+                : 'Not verified',
+      detail: readableChain.value
+        ? 'Connected to the configured chain.'
+        : value.chain?.chainMatches === false
+          ? 'RPC returned a different chain.'
+          : 'Could not verify the configured chain.',
+      tone: readableChain.value ? 'success' : 'danger',
+    },
+    {
+      label: 'Database',
+      icon: Database,
+      value: value.database.state === 'reachable' ? 'Reachable' : 'Unavailable',
+      detail:
+        value.database.state === 'reachable'
+          ? 'The API can read its database.'
+          : 'Database reads failed.',
+      tone: value.database.state === 'reachable' ? 'success' : 'danger',
+    },
+    {
+      label: 'Shared setup',
+      icon: Server,
+      value: readableChain.value && value.chain?.sharedAvailable ? 'Configured' : 'Unavailable',
+      detail: 'Free creation; member capacity billed separately.',
+      tone: 'neutral',
+    },
+    {
+      label: 'TLOS quotes',
+      icon: TrendingUp,
+      value: !readableChain.value
+        ? 'Not verified'
+        : value.chain?.rateFresh
+          ? 'Current'
+          : value.chain?.creation?.observed_at
+            ? 'Stale'
+            : 'Unavailable',
+      detail: 'Conversion rates must be at most 15 minutes old.',
+      tone: readableChain.value && value.chain?.rateFresh ? 'success' : 'neutral',
+    },
+  ];
+});
+const allowanceLabels = {
+  unconfigured: 'Not configured',
+  unavailable: 'Unavailable',
+  scheduled: 'Scheduled',
+  available: 'Available',
+  exhausted: 'Exhausted',
+  expired: 'Expired',
+};
 const tabs = [
   { id: 'overview', label: 'Overview' },
   { id: 'network', label: 'Network' },
@@ -41,46 +113,112 @@ function navigateTabs(event: KeyboardEvent) {
 function openHelp() {
   document.getElementById('help-launcher')?.click();
 }
+function showTab(id: (typeof tabs)[number]['id']) {
+  tab.value = id;
+  void nextTick(() => document.getElementById('status-tab-' + id)?.focus());
+}
 let sequence = 0;
-async function load() {
+async function load(reset = false) {
+  if (busy.value && !reset) return;
   const current = ++sequence;
-  busy.value = true;
+  platformBusy.value = true;
+  agentBusy.value = true;
   error.value = '';
   agentError.value = '';
-  status.value = undefined;
-  assistant.value = undefined;
-  const [platform, agent] = await Promise.allSettled([api.platformStatus(), api.docsAgent()]);
-  if (current !== sequence) return;
-  if (platform.status === 'fulfilled') status.value = platform.value;
-  else error.value = friendlyError(platform.reason);
-  if (agent.status === 'fulfilled') assistant.value = agent.value;
-  else agentError.value = friendlyError(agent.reason);
-  busy.value = false;
+  if (reset) {
+    status.value = undefined;
+    assistant.value = undefined;
+  }
+  await Promise.all([
+    api
+      .platformStatus()
+      .then(
+        (value) => {
+          if (current === sequence) status.value = value;
+        },
+        (cause) => {
+          if (current === sequence) error.value = friendlyError(cause);
+        },
+      )
+      .finally(() => {
+        if (current === sequence) platformBusy.value = false;
+      }),
+    api
+      .docsAgent()
+      .then(
+        (value) => {
+          if (current === sequence) assistant.value = value;
+        },
+        (cause) => {
+          if (current === sequence) agentError.value = friendlyError(cause);
+        },
+      )
+      .finally(() => {
+        if (current === sequence) agentBusy.value = false;
+      }),
+  ]);
 }
-onMounted(load);
-watch(() => workspace.network?.chainId, load);
+onMounted(() => load());
+watch(
+  () =>
+    workspace.network &&
+    [
+      workspace.network.chainId,
+      workspace.network.runtime,
+      workspace.network.rpcUrl,
+      workspace.network.environment,
+    ].join('/'),
+  (_network, previous) => {
+    if (previous !== undefined) void load(true);
+  },
+);
 onUnmounted(() => {
   sequence++;
 });
 </script>
 
 <template>
-  <div class="page-heading">
+  <div class="page-heading status-heading">
     <div>
       <p class="eyebrow">PLATFORM</p>
       <h1>Status</h1>
-      <p class="lead">A clear view of your network, services and Daxi support.</p>
+      <p class="lead">Network checks, service configuration and Daxi support.</p>
     </div>
-    <button class="secondary" :disabled="busy" @click="load">
-      {{ busy ? 'Checking…' : 'Refresh status' }}
+    <button type="button" class="secondary" :aria-disabled="busy" @click="load()">
+      <RefreshCw aria-hidden="true" :size="18" />
+      {{ busy ? 'Checking…' : error && !status ? 'Try again' : 'Refresh status' }}
     </button>
   </div>
-  <p v-if="error" class="alert" role="alert">{{ error }}</p>
-  <p v-else-if="busy && !status" role="status">Checking platform status…</p>
-  <template v-if="status">
-    <p class="field-help">
-      Checked {{ new Date(status.checkedAt).toLocaleString() }}. Configuration is shown separately
-      from live qualification. <RouterLink to="/docs/platform">Status guide ↗</RouterLink>
+  <div v-if="error" class="alert" role="alert">
+    <strong>{{
+      status ? 'Refresh failed. Showing the previous readings.' : 'Could not check platform status.'
+    }}</strong>
+    <p>{{ error }} Use {{ status ? 'Refresh status' : 'Try again' }} to check again.</p>
+  </div>
+  <section v-else-if="platformBusy && !status" class="panel status-loading" role="status">
+    <h2>Checking platform status…</h2>
+    <p>Reading the network and service configuration.</p>
+  </section>
+  <div v-if="status" class="status-page">
+    <div class="status-meta">
+      <p :class="{ 'previous-readings': error }">
+        {{ error ? 'Previous readings' : platformBusy ? 'Last checked' : 'Checked' }}
+        <time :datetime="status.checkedAt">{{ new Date(status.checkedAt).toLocaleString() }}</time>
+        <span v-if="platformBusy" role="status"> · Refreshing readings…</span>
+      </p>
+      <RouterLink to="/docs/platform"
+        >Status guide <ArrowRight :size="16" aria-hidden="true"
+      /></RouterLink>
+    </div>
+    <section class="status-checks" aria-label="Latest checks" :aria-busy="platformBusy">
+      <article v-for="check in checks" :key="check.label" class="check-card">
+        <h2><component :is="check.icon" :size="18" aria-hidden="true" />{{ check.label }}</h2>
+        <p class="check-value" :data-tone="check.tone">{{ check.value }}</p>
+        <p class="check-detail">{{ check.detail }}</p>
+      </article>
+    </section>
+    <p v-if="status.chain?.chainMatches === false" class="alert" role="alert">
+      Chain mismatch. These readings come from a different chain than the configured deployment.
     </p>
     <div
       class="account-tabs status-tabs"
@@ -109,33 +247,49 @@ onUnmounted(() => {
       role="tabpanel"
       aria-labelledby="status-tab-overview"
       tabindex="0"
+      class="status-overview"
     >
       <section class="panel">
         <h2>What you can use here</h2>
         <p>
-          DAO reads:
           {{
-            status.rpc === 'reachable' && status.chain?.chainMatches
-              ? 'network reachable'
-              : 'unavailable or wrong chain'
-          }}. Shared setup: {{ status.chain?.sharedAvailable ? 'configured' : 'unavailable' }}. TLOS
-          quotes: {{ status.chain?.rateFresh ? 'current' : 'unavailable or stale' }}.
+            readableChain
+              ? 'The configured chain is reachable for DAO reads.'
+              : 'DAO reads could not be verified. Review Network for connection details.'
+          }}
         </p>
-        <p>
-          Independent self-service setup is unavailable. Managed custody and cross-chain settlement
-          still require qualification.
+        <div class="service-count">
+          <strong
+            >{{ configuredServices }} <span>/ {{ status.services.length }}</span></strong
+          ><span>services configured</span>
+        </div>
+        <p class="field-help">
+          Configuration does not prove live provider availability. Review each service before
+          relying on it.
         </p>
-        <p>
-          {{ status.services.filter((service) => service.configured).length }} of
-          {{ status.services.length }} services configured. Use Services for integrations and AI
-          Daxi Help for support settings.
-        </p>
+        <div class="button-row">
+          <RouterLink class="button secondary" to="/hub"
+            >Browse DAOs <ArrowRight aria-hidden="true"
+          /></RouterLink>
+          <button type="button" class="text-button" @click="showTab('services')">
+            Review services <ArrowRight aria-hidden="true" />
+          </button>
+        </div>
+        <details class="status-disclosure">
+          <summary>Deployment limitations</summary>
+          <p>
+            Independent self-service setup is unavailable. Managed custody and cross-chain
+            settlement still require qualification.
+          </p>
+        </details>
       </section>
       <section v-if="status.gatewayAllowance" class="panel">
         <h2>Shared gateway allowance</h2>
-        <p>
-          State: {{ status.gatewayAllowance.state }}. This allowance covers this operator’s shared
-          gateway, across its DAOs and background verification jobs.
+        <span class="pill" :class="{ success: status.gatewayAllowance.state === 'available' }">{{
+          allowanceLabels[status.gatewayAllowance.state]
+        }}</span>
+        <p class="gateway-description">
+          Shared across this operator’s DAOs and background verification jobs.
         </p>
         <template v-if="status.gatewayAllowance.fundingQualification === 'operator-attested'">
           <p>
@@ -149,12 +303,15 @@ onUnmounted(() => {
             {{ new Date(status.gatewayAllowance.endsAt ?? '').toLocaleString() }}.
           </p>
         </template>
-        <p class="field-help">
-          Reads stop when the allowance expires or is exhausted. Failed reads retain their
-          reservation. Files stay pinned, and this adds no DAO bandwidth invoice. Funding is
-          attested by the operator; provider payment and access controls require separate
-          verification.
-        </p>
+        <details class="status-disclosure">
+          <summary>How this allowance works</summary>
+          <p class="field-help">
+            Reads stop when the allowance expires or is exhausted. Failed reads retain their
+            reservation. Files stay pinned, and this adds no DAO bandwidth invoice. Funding is
+            attested by the operator; provider payment and access controls require separate
+            verification.
+          </p>
+        </details>
       </section>
     </div>
     <div
@@ -171,6 +328,8 @@ onUnmounted(() => {
           <dd>{{ status.apiVersion }}</dd>
           <dt>Modules</dt>
           <dd>{{ status.moduleVersion }}</dd>
+          <dt>Database</dt>
+          <dd>{{ status.database.state }}</dd>
           <dt>RPC</dt>
           <dd>{{ status.rpc }}</dd>
           <template v-if="status.chain"
@@ -182,7 +341,8 @@ onUnmounted(() => {
             <dd class="break-word">{{ status.chain.network.chainId }}</dd>
             <dt>Actual chain ID</dt>
             <dd class="break-word">
-              {{ status.chain.chainId }} · {{ status.chain.chainMatches ? 'matches' : 'MISMATCH' }}
+              {{ status.chain.chainId }} ·
+              {{ status.chain.chainMatches ? 'matches' : 'MISMATCH' }}
             </dd>
             <dt>Head / irreversible block</dt>
             <dd>{{ status.chain.headBlock }} / {{ status.chain.irreversibleBlock }}</dd>
@@ -193,7 +353,13 @@ onUnmounted(() => {
             <dt>Capabilities</dt>
             <dd>{{ status.chain.network.capabilities.join(', ') }}</dd>
             <dt>Shared creation</dt>
-            <dd>{{ status.chain.sharedAvailable ? 'Configured' : 'Unavailable' }}</dd>
+            <dd>
+              {{
+                readableChain && status.chain.sharedAvailable
+                  ? 'Configured'
+                  : 'Unavailable / unverified'
+              }}
+            </dd>
             <dt>Independent checkout</dt>
             <dd>Unavailable · operator deployment kit</dd></template
           >
@@ -210,15 +376,37 @@ onUnmounted(() => {
       <section class="panel">
         <h2>Contracts and authorities</h2>
         <p>
-          Runtime and hub hashes have no release pin here. Native upgrade authority remains with the
-          accounts below.
+          Compare deployed code with its release pin and inspect public permissions. Native upgrade
+          authority remains with each account.
         </p>
         <article
           class="status-contract"
           v-for="contract in status.chain?.contracts"
           :key="contract.account"
         >
-          <h3>{{ contract.account }}{{ contract.moduleId ? ' · ' + contract.moduleId : '' }}</h3>
+          <div class="contract-heading">
+            <h3>
+              {{ contract.account
+              }}<span v-if="contract.moduleId" class="contract-module">{{
+                contract.moduleId
+              }}</span>
+            </h3>
+            <span
+              class="pill"
+              :class="{
+                success: contract.codeHash && contract.expectedHash && contract.verified,
+              }"
+              >{{
+                !contract.codeHash
+                  ? 'Not read'
+                  : contract.expectedHash
+                    ? contract.verified
+                      ? 'Verified'
+                      : 'Hash mismatch'
+                    : 'No release pin'
+              }}</span
+            >
+          </div>
           <dl class="fact-list">
             <dt>Code hash</dt>
             <dd class="break-word">{{ contract.codeHash ?? 'Unknown' }}</dd>
@@ -227,16 +415,23 @@ onUnmounted(() => {
             <dt>Artifact match</dt>
             <dd>
               {{
-                contract.expectedHash ? (contract.verified ? 'Verified' : 'MISMATCH') : 'Unverified'
+                !contract.codeHash
+                  ? 'Not read'
+                  : contract.expectedHash
+                    ? contract.verified
+                      ? 'Verified'
+                      : 'MISMATCH'
+                    : 'Unverified'
               }}
             </dd>
             <dt>RAM used / quota</dt>
             <dd>
               {{ contract.ramUsed ?? 'Unknown' }} /
-              {{ contract.ramBytes === -1 ? 'Unlimited' : (contract.ramBytes ?? 'Unknown') }} bytes
+              {{ contract.ramBytes === -1 ? 'Unlimited' : (contract.ramBytes ?? 'Unknown') }}
+              bytes
             </dd>
           </dl>
-          <details>
+          <details class="status-disclosure">
             <summary>Public permission authorities</summary>
             <ul>
               <li v-for="permission in contract.permissions" :key="permission.name">
@@ -260,7 +455,10 @@ onUnmounted(() => {
             </ul>
           </details>
         </article>
-        <p v-if="!status.chain">Contract readings unavailable.</p>
+        <p v-if="!status.chain?.contracts.length">
+          Contract readings unavailable. Refresh to check again; no contract verification is
+          implied.
+        </p>
       </section>
     </div>
     <div
@@ -321,7 +519,11 @@ onUnmounted(() => {
             <dd>{{ status.chain.creation?.settler ?? 'Unconfigured' }}</dd>
             <dt>Fresh TLOS rate</dt>
             <dd>
-              {{ status.chain.rateFresh ? 'Yes · up to 15 minutes old' : 'Unavailable / stale' }}
+              {{
+                readableChain && status.chain.rateFresh
+                  ? 'Yes · up to 15 minutes old'
+                  : 'Unavailable / stale'
+              }}
             </dd>
             <dt>Rate observation</dt>
             <dd>
@@ -379,20 +581,39 @@ onUnmounted(() => {
     >
       <section class="panel">
         <h2>Services</h2>
-        <article
-          class="status-service"
-          v-for="service in status.services.filter(
-            (item) => !['docs', 'telegram-docs'].includes(item.id),
-          )"
-          :key="service.id"
+        <p>
+          {{ configuredServices }} of {{ status.services.length }} services configured, including
+          Daxi. Configuration is separate from a successful live check.
+        </p>
+        <div class="status-service-grid">
+          <article
+            class="status-service"
+            v-for="service in status.services.filter(
+              (item) => !['docs', 'telegram-docs'].includes(item.id),
+            )"
+            :key="service.id"
+          >
+            <span class="pill">{{ service.configured ? 'Configured' : 'Not configured' }}</span>
+            <h3>{{ service.name }}</h3>
+            <p>{{ service.detail }}</p>
+            <p class="field-help">
+              {{
+                service.qualification === 'local-fixture'
+                  ? 'Local fixture only · live availability unverified'
+                  : 'Live availability unverified'
+              }}
+            </p>
+          </article>
+        </div>
+        <p
+          v-if="!status.services.some((service) => !['docs', 'telegram-docs'].includes(service.id))"
+          class="field-help"
         >
-          <h3>
-            {{ service.name }}
-            <span class="pill">{{ service.configured ? 'Configured' : 'Unconfigured' }}</span>
-          </h3>
-          <p>{{ service.detail }}</p>
-          <p class="field-help">Qualification: {{ service.qualification }}</p>
-        </article>
+          No other integrations reported by this server.
+        </p>
+        <button type="button" class="text-button" @click="showTab('ai')">
+          Daxi configuration <ArrowRight aria-hidden="true" />
+        </button>
       </section>
       <section class="panel">
         <h2>Service limits</h2>
@@ -426,7 +647,14 @@ onUnmounted(() => {
           Meet Daxi, your guide to Daclify, Telos and DAOs. Clear answers, practical next steps and
           the occasional joke about governance paperwork.
         </p>
-        <p v-if="agentError" class="alert" role="alert">{{ agentError }}</p>
+        <p v-if="agentError" class="alert" role="alert">
+          Could not refresh Daxi settings.
+          {{ assistant ? 'Showing previously read settings.' : 'Configuration is unknown.' }}
+          {{ agentError }} Use Refresh status to try again.
+        </p>
+        <p v-else-if="agentBusy" role="status">
+          Checking Daxi settings{{ assistant ? ' · previous settings remain below' : '' }}…
+        </p>
         <dl v-if="assistant" class="fact-list">
           <dt>Scope</dt>
           <dd>{{ assistant.profile?.scope.join(', ') ?? 'Not reported by this server' }}</dd>
@@ -462,6 +690,9 @@ onUnmounted(() => {
           <span class="pill">{{ service.configured ? 'Configured' : 'Not configured' }}</span>
           <p>{{ service.detail }}</p>
         </article>
+        <p v-if="!status.services.some((service) => service.id === 'telegram-docs')">
+          Telegram support configuration was not reported by this server.
+        </p>
         <p>
           Groups use /docs commands and replies; direct chat requires the approved-user whitelist.
           Telegram sign-in and bot chat are configured separately.
@@ -472,20 +703,193 @@ onUnmounted(() => {
         </p>
       </section>
     </div>
-  </template>
+  </div>
 </template>
 <style scoped>
+.status-page {
+  container-type: inline-size;
+}
+.status-heading {
+  margin-bottom: 20px;
+}
+.status-heading > button {
+  flex-shrink: 0;
+}
+.status-heading > button[aria-disabled='true'] {
+  cursor: progress;
+  opacity: 0.65;
+  box-shadow: none;
+  transform: none;
+}
+.status-meta,
+.contract-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.status-meta {
+  margin-bottom: 20px;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+.status-meta p {
+  margin: 0;
+}
+.status-meta a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+}
+.previous-readings {
+  color: var(--accent-amber);
+}
+.status-checks {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.check-card {
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-panel);
+}
+.check-card h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+.check-card svg {
+  flex: none;
+  color: var(--text-muted);
+}
+.check-value {
+  font-size: 1.25rem;
+  font-weight: 650;
+  line-height: 1.4;
+  letter-spacing: -0.3px;
+  margin-bottom: 8px;
+  overflow-wrap: anywhere;
+}
+.check-value[data-tone='success'] {
+  color: var(--state-success);
+}
+.check-value[data-tone='danger'] {
+  color: var(--state-danger);
+}
+.check-detail {
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+  margin: 0;
+}
 .status-tabs {
   margin: 24px 0;
+  gap: 8px;
 }
-.status-contract,
-.status-service {
+.status-tabs button {
+  min-height: 44px;
+  font-size: 0.875rem;
+}
+.status-overview {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.status-overview .panel {
+  margin-bottom: 0;
+}
+.status-overview > .panel:only-child {
+  grid-column: 1 / -1;
+}
+.service-count {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 12px;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  margin-bottom: 8px;
+}
+.service-count strong {
+  color: var(--text-primary);
+  font-size: 2rem;
+  letter-spacing: -1px;
+}
+.service-count strong span {
+  color: var(--text-muted);
+  font-size: 1.125rem;
+  letter-spacing: 0;
+}
+.gateway-description {
+  margin-top: 16px;
+}
+.status-disclosure {
+  margin-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.status-disclosure summary {
+  min-height: 44px;
+  padding: 12px 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.status-disclosure p:last-child {
+  margin-bottom: 0;
+}
+.status-disclosure ul {
+  padding-left: 20px;
+  font-size: 0.875rem;
+  line-height: 1.7;
+}
+.status-contract {
   padding: 22px 0;
   border-bottom: 1px solid var(--line);
 }
-.status-contract:last-child,
-.status-service:last-child {
+.status-contract:last-child {
   border-bottom: 0;
+}
+.contract-heading h3 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.contract-module {
+  margin-left: 12px;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  font-weight: 450;
+}
+.status-service-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 20px 0;
+}
+.status-service {
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+  overflow-wrap: anywhere;
+}
+.status-service h3 {
+  font-size: 1rem;
+  line-height: 1.5;
+  margin: 12px 0 8px;
+}
+.status-service p:last-child {
+  margin-bottom: 0;
 }
 .panel-heading h2 {
   display: flex;
@@ -494,10 +898,69 @@ onUnmounted(() => {
 }
 [role='tabpanel'] {
   min-width: 0;
+  font-size: 0.875rem;
+}
+[role='tabpanel'] .panel h2 {
+  font-size: 1.25rem;
+}
+[role='tabpanel'] .panel p {
+  font-size: 0.875rem;
 }
 [role='tabpanel']:focus-visible {
   outline: 2px solid var(--accent-amber);
   outline-offset: 4px;
   border-radius: var(--radius-lg);
+}
+@media (max-width: 1100px) {
+  .status-checks {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .status-overview {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 600px) {
+  .status-meta {
+    gap: 0;
+  }
+  .status-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .status-tabs button {
+    padding: 8px;
+    border-radius: var(--radius-sm);
+  }
+  .status-service-grid {
+    grid-template-columns: 1fr;
+  }
+  .check-card {
+    padding: 16px;
+  }
+  .check-value {
+    font-size: 1.0625rem;
+  }
+  [role='tabpanel'] .panel {
+    padding: 20px;
+  }
+}
+@media (min-width: 601px) {
+  .fact-list {
+    grid-template-columns: minmax(10rem, 1fr) minmax(0, 2fr);
+    gap: 12px 24px;
+  }
+}
+@container (max-width: 40rem) {
+  .status-overview,
+  .status-service-grid {
+    grid-template-columns: 1fr;
+  }
+  .status-checks {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .fact-list {
+    grid-template-columns: 1fr;
+  }
 }
 </style>
