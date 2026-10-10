@@ -6,7 +6,7 @@ Development frontend **0.10.0-alpha.7**; Vue 3/Vite/Pinia and existing design to
 
 1. **Verified correctness failures:** stale name quotes could reappear after input changes; a response for a different name could reach purchase UI; directory/profile matching omitted part of the DAO reference. Regression cases reproduced the failures before changes.
 2. **Verified recovery failures:** profile request errors looked like missing users, name discovery errors retained “Reading the chain,” and failed DAO availability lookup had no focused recovery. Own cards ignored search; there was no filter reset.
-3. **Verified live prerequisites:** Telegram widget rejects the domain, free creation disagrees with current on-chain settings, and Names has no tiers/offers. Service credentials alone cannot establish working payments or funded uploads.
+3. **Verified live prerequisites at review:** Telegram rejected the domain, free creation disagreed with on-chain settings, and Names had no tiers/offers. The operator decisions and subsequent native activation below resolve those three prerequisites. Service credentials alone cannot establish working payments or funded uploads.
 4. **Design judgments:** Names buried its main search behind a large inspiration panel and placed key backup after listings; DAO setup needed a readable summary; Services repeated a long undifferentiated list; empty profile covers consumed space.
 
 ## Implemented
@@ -34,7 +34,7 @@ Artifact scripts/logs/screenshots are ignored under `.artifacts/user-setup`; sou
 
 See the [backend service qualification](../../../daclify-backend-core/docs/evidence/2026-10-10-service-qualification.md) for the real sign-in/provider checks, sandbox products/webhooks, mail and private Telegram setup, and the complete 14-service inventory.
 
-Physical wallets/passkeys, human email/Telegram approval, real invoice/native settlement, funded gateway budget, guarded cleanup and managed custody remain unqualified. BotFather domain setup, shared-creation policy and basic-name pricing decisions are pending with the user. These are not presented as completed service work.
+Physical wallets/passkeys, human email/Telegram pairing and login, real invoice/native payment settlement, funded gateway budget, guarded cleanup and managed custody remain unqualified. The tester confirmed email delivery and authorized the Telegram domain. Shared free setup and the approved basic-name package are now applied and verified; details follow below.
 
 GitHub publication requires credentials on this server; local development commits and deployed assets are recorded after delivery.
 
@@ -49,3 +49,13 @@ Two generated disposable private keys in a deliberately failing clipboard test's
 Final delivery retained old hashes and verified 113 staged files. The final scan covered 96 text artifacts against 13 configured secrets with zero matches. All eight public desktop/phone page scans passed again after the compact Services adjustment. Public index SHA-256 matches the final local index. Services details carry the repeated readiness explanation inside native disclosures; the live phone panel height is recorded in the final browser artifact.
 
 Frontend code is committed locally on `dev` as `9fa932f`; core setup/qualification is `63ef7c0`. Both push attempts failed for missing GitHub authentication. Follow-up evidence commits record that outcome. The deployed app contains the tested code; neither repo changed `main`. All three systemd services are active and worktrees are clean after these evidence commits.
+
+## Native policy activation and human confirmations
+
+The tester confirmed delivery of the email check. Telegram's actual public iframe now shows **Log in with Telegram** without the domain rejection. The tester's email/Telegram identities have not been attached to disposable accounts; pairing and sign-in still require their own browser consent.
+
+Approved free setup with ten active-member slots is now irreversible on chain. A disposable account completed the live public flow through immutable review, **Create this DAO**, and navigation to DAO `7010534441818256360`. Native readback confirms one active founding member and the ten-slot policy. The test did not exercise paid capacity or eleventh-member enforcement.
+
+Names now quotes the approved **$1** basic tier with **30 KiB RAM**, **0.5 TLOS CPU** and **0.5 TLOS NET**, backed by the approved 100 test-TLOS provisioning float. The existing 20% native conversion premium remains; the observed native quote was 68.1819 TLOS. The public page displayed the exact values at 1440px and 390px with zero page errors, horizontal overflow or selected Axe violations. A five-minute testnet timer refreshes the trusted conversion observation. A native purchase simulation passed without broadcasting a purchase or changing balances/sales. Card settlement and real wallet consent remain unqualified. See the updated [backend evidence](../../../daclify-backend-core/docs/evidence/2026-10-10-service-qualification.md) for receipts and operational limits. No frontend source or bundle change was needed for these operator settings.
+
+Native activation evidence is committed in core `61d2813`. Its new push attempt again failed because GitHub authentication is absent. The follow-up Names/pricing/creation-preflight selection passed 23 tests; the separate creation-fee WASM fixture still lacks compiled artifacts and Docker/CDT, as recorded in backend evidence. Native activation and the public browser checks do not depend on that fixture.
