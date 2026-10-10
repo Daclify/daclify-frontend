@@ -735,7 +735,10 @@ main {
   gap: 18px;
 }
 .dao-card {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
   color: inherit;
   border: 1px solid var(--line);
   background: var(--surface-raised);
@@ -747,80 +750,165 @@ main {
     box-shadow var(--motion-fast),
     border-color var(--motion-fast);
 }
-.dao-card:hover {
+a.dao-card:hover {
   text-decoration: none;
   border-color: var(--border-warm);
   box-shadow: var(--elevation-panel), var(--glow-amber);
+}
+a.dao-card:active {
+  border-color: var(--accent-amber);
+}
+.dao-card:focus-visible {
+  outline: 2px solid var(--accent-amber);
+  outline-offset: 3px;
+}
+.dao-cover {
+  height: 7rem;
+  flex: none;
+  position: relative;
+  display: grid;
+  place-items: center;
+  background: var(--surface-panel);
+  overflow: hidden;
+}
+.dao-cover > img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.dao-cover-fallback {
+  background: var(--surface-brand);
+}
+.cover-connections {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  stroke: var(--accent-amber);
+  stroke-width: 1;
+  opacity: 0.22;
+}
+.cover-symbol {
+  display: grid;
+  place-items: center;
+  width: 4rem;
+  height: 4rem;
+  border: 1px solid var(--border-warm);
+  border-radius: var(--radius-lg);
+  background: var(--surface-panel);
+  color: var(--accent-amber);
+  position: relative;
+}
+.cover-symbol svg {
+  width: 2rem;
+  height: 2rem;
+}
+.dao-card-body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
 }
 .dao-card-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
   gap: 8px;
 }
 .dao-avatar {
-  width: 42px;
-  height: 42px;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
   border-radius: var(--radius-md);
   background: var(--accent-soft);
   display: grid;
   place-items: center;
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 700;
   color: var(--accent-amber);
+  overflow: hidden;
 }
-.dao-card h2 {
-  font-size: 18px;
-  margin-bottom: 10px;
+.dao-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.dao-card-title {
+  font-size: 1.125rem;
+  line-height: 1.4;
+  margin: 0 0 10px;
   overflow-wrap: anywhere;
 }
-.dao-card p {
-  font-size: 12px;
+.dao-card .pill {
+  font-size: 0.75rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.dao-card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.dao-card-description {
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  margin: 0 0 20px;
+}
+.dao-card-mode {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 0.8125rem;
   color: var(--text-muted);
-  min-height: 58px;
+}
+.dao-card-mode svg {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  flex: none;
+}
+.dao-card-context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+  margin-top: auto;
 }
 .dao-card-footer {
   border-top: 1px solid var(--border-default);
-  padding-top: 16px;
-  margin-top: 20px;
+  padding-top: 14px;
+  margin-top: 16px;
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
-  gap: 8px;
-  font-size: 10px;
-  color: var(--accent-amber);
-}
-.info-strip {
-  margin: 32px 0 0;
-  border: 1px solid var(--border-warm);
-  border-radius: var(--radius-lg);
-  background: var(--surface-panel);
-  padding: 22px;
-  display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 12px;
+  font-size: 0.8125rem;
 }
-.info-icon {
-  width: 30px;
-  height: 30px;
+.dao-card-members {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+}
+.dao-card-members svg {
+  width: 15px;
+  height: 15px;
   flex: none;
+}
+.dao-card-footer .card-action {
   color: var(--accent-amber);
 }
-.info-strip div {
-  flex: 1;
-}
-.info-strip strong {
-  font-size: 13px;
-}
-.info-strip p {
-  font-size: 12px;
-  color: var(--text-secondary);
-  margin: 5px 0 0;
-}
-.info-strip a {
-  font-size: 12px;
-  white-space: nowrap;
-  text-decoration: underline;
+@media (max-width: 560px) {
+  .dao-card-description {
+    font-size: 1rem;
+  }
 }
 .empty-state {
   border: 1px dashed var(--border-warm);
@@ -1289,13 +1377,6 @@ dd {
   .docs-content {
     padding: 24px;
   }
-  .info-strip {
-    align-items: flex-start;
-    flex-wrap: wrap;
-  }
-  .info-strip a {
-    margin-left: auto;
-  }
   .page-footer {
     padding: 20px 22px;
   }
@@ -1345,9 +1426,6 @@ dd {
   }
   .three-column > div:first-child {
     grid-column: 1 / -1;
-  }
-  .info-icon {
-    display: none;
   }
   .breadcrumb {
     display: none;
@@ -1527,53 +1605,6 @@ nav a,
   .fact-list dd {
     margin-bottom: 0.65rem;
   }
-}
-
-.dao-cover {
-  aspect-ratio: 16 / 7;
-  background:
-    radial-gradient(circle at 75% 20%, var(--accent-soft), transparent 65%), var(--surface-panel);
-  display: grid;
-  place-items: center;
-  overflow: hidden;
-}
-.dao-cover img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-.cover-monogram {
-  font-size: 3rem;
-  font-weight: 800;
-  color: var(--accent-amber);
-  opacity: 0.3;
-}
-.dao-card-body {
-  padding: 22px;
-}
-.dao-avatar {
-  flex-shrink: 0;
-  overflow: hidden;
-}
-.dao-avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-.dao-card-context {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 12px;
-  font-size: 11px;
-  color: var(--text-muted);
-  overflow-wrap: anywhere;
-}
-.dao-card:focus-visible {
-  outline: 2px solid var(--accent-amber);
-  outline-offset: 3px;
-}
-.dao-card p {
-  overflow-wrap: anywhere;
 }
 
 .report-totals {

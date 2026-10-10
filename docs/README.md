@@ -1,12 +1,14 @@
 # Frontend documentation
 
-Current development application: **0.10.0-alpha.1**, with matching packed core/module help and SDK packages. Development uses `dev`. See the [repository README](../README.md) for routes, local development, account recovery and test phases, and the [Netlify dev guide](netlify-dev.md) for the separate testnet site.
+Current development application: **0.10.0-alpha.2**, consuming core **0.10.0-alpha.1** and modules **0.9.0-alpha.8** SDK/help packages. Development uses `dev`. See the [repository README](../README.md) for routes, local development, account recovery and test phases, and the [Netlify dev guide](netlify-dev.md) for the separate testnet site.
 
 ## Help inside the application
 
 The app starts at `/` with a welcome page; DAO discovery is at `/hub`, and My DAO
 opens `/hub?mine=1`. The brand returns to the welcome page. Previous root URLs
 with Hub filters redirect with their query and hash preserved.
+
+The [Hub experience](evidence/2026-10-10-hub-experience.md) groups its browsing controls, uses readable community cards and distinguishes loading, failed listings, no matches and sign-in requirements. Loaded runtime cards remain usable when independent listings fail. Counts include independent registrations without duplicating the runtime's full DAO references. Operator review explains service separation before connecting; external portals disclose their destination. No directory listing constitutes an operator security audit.
 
 `/docs` is a guide index with expandable lists rather than the full handbook on one page. Six groups
 organize Getting started, Members & governance, Modules & treasury, Costs &

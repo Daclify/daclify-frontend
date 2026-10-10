@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.0-alpha.2 development — community Hub
+
+Make the Hub a focused community browser: compact network/count context, grouped search/purpose/sort controls, smaller branded covers with purpose-icon fallbacks, readable card metadata and explicit empty/sign-in states. Include independent registrations in result counts and normalize search across both sources. Preserve URL queries/hashes, full-reference membership matching, verified raster image loading, operator consent and deployment checks.
+
+Separate listing errors from operator-connection errors; retain loaded communities and offer a focused retry. Add desktop/mobile browser coverage for filters, membership isolation, registration deduplication, unavailable/undecodable imagery, operator review, empty/loading/error states, keyboard focus, reduced motion and enlarged text. No API, contract, pricing, custody or provider configuration change. Core SDK and module versions remain pinned to their previous releases.
+
 ## 0.9.0-alpha.7 development — audit and recovery navigation
 
 Unknown app URLs now show an accessible recovery page with Home and Hub links. The optional manual verification workflow installs the committed vendored packages directly, removing private sibling checkouts and contract compilation. Consume module SDK 0.9.0-alpha.7 with core protocol 0.9.0-alpha.6 and unchanged module contracts 0.9.0-alpha.5. No automatic GitHub CI or deployment is enabled.

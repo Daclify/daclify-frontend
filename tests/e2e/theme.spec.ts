@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import AxeBuilder from '@axe-core/playwright';
-import { ApiRoutes, ErrorSchema, NetworkSchema } from '@daclify/core-protocol';
+import { ApiRoutes, DirectoryRoutes, ErrorSchema, NetworkSchema } from '@daclify/core-protocol';
 
 // These read-only fixtures exercise presentation; they do not emulate a chain.
 const network = NetworkSchema.parse({
@@ -17,6 +17,20 @@ const network = NetworkSchema.parse({
 const signedOut = ErrorSchema.parse({ code: 'AUTH_REQUIRED', message: 'Sign in to continue.' });
 
 test.beforeEach(async ({ page }) => {
+  await page.route('**/v1/**', (route) =>
+    route.fulfill({
+      status: 503,
+      json: ErrorSchema.parse({
+        code: 'SERVICE_UNAVAILABLE',
+        message: 'Synthetic fixture unavailable.',
+      }),
+    }),
+  );
+  await page.route('**/v1/hub/directory', (route) =>
+    route.fulfill({
+      json: DirectoryRoutes.hubDirectory.response.parse({ entries: [], next: null, skipped: 0 }),
+    }),
+  );
   await page.route(`**${ApiRoutes.network.path}`, (route) => route.fulfill({ json: network }));
   await page.route(`**${ApiRoutes.daos.path}`, (route) =>
     route.fulfill({ json: ApiRoutes.daos.response.parse({ daos: [] }) }),

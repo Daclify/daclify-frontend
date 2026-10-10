@@ -1,6 +1,15 @@
 {
   "requirements": [
     {
+      "id": "HUB-COMMUNITY-DISCOVERY",
+      "tests": [
+        "tests/unit/dao-directory.test.ts",
+        "tests/e2e/dao-directory.spec.ts",
+        "tests/e2e/hub-experience.spec.ts",
+        "tests/e2e/theme.spec.ts"
+      ]
+    },
+    {
       "id": "APP-WELCOME-AND-HUB-NAVIGATION",
       "tests": ["tests/e2e/homepage.spec.ts", "tests/e2e/network-lock.spec.ts"]
     },

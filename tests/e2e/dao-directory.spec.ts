@@ -1,5 +1,10 @@
 import { expect, test } from '@playwright/test';
-import { DaoSummarySchema, NetworkSchema } from '@daclify/core-protocol';
+import {
+  DaoSummarySchema,
+  DirectoryRoutes,
+  ErrorSchema,
+  NetworkSchema,
+} from '@daclify/core-protocol';
 test('pages the directory, restores URL filters, and keeps readable cards when imagery is unavailable', async ({
   page,
 }) => {
@@ -14,6 +19,20 @@ test('pages the directory, restores URL filters, and keeps readable cards when i
       coreVersion: '0.4.0-alpha.1',
       capabilities: [],
     });
+  await page.route('**/v1/**', (route) =>
+    route.fulfill({
+      status: 503,
+      json: ErrorSchema.parse({
+        code: 'SERVICE_UNAVAILABLE',
+        message: 'Synthetic fixture unavailable.',
+      }),
+    }),
+  );
+  await page.route('**/v1/hub/directory', (route) =>
+    route.fulfill({
+      json: DirectoryRoutes.hubDirectory.response.parse({ entries: [], next: null, skipped: 0 }),
+    }),
+  );
   const base = {
     reference: { chainId, contract: 'daclifycore', daoId: '1', interfaceVersion: 1 },
     privacy: 'public',
@@ -48,7 +67,12 @@ test('pages the directory, restores URL filters, and keeps readable cards when i
       },
     });
   await page.route('**/v1/network', (r) => r.fulfill({ json: network }));
-  await page.route('**/v1/me', (r) => r.fulfill({ status: 401, json: { code: 'AUTH_REQUIRED' } }));
+  await page.route('**/v1/me', (r) =>
+    r.fulfill({
+      status: 401,
+      json: ErrorSchema.parse({ code: 'AUTH_REQUIRED', message: 'Sign in to continue.' }),
+    }),
+  );
   await page.route(/\/v1\/daos(?:\?.*)?$/, (r) =>
     r.fulfill({
       json: r.request().url().includes('after=')
@@ -67,7 +91,9 @@ test('pages the directory, restores URL filters, and keeps readable cards when i
   await page.reload();
   await expect(page.locator('.dao-card')).toHaveCount(1);
   await page.getByRole('button', { name: 'My communities' }).click();
-  await expect(page.getByRole('heading', { name: 'No matching communities' })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Sign in to see your communities' }),
+  ).toBeVisible();
   await page.getByRole('button', { name: 'Clear filters' }).click();
   await expect(page.locator('.dao-card')).toHaveCount(2);
   const card = page
