@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.0-alpha.10 development — recover with a kit's vault password
+
+Restore an unchanged encrypted recovery kit using either its saved vault password or its separate recovery code. Preserve the original signing and document keys, verify the public identity, and protect the restored device with a new password. Clarify the recovery form and backup guidance; retain compatibility with existing recovery codes and encrypted kits.
+
 ## 0.10.0-alpha.7 development — Users, names and service readiness
 
 Give Users scoped result counts, consistent search/reset and retry states; retain partial results and keep DAO references intact in profile labels and details. Profiles use a compact header, readable membership status and retry without a false missing-member state.

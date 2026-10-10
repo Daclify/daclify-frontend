@@ -263,7 +263,12 @@ export async function restoreRecoveryKit(
   if (password.length < 12) throw new Error('Use at least 12 characters');
   try {
     const kit = RecoveryKitSchema.parse(input);
-    const recovered = await recoverVault(kit.recoveryEnvelope, credential);
+    let recovered: VaultSecrets;
+    try {
+      recovered = await recoverVault(kit.recoveryEnvelope, credential);
+    } catch {
+      recovered = await unlockVault(kit.localEnvelope, credential);
+    }
     const publicSigning = PrivateKey.from(recovered.signingKey).toPublic().toString();
     const publicEncryption = EncryptionPublicKeySchema.parse({
       kty: recovered.encryptionPrivateKey.kty,

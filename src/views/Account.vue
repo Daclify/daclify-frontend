@@ -350,8 +350,8 @@ function backup() {
   <section v-if="restoring" class="panel narrow account-flow">
     <h2>Restore your existing keys</h2>
     <p>
-      Choose your encrypted kit and enter its separate recovery credential. A new password protects
-      this device.
+      Choose your encrypted kit and enter the vault password saved with that kit, or its separate
+      recovery code. Your new password protects this device.
     </p>
     <form @submit.prevent="restore">
       <label for="kit">Encrypted recovery kit</label
@@ -362,7 +362,7 @@ function backup() {
         required
         :disabled="busy"
         @change="selectKit"
-      /><label for="recover-credential">Recovery credential</label
+      /><label for="recover-credential">Vault password or recovery code</label
       ><input
         id="recover-credential"
         v-model="recoveryCredential"
@@ -392,8 +392,8 @@ function backup() {
   <section v-else-if="created" class="panel narrow account-flow">
     <h2>Keep access on a new device</h2>
     <p>
-      Your password unlocks this device. Your encrypted recovery kit and separate credential restore
-      your keys on another device.
+      Your password unlocks this device and the password-protected copy in your downloaded kit. The
+      separate recovery code below restores your keys if you forget that password.
     </p>
     <button class="secondary" @click="backup">Download encrypted recovery kit</button
     ><label for="recovery">Recovery credential — generated for this vault</label
@@ -411,8 +411,8 @@ function backup() {
     </div>
     <p v-if="recoveryCopied" class="notice" role="status">Recovery credential copied.</p>
     <p class="muted">
-      Store this credential away from the downloaded kit. Daclify cannot recover user-controlled
-      keys without both.
+      Store this recovery code away from the downloaded kit. Restoring your keys requires the kit
+      and either its vault password or this code.
     </p>
     <label class="checkbox"
       ><input v-model="acknowledged" type="checkbox" />I have saved my recovery kit and
@@ -731,8 +731,8 @@ function backup() {
           need your granted decryption keys.
         </p>
         <p>
-          Keep your recovery kit and its separate credential. They restore your original keys on a
-          new device.
+          Keep your recovery kit and its separate recovery code. The kit restores your original keys
+          on a new device using that code or the vault password saved with the kit.
         </p>
         <RouterLink class="help-link" to="/docs/accounts"
           >Account and key guide <ArrowUpRight aria-hidden="true"
@@ -744,7 +744,8 @@ function backup() {
       <div>
         <h2 id="recovery-choice-title">Moving devices or restoring access?</h2>
         <p>
-          Use your encrypted recovery kit and its separate credential to restore your existing keys.
+          Restore your existing keys with your encrypted kit and its vault password or recovery
+          code.
         </p>
       </div>
       <button

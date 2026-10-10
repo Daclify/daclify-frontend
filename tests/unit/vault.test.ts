@@ -110,7 +110,33 @@ describe('private DAO content and epoch grants', () => {
 });
 
 describe('fresh-device encrypted recovery ceremony', () => {
-  it('re-encrypts the same signing and document keys under a new local password', async () => {
+  it.each(['recovery code', 'vault password'])(
+    're-encrypts the same signing and document keys using the %s',
+    async (method) => {
+      const vault = await createVault(password);
+      const kit = {
+        version: 1,
+        localEnvelope: vault.localEnvelope,
+        recoveryEnvelope: vault.recoveryEnvelope,
+        signingPublicKey: vault.signingPublicKey,
+        encryptionPublicKey: vault.encryptionPublicKey,
+      };
+      const restored = await restoreRecoveryKit(
+        kit,
+        method === 'vault password' ? password : vault.recoveryCredential,
+        'a new local password 2026',
+      );
+      expect(restored.signingPublicKey).toBe(vault.signingPublicKey);
+      expect(await unlockVault(restored.localEnvelope, 'a new local password 2026')).toEqual(
+        await unlockVault(vault.localEnvelope, password),
+      );
+      expect(restored.recoveryEnvelope).toEqual(vault.recoveryEnvelope);
+      await expect(unlockVault(restored.localEnvelope, password)).rejects.toThrow(
+        'VAULT_UNLOCK_FAILED',
+      );
+    },
+  );
+  it('rejects a secret that unlocks neither envelope without changing the kit', async () => {
     const vault = await createVault(password);
     const kit = {
       version: 1,
@@ -119,33 +145,32 @@ describe('fresh-device encrypted recovery ceremony', () => {
       signingPublicKey: vault.signingPublicKey,
       encryptionPublicKey: vault.encryptionPublicKey,
     };
-    const restored = await restoreRecoveryKit(
-      kit,
-      vault.recoveryCredential,
-      'a new local password 2026',
-    );
-    expect(restored.signingPublicKey).toBe(vault.signingPublicKey);
-    expect(await unlockVault(restored.localEnvelope, 'a new local password 2026')).toEqual(
-      await unlockVault(vault.localEnvelope, password),
-    );
-    expect(restored.recoveryEnvelope).toEqual(vault.recoveryEnvelope);
-    await expect(unlockVault(restored.localEnvelope, password)).rejects.toThrow(
+    const original = JSON.stringify(kit);
+    await expect(restoreRecoveryKit(kit, 'incorrect secret', password)).rejects.toThrow(
       'VAULT_UNLOCK_FAILED',
     );
+    expect(JSON.stringify(kit)).toBe(original);
   });
-  it('rejects a kit advertising another account public key', async () => {
-    const vault = await createVault(password);
-    const kit = {
-      version: 1,
-      localEnvelope: vault.localEnvelope,
-      recoveryEnvelope: vault.recoveryEnvelope,
-      signingPublicKey: PrivateKey.generate('K1').toPublic().toString(),
-      encryptionPublicKey: vault.encryptionPublicKey,
-    };
-    await expect(restoreRecoveryKit(kit, vault.recoveryCredential, password)).rejects.toThrow(
-      'VAULT_UNLOCK_FAILED',
-    );
-  });
+  it.each(['recovery code', 'vault password'])(
+    'rejects a kit advertising another account public key when using the %s',
+    async (method) => {
+      const vault = await createVault(password);
+      const kit = {
+        version: 1,
+        localEnvelope: vault.localEnvelope,
+        recoveryEnvelope: vault.recoveryEnvelope,
+        signingPublicKey: PrivateKey.generate('K1').toPublic().toString(),
+        encryptionPublicKey: vault.encryptionPublicKey,
+      };
+      await expect(
+        restoreRecoveryKit(
+          kit,
+          method === 'vault password' ? password : vault.recoveryCredential,
+          password,
+        ),
+      ).rejects.toThrow('VAULT_UNLOCK_FAILED');
+    },
+  );
   it('rejects an unknown plaintext key field in a recovery kit', async () => {
     const vault = await createVault(password);
     await expect(

@@ -186,7 +186,9 @@ test('keeps unavailable managed signup secondary and recovery immediately discov
   await expect(
     main(page).getByRole('heading', { name: 'Recover your account', exact: true }),
   ).toBeVisible();
-  await expect(main(page).getByLabel('Recovery credential', { exact: true })).toBeVisible();
+  await expect(
+    main(page).getByLabel('Vault password or recovery code', { exact: true }),
+  ).toBeVisible();
   await expect(main(page).getByLabel('Encrypted recovery kit', { exact: true })).toBeFocused();
   await main(page).getByRole('button', { name: 'Cancel recovery', exact: true }).click();
   await expect(
@@ -443,70 +445,75 @@ test('saved vault is offered before alternatives and creation never replaces it'
   await expect(page.getByText('Vault unlocked', { exact: true })).toBeVisible();
 });
 
-test('creates keys with backup acknowledgment and restores the same identity on a fresh browser', async ({
-  page,
-  browser,
-}) => {
-  await fixture(page);
-  const accounts = await vaultLogin(page);
-  await page.goto('/account');
-  await main(page)
-    .getByLabel('Vault password', { exact: true })
-    .fill('disposable account create fixture');
-  await main(page).getByRole('button', { name: 'Create encrypted vault', exact: true }).click();
-  await expect(
-    main(page).getByRole('heading', { name: 'Save your recovery kit', exact: true }),
-  ).toBeVisible();
-  await expect(
-    main(page).getByRole('button', { name: 'Finish account setup', exact: true }),
-  ).toBeDisabled();
-  const credential = await main(page)
-    .getByLabel('Recovery credential — generated for this vault', { exact: true })
-    .inputValue();
-  const downloadReady = page.waitForEvent('download');
-  await main(page)
-    .getByRole('button', { name: 'Download encrypted recovery kit', exact: true })
-    .click();
-  const downloaded = await (await downloadReady).path();
-  if (!downloaded) throw new Error('Disposable recovery kit unavailable');
-  const kit = await readFile(downloaded);
-  await main(page)
-    .getByLabel('I have saved my recovery kit and credential', { exact: true })
-    .check();
-  await main(page).getByRole('button', { name: 'Finish account setup', exact: true }).click();
-  await expect(
-    main(page).getByRole('heading', { name: 'User-controlled account', exact: true }),
-  ).toBeVisible();
-  expect(accounts.size).toBe(1);
-  const original = [...accounts.values()][0];
-  if (!original) throw new Error('Fixture registration missing');
-  expect(await page.evaluate(() => localStorage.getItem('daclify.vault.v1'))).not.toContain(
-    'PVT_K1_',
-  );
-  const context = await browser.newContext();
-  try {
-    const recovered = await context.newPage();
-    await fixture(recovered);
-    await vaultLogin(recovered, accounts);
-    await recovered.goto(new URL('/account', page.url()).href);
-    await main(recovered)
-      .getByRole('button', { name: 'Recover from an encrypted kit', exact: true })
+for (const recoveryMethod of ['recovery code', 'vault password']) {
+  test(`creates keys with backup acknowledgment and restores the same identity using the ${recoveryMethod}`, async ({
+    page,
+    browser,
+  }) => {
+    await fixture(page);
+    const accounts = await vaultLogin(page);
+    await page.goto('/account');
+    const password = 'disposable account create fixture';
+    await main(page).getByLabel('Vault password', { exact: true }).fill(password);
+    await main(page).getByRole('button', { name: 'Create encrypted vault', exact: true }).click();
+    await expect(
+      main(page).getByRole('heading', { name: 'Save your recovery kit', exact: true }),
+    ).toBeVisible();
+    await expect(
+      main(page).getByRole('button', { name: 'Finish account setup', exact: true }),
+    ).toBeDisabled();
+    const credential = await main(page)
+      .getByLabel('Recovery credential — generated for this vault', { exact: true })
+      .inputValue();
+    const downloadReady = page.waitForEvent('download');
+    await main(page)
+      .getByRole('button', { name: 'Download encrypted recovery kit', exact: true })
       .click();
-    await main(recovered)
-      .getByLabel('Encrypted recovery kit', { exact: true })
-      .setInputFiles({ name: 'disposable-kit.json', mimeType: 'application/json', buffer: kit });
-    await main(recovered).getByLabel('Recovery credential', { exact: true }).fill(credential);
-    await main(recovered)
-      .getByLabel('New vault password', { exact: true })
-      .fill('replacement disposable password');
-    await main(recovered).getByRole('button', { name: 'Restore and sign in', exact: true }).click();
-    await expect(main(recovered).getByText(original.id, { exact: true })).toBeVisible();
-    await expect(recovered.getByText('Vault unlocked', { exact: true })).toBeVisible();
+    const downloaded = await (await downloadReady).path();
+    if (!downloaded) throw new Error('Disposable recovery kit unavailable');
+    const kit = await readFile(downloaded);
+    await main(page)
+      .getByLabel('I have saved my recovery kit and credential', { exact: true })
+      .check();
+    await main(page).getByRole('button', { name: 'Finish account setup', exact: true }).click();
+    await expect(
+      main(page).getByRole('heading', { name: 'User-controlled account', exact: true }),
+    ).toBeVisible();
     expect(accounts.size).toBe(1);
-  } finally {
-    await context.close();
-  }
-});
+    const original = [...accounts.values()][0];
+    if (!original) throw new Error('Fixture registration missing');
+    expect(await page.evaluate(() => localStorage.getItem('daclify.vault.v1'))).not.toContain(
+      'PVT_K1_',
+    );
+    const context = await browser.newContext();
+    try {
+      const recovered = await context.newPage();
+      await fixture(recovered);
+      await vaultLogin(recovered, accounts);
+      await recovered.goto(new URL('/account', page.url()).href);
+      await main(recovered)
+        .getByRole('button', { name: 'Recover from an encrypted kit', exact: true })
+        .click();
+      await main(recovered)
+        .getByLabel('Encrypted recovery kit', { exact: true })
+        .setInputFiles({ name: 'disposable-kit.json', mimeType: 'application/json', buffer: kit });
+      await main(recovered)
+        .getByLabel('Vault password or recovery code', { exact: true })
+        .fill(recoveryMethod === 'vault password' ? password : credential);
+      await main(recovered)
+        .getByLabel('New vault password', { exact: true })
+        .fill('replacement disposable password');
+      await main(recovered)
+        .getByRole('button', { name: 'Restore and sign in', exact: true })
+        .click();
+      await expect(main(recovered).getByText(original.id, { exact: true })).toBeVisible();
+      await expect(recovered.getByText('Vault unlocked', { exact: true })).toBeVisible();
+      expect(accounts.size).toBe(1);
+    } finally {
+      await context.close();
+    }
+  });
+}
 
 test('entry and selected methods remain readable on phone, tablet, landscape and enlarged text', async ({
   page,

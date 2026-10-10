@@ -145,7 +145,7 @@ test('recovers the same account and DAO membership on a fresh browser', async ({
       mimeType: 'application/json',
       buffer: Buffer.from(backup),
     });
-    await recovered.getByLabel('Recovery credential', { exact: true }).fill(credential);
+    await recovered.getByLabel('Vault password or recovery code', { exact: true }).fill(credential);
     await recovered.getByLabel('New vault password').fill('replacement vault password 2026');
     await recovered.getByRole('button', { name: 'Restore and sign in' }).click();
     await expect(recovered.getByRole('heading', { name: 'Your account' })).toBeVisible();
