@@ -28,9 +28,7 @@ const selected = computed(
   () => contracts.value.find((c) => c.account === selectedAccount.value) ?? contracts.value[0],
 );
 const graph = computed(() =>
-  selected.value
-    ? permissionGraph(selected.value)
-    : { nodes: [], edges: [], width: 760, height: 296 },
+  selected.value ? permissionGraph(selected.value) : { nodes: [], edges: [], roots: [] },
 );
 const node = computed(() => graph.value.nodes.find((n) => n.id === focused.value));
 const connections = computed(() =>
@@ -359,7 +357,12 @@ onUnmounted(cancelResources);
         </button>
       </div>
       <div v-if="selected" class="authority-workspace">
-        <PermissionMap :selected="selected" :graph="graph" v-model="focused" />
+        <PermissionMap
+          :selected="selected"
+          :graph="graph"
+          :account="readings[selected.account]"
+          v-model="focused"
+        />
         <section
           id="contract-map-inspector"
           class="authority-inspector"
@@ -761,7 +764,7 @@ onUnmounted(cancelResources);
 }
 .authority-workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
   align-items: start;
 }
@@ -794,8 +797,8 @@ onUnmounted(cancelResources);
 }
 .permission-facts {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 8px 24px;
   padding: 12px;
   background: var(--surface-soft);
   border-radius: var(--radius-sm);
@@ -851,9 +854,13 @@ onUnmounted(cancelResources);
   margin-bottom: 5px;
 }
 .connection-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  column-gap: 24px;
   margin-top: 22px;
 }
 .connection-list h4 {
+  grid-column: 1 / -1;
   font-size: 0.75rem;
   font-weight: 600;
   color: var(--text-muted);
@@ -910,14 +917,6 @@ onUnmounted(cancelResources);
   }
   to {
     opacity: 1;
-  }
-}
-@media (max-width: 1250px) {
-  .authority-workspace {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .authority-inspector {
-    display: block;
   }
 }
 @media (max-width: 600px) {

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { API, PrivateKey } from '@wharfkit/antelope';
 import {
   authorityConnections,
+  permissionActionLinks,
   permissionGraph,
   resourceReading,
   type ContractReading,
@@ -42,6 +44,36 @@ const contract: ContractReading = {
   ],
 };
 describe('observed permission relationships', () => {
+  it('keeps descendants under their own parent and retains detached or cyclic permissions', () => {
+    const p = (name: string, parent: string) => ({
+      name,
+      parent,
+      threshold: 1,
+      keys: [],
+      accounts: [],
+      waits: [],
+    });
+    const graph = permissionGraph({
+      ...contract,
+      permissions: [
+        p('claim', 'active'),
+        p('spend', 'owner'),
+        p('active', 'owner'),
+        p('owner', ''),
+        p('orphan', 'unread'),
+        p('a', 'b'),
+        p('b', 'a'),
+      ],
+    });
+    expect(graph.roots.map((branch) => branch.permission.name)).toEqual(['owner', 'orphan', 'a']);
+    expect(graph.roots[0]?.children.map((branch) => branch.permission.name)).toEqual([
+      'spend',
+      'active',
+    ]);
+    expect(graph.roots[0]?.children[1]?.children[0]?.permission.name).toBe('claim');
+    expect(graph.roots[2]?.children[0]?.permission.name).toBe('b');
+    expect(graph.roots[2]?.children[0]?.children).toEqual([]);
+  });
   it('orders a permission hierarchy and preserves shared signer weights separately', () => {
     const graph = permissionGraph(contract);
     expect(graph.nodes.filter((n) => n.kind === 'permission').map((n) => n.label)).toEqual([
@@ -111,6 +143,40 @@ describe('observed permission relationships', () => {
       },
     ]);
     expect(authorityConnections([contract, works], contract, wait)).toEqual([]);
+  });
+});
+describe('reported permission action links', () => {
+  const key = PrivateKey.generate('K1').toPublic().toString();
+  const permission = {
+    name: 'claimer',
+    parent: 'active',
+    threshold: 1,
+    keys: [{ key, weight: 1 }],
+    accounts: [],
+    waits: [],
+  };
+  const reading = (threshold = 1, parent = 'active', weight = 1) =>
+    API.v1.AccountPermission.from({
+      perm_name: 'claimer',
+      parent,
+      required_auth: { threshold, keys: [{ key, weight }], accounts: [], waits: [] },
+      linked_actions: [{ account: 'eosio', action: 'claimrewards' }, { account: 'works' }],
+    });
+  it('shows reported action links only when the parent and authority match the status permission', () => {
+    expect(permissionActionLinks(permission, [reading()])).toEqual([
+      'eosio::claimrewards',
+      'works::*',
+    ]);
+    expect(permissionActionLinks(permission, [reading(2)])).toBeUndefined();
+    expect(permissionActionLinks(permission, [reading(1, 'owner')])).toBeUndefined();
+    expect(permissionActionLinks(permission, [reading(1, 'active', 2)])).toBeUndefined();
+    expect(permissionActionLinks(permission, [])).toBeUndefined();
+    const withoutLinks = API.v1.AccountPermission.from({
+      perm_name: 'claimer',
+      parent: 'active',
+      required_auth: reading().required_auth,
+    });
+    expect(permissionActionLinks(permission, [withoutLinks])).toBeUndefined();
   });
 });
 describe('account resource display', () => {

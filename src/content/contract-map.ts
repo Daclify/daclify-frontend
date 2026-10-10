@@ -1,4 +1,5 @@
 import type { PlatformStatus } from '@daclify/core-protocol';
+import { Authority, type API } from '@wharfkit/antelope';
 
 export type ContractReading = NonNullable<PlatformStatus['chain']>['contracts'][number];
 export type PermissionReading = ContractReading['permissions'][number];
@@ -7,8 +8,6 @@ export interface PermissionNode {
   kind: 'permission' | 'key' | 'account' | 'code' | 'wait';
   label: string;
   detail: string;
-  x: number;
-  y: number;
   publicKey?: string;
   actor?: string;
   permission?: string;
@@ -20,19 +19,34 @@ export interface PermissionEdge {
   kind: 'hierarchy' | 'key' | 'account' | 'code' | 'wait';
   weight?: number;
 }
+export interface PermissionBranch {
+  permission: PermissionReading;
+  children: PermissionBranch[];
+}
 
 export function permissionGraph(contract: ContractReading) {
   const nodes: PermissionNode[] = [],
     edges: PermissionEdge[] = [];
   const permissions = new Map(contract.permissions.map((p) => [p.name, p]));
-  const depth = (permission: PermissionReading, visited = new Set<string>()): number => {
-    if (visited.has(permission.name)) return 0;
+  const visited = new Set<string>();
+  const ordered: PermissionReading[] = [];
+  const branch = (permission: PermissionReading): PermissionBranch => {
     visited.add(permission.name);
-    const parent = permissions.get(permission.parent);
-    return parent ? 1 + depth(parent, visited) : 0;
+    ordered.push(permission);
+    const children: PermissionBranch[] = [];
+    for (const child of permissions.values())
+      if (child.parent === permission.name && !visited.has(child.name))
+        children.push(branch(child));
+    return { permission, children };
   };
-  const ordered = [...contract.permissions].sort((a, b) => depth(a) - depth(b));
-  ordered.forEach((permission, index) => {
+  const roots: PermissionBranch[] = [];
+  for (const permission of permissions.values())
+    if (!permissions.has(permission.parent) && !visited.has(permission.name))
+      roots.push(branch(permission));
+  // Preserve detached cycles once, without recursing back into an ancestor.
+  for (const permission of permissions.values())
+    if (!visited.has(permission.name)) roots.push(branch(permission));
+  ordered.forEach((permission) => {
     const id = 'permission:' + permission.name;
     nodes.push({
       id,
@@ -44,13 +58,11 @@ export function permissionGraph(contract: ContractReading) {
         (permission.parent ? ' · parent ' + permission.parent : ' · root'),
       permission: permission.name,
       authority: permission,
-      x: 390,
-      y: 64 + index * 104,
     });
     if (permissions.has(permission.parent))
       edges.push({ from: 'permission:' + permission.parent, to: id, kind: 'hierarchy' });
-    const add = (node: Omit<PermissionNode, 'x' | 'y'>, weight: number) => {
-      if (!nodes.some((existing) => existing.id === node.id)) nodes.push({ ...node, x: 24, y: 0 });
+    const add = (node: PermissionNode, weight: number) => {
+      if (!nodes.some((existing) => existing.id === node.id)) nodes.push(node);
       if (node.kind !== 'permission')
         edges.push({ from: node.id, to: id, kind: node.kind, weight });
     };
@@ -91,16 +103,32 @@ export function permissionGraph(contract: ContractReading) {
         wait.weight,
       );
   });
-  const authorities = nodes.filter((node) => node.kind !== 'permission');
-  authorities.forEach((node, index) => {
-    node.y = 64 + index * 104;
-  });
-  return {
-    nodes,
-    edges,
-    width: 760,
-    height: Math.max(ordered.length, authorities.length, 2) * 104 + 88,
-  };
+  return { nodes, edges, roots };
+}
+
+export function permissionActionLinks(
+  permission: PermissionReading,
+  readings: API.v1.AccountPermission[] = [],
+): string[] | undefined {
+  const reading = readings.find((entry) => entry.perm_name.toString() === permission.name);
+  if (!reading?.linked_actions || reading.parent.toString() !== permission.parent) return;
+  try {
+    const authority = Authority.from({
+      threshold: permission.threshold,
+      keys: permission.keys,
+      accounts: permission.accounts.map(({ actor, permission, weight }) => ({
+        permission: { actor, permission },
+        weight,
+      })),
+      waits: permission.waits.map(({ seconds, weight }) => ({ wait_sec: seconds, weight })),
+    });
+    if (!reading.required_auth.equals(authority)) return;
+    return reading.linked_actions.map(
+      (link) => link.account.toString() + '::' + (link.action?.toString() || '*'),
+    );
+  } catch {
+    return;
+  }
 }
 
 export function authorityConnections(

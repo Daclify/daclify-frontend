@@ -4,6 +4,7 @@ import { ApiRoutes, NetworkSchema, VERSION } from '@daclify/core-protocol';
 import { PrivateKey } from '@wharfkit/antelope';
 
 const publicKey = PrivateKey.generate('K1').toPublic().toString();
+const activeKey = PrivateKey.generate('K1').toPublic().toString();
 const network = NetworkSchema.parse({
   chainId: 'ab'.repeat(32),
   rpcUrl: 'https://rpc.example',
@@ -54,7 +55,13 @@ const status = ApiRoutes.status.response.parse({
         ramUsed: 1024,
         permissions: [
           permission('owner', ''),
-          permission('active', 'owner'),
+          {
+            ...permission('active', 'owner'),
+            keys: [
+              { key: publicKey, weight: 1 },
+              { key: activeKey, weight: 2 },
+            ],
+          },
           {
             name: 'execctx',
             parent: 'active',
@@ -129,7 +136,24 @@ function account(name: string) {
       max: '18014398509481986',
     },
     net_limit: { used: 0, available: 0, max: 0 },
-    permissions: [],
+    permissions: (
+      status.chain?.contracts.find((contract) => contract.account === name)?.permissions ?? []
+    ).map((permission) => ({
+      perm_name: permission.name,
+      parent: permission.parent,
+      required_auth: {
+        threshold: permission.threshold,
+        keys: permission.keys,
+        accounts: permission.accounts.map(({ actor, permission, weight }) => ({
+          permission: { actor, permission },
+          weight,
+        })),
+        waits: permission.waits.map(({ seconds, weight }) => ({ wait_sec: seconds, weight })),
+      },
+      ...(permission.name === 'execctx'
+        ? { linked_actions: [{ account: 'eosio', action: 'claimrewards' }] }
+        : {}),
+    })),
   };
 }
 test.beforeEach(async ({ page }) => {
@@ -164,6 +188,75 @@ async function openContracts(page: import('@playwright/test').Page) {
   await page.getByRole('tab', { name: 'Contracts', exact: true }).click();
 }
 
+test('permission tree groups inline signers under owner, active and custom children with reported action links', async ({
+  page,
+}) => {
+  await openContracts(page);
+  const map = page.getByRole('region', { name: 'Permission map', exact: true });
+  const owner = map.getByRole('article', { name: 'Permission owner', exact: true });
+  const active = map.getByRole('article', { name: 'Permission active', exact: true });
+  const child = map.getByRole('article', { name: 'Permission execctx', exact: true });
+  await expect(
+    owner.getByRole('button', { name: `Public key ${publicKey}`, exact: true }),
+  ).toBeVisible();
+  await expect(
+    active.getByRole('button', { name: `Public key ${publicKey}`, exact: true }),
+  ).toBeVisible();
+  await expect(
+    active.getByRole('button', { name: `Public key ${activeKey}`, exact: true }),
+  ).toContainText('+2');
+  await expect(
+    owner.locator('..').getByRole('article', { name: 'Permission active', exact: true }),
+  ).toBeVisible();
+  await expect(
+    active.locator('..').getByRole('article', { name: 'Permission execctx', exact: true }),
+  ).toBeVisible();
+  await expect(child).toContainText('eosio::claimrewards');
+  await active.getByRole('button', { name: `Public key ${publicKey}`, exact: true }).click();
+  await expect(
+    owner.getByRole('button', { name: `Public key ${publicKey}`, exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('region', { name: 'Selected authority', exact: true })).toContainText(
+    'works@owner',
+  );
+});
+
+test('many reported action links remain compact and expand with the keyboard', async ({ page }) => {
+  await page.route('**/v1/chain/get_account', (route) => {
+    const input: unknown = route.request().postDataJSON();
+    const name =
+      typeof input === 'object' && input !== null && 'account_name' in input
+        ? String(input.account_name)
+        : '';
+    const reading = account(name);
+    return route.fulfill({
+      json: {
+        ...reading,
+        permissions: reading.permissions.map((permission) =>
+          permission.perm_name === 'execctx'
+            ? {
+                ...permission,
+                linked_actions: Array.from({ length: 12 }, (_, index) => ({
+                  account: 'eosio',
+                  action: 'claim' + String.fromCharCode(97 + index),
+                })),
+              }
+            : permission,
+        ),
+      },
+    });
+  });
+  await openContracts(page);
+  const child = page.getByRole('article', { name: 'Permission execctx', exact: true });
+  await expect(child.getByText('eosio::claima', { exact: true })).toBeVisible();
+  await expect(child.getByText('eosio::claimd', { exact: true })).not.toBeVisible();
+  const disclosure = child.getByText('9 more actions', { exact: true });
+  await disclosure.focus();
+  await page.keyboard.press('Enter');
+  await expect(child.getByText('eosio::claimd', { exact: true })).toBeVisible();
+  await expect(child.getByText('eosio::claiml', { exact: true })).toBeVisible();
+});
+
 test('card faces focus the map and expose hierarchy, shared keys and real delegation', async ({
   page,
 }) => {
@@ -183,8 +276,11 @@ test('card faces focus the map and expose hierarchy, shared keys and real delega
   await expect(inspector).toContainText('Threshold: 2');
   await expect(inspector).toContainText('Weight 1');
   await expect(map.locator('[data-edge-kind="hierarchy"]')).toHaveCount(2);
-  await expect(map.locator('[data-edge-kind="key"]')).toHaveCount(2);
-  await map.getByRole('button', { name: `Public key ${publicKey}`, exact: true }).click();
+  await expect(map.locator('[data-edge-kind="key"]')).toHaveCount(3);
+  await map
+    .getByRole('button', { name: `Public key ${publicKey}`, exact: true })
+    .first()
+    .click();
   await expect(inspector).toContainText('core.we@owner');
   await expect(inspector).toContainText('core.we@active');
   await expect(inspector).toContainText('works@owner');
@@ -401,7 +497,7 @@ test('map and list support keyboard, mobile, enlarged text and accessible card b
   ).toEqual([]);
   for (const width of [320, 390, 768, 1440]) {
     await page.setViewportSize({ width, height: 1000 });
-    await explorer.getByRole('button', { name: 'Map view', exact: true }).click();
+    await explorer.getByRole('button', { name: 'Tree view', exact: true }).click();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true,
     );
@@ -432,6 +528,14 @@ test('map and list support keyboard, mobile, enlarged text and accessible card b
     document.documentElement.style.fontSize = '200%';
   });
   await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await explorer.getByRole('button', { name: 'Tree view', exact: true }).click();
+  await expect(
+    explorer
+      .getByRole('region', { name: 'Permission map', exact: true })
+      .getByRole('button', { name: `Public key ${publicKey}`, exact: true })
+      .first(),
+  ).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await expect(
     explorer.getByRole('button', { name: 'Show resources for core.we', exact: true }),

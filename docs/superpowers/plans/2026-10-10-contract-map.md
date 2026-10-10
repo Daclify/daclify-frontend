@@ -4,7 +4,7 @@
 
 **Goal:** Show observed contract authorities as an interactive map with reversible cards and live RAM/CPU/NET.
 
-**Architecture:** Replace only the Contracts panel with an owned explorer and map component. A small display model derives graph nodes/edges and resource labels from producer-owned platform and WharfKit types. The explorer owns selection/resource lifecycle; the map owns layout, zoom and its list alternative.
+**Architecture:** Replace only the Contracts panel with an owned explorer and map component. A small display model derives graph nodes/edges and resource labels from producer-owned platform and WharfKit types. The explorer owns selection/resource lifecycle; the map owns the responsive permission tree and its list alternative.
 
 **Tech Stack:** Existing Vue 3, strict TypeScript, WharfKit, Lucide, product tokens, Playwright and Axe; no new dependencies.
 
@@ -64,3 +64,18 @@
 - Self-review complete, inline under workspace prohibition on delegation: hierarchy/threshold semantics, public-data boundaries, resource precision/failure/replay, full diagnostics and keyboard/narrow-screen access checked. No outstanding important findings.
 - Testnet: task-only checked artifacts installed with a backup and prior assets retained. Public HTTPS and actual configured RPC reads verified; screenshots/evidence recorded. No production or native-authority change.
 - Git delivery: implementation commit `a0b51e0` pushed successfully to `origin/dev`. Used the established `Codex <codex@localhost>` commit identity as command-scoped settings; repository/global identity config remains unchanged. This final evidence update is a separate documentation commit on the same branch.
+
+## Follow-up: screenshot-aligned permission tree
+
+The user supplied a reference with nested owner, active and custom permissions, inline keys/weights and action chips. This is a concrete correction within the authorized feature; implement inline without a further design gate.
+
+- [x] Add regressions for branch grouping, detached/cyclic input, inline multiple keys/shared selection and matched/unreported action links; watch the missing tree/link functionality fail.
+- [x] Replace the two-lane SVG/zoom layout with semantic nested rows, full keys, threshold badges, weights, matching RPC action chips and responsive list access. Preserve inspector/card connections and resource lifecycle.
+- [x] Complete desktop/mobile Status regressions, enlarged-text/Axe checks, task-only full verification, screenshot review and testnet read-back.
+- [ ] Update guide/evidence and commit/push only this task's files.
+
+Follow-up baseline: `08bf404`. Task-only archive: `/data/daclify-runtime/permission-tree-check-4fwyljsx`. Concurrent sign-in/recovery/package changes remain excluded. Initial tree browser regression failed because inline permission rows were absent; model regressions failed because tree branches and matched action links were absent. Twelve model tests and eight desktop map cases now pass. The initial shared-tree typecheck also reported an unrelated `fast-sign-in.ts` never-type error; exact-optional account props introduced here were corrected to accept the pending/undefined reading explicitly.
+
+- Live data review found 57 action links on the runtime execctx permission. Added a compact three-chip preview with a native disclosure for the remainder; the regression failed because the fourth action was always visible before the change.
+
+- Final verification: 194/194 units with a 15-second test budget; 48/48 browser cases with a 60-second test budget; no assertion weakening, skipped cases or crypto changes. Lint/formatting/Vue/type/testnet build pass. After a desktop action-chip width adjustment, two responsive/Axe cases and the build were rerun successfully. Final public read-back checks all 10 resources, 57 action links, zero collapsed/expanded Axe violations and 31 asset byte matches. Backup, timestamps and timeout history are in the evidence guide.
