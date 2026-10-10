@@ -216,3 +216,36 @@ test('suggests valid ideas, shows DAO seller boundaries and exports narrowly sco
   );
   await page.screenshot({ path: test.info().outputPath('names-manager.png'), fullPage: true });
 });
+test('prevents below-floor suffix and exact-name exports and shows the normal account minimum', async ({
+  page,
+}) => {
+  await page.goto('/names');
+  await page
+    .getByRole('group', { name: 'Names views' })
+    .getByRole('button', { name: 'Manage & sell', exact: true })
+    .click();
+  await page.getByRole('button', { name: /DAO-controlled account/ }).click();
+  await page.getByLabel('Native seller account', { exact: true }).fill('bob');
+  await expect(page.getByText(/Current suffix minimum: 1.0000 TLOS/)).toBeVisible();
+  await expect(page.getByLabel('Price in TLOS', { exact: true })).toHaveValue('1.0000');
+  await page.getByLabel('Price in TLOS', { exact: true }).fill('0.9999');
+  await page.getByRole('checkbox', { name: /I accept the platform/ }).check();
+  await page.getByRole('button', { name: 'Export for DAO approval', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Suffix accounts must be priced at least');
+  await page.getByLabel('What are you selling?', { exact: true }).selectOption('exact');
+  await page.getByLabel('New name to list', { exact: true }).fill('aa.bob');
+  await page.getByRole('button', { name: 'Export for DAO approval', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Suffix accounts must be priced at least');
+  await page.getByLabel('Price in TLOS', { exact: true }).fill('1.0000');
+  await page
+    .getByLabel('Reference price in USD (card sales unavailable)', { exact: true })
+    .fill('0.99');
+  await page.getByRole('button', { name: 'Export for DAO approval', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Suffix accounts must be priced at least');
+  await page
+    .getByLabel('Reference price in USD (card sales unavailable)', { exact: true })
+    .fill('1.00');
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export for DAO approval', exact: true }).click();
+  expect((await download).suggestedFilename()).toBe('daclify-name-listing.json');
+});

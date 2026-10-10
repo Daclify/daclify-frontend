@@ -13,7 +13,7 @@ import {
   NamesCodeHash,
 } from '@daclify/core-protocol/sdk';
 import { z } from 'zod';
-import { friendlyError } from '../api/client';
+import { ApiFailure, friendlyError } from '../api/client';
 import { useWorkspace } from '../state/workspace';
 import { connectNative, nativeIdentity, nativeNamesTransaction } from '../auth/telos-zero';
 const props = defineProps<{ service: z.infer<typeof NamesServiceSchema> }>(),
@@ -23,7 +23,7 @@ const state = useWorkspace(),
   kind = ref<'suffix' | 'exact'>('suffix'),
   seller = ref(''),
   name = ref(''),
-  tlos = ref('1.0000'),
+  tlos = ref(''),
   usd = ref(''),
   consent = ref(false),
   error = ref(''),
@@ -31,8 +31,18 @@ const state = useWorkspace(),
   busy = ref(false);
 const editingExact = ref(false);
 const contract = computed(() => props.service.contract),
+  basic = computed(() => props.service.tiers.find((tier) => tier.kind === 'basic')),
+  minimumTlos = computed(() => basic.value?.tlosQuote ?? basic.value?.price),
+  needsFloor = computed(() => kind.value === 'suffix' || name.value.includes('.')),
   owned = computed(() => props.service.suffixes.filter((item) => item.seller === seller.value)),
   exact = computed(() => props.service.listings.filter((item) => item.seller === seller.value));
+watch(
+  minimumTlos,
+  (minimum) => {
+    if (!tlos.value && minimum) tlos.value = minimum.split(' ')[0] ?? '';
+  },
+  { immediate: true },
+);
 function reset() {
   seller.value = '';
   name.value = '';
@@ -90,6 +100,15 @@ function action() {
     price = `${formatUnits(parseUnits(tlos.value, 4), 4)} TLOS`,
     cents = Number(parseUnits(usd.value || '0', 2));
   if (!consent.value) throw new Error('FEE_RULE');
+  if (needsFloor.value) {
+    if (!basic.value || !minimumTlos.value) throw new ApiFailure('TIER_UNSET');
+    const minimum = parseUnits(minimumTlos.value.split(' ')[0] ?? '', 4),
+      units = parseUnits(tlos.value, 4);
+    if (units > 0n && minimum === 0n) throw new ApiFailure('TIER_UNSET');
+    if (cents > 0 && basic.value.usdCents === 0) throw new ApiFailure('NAME_FEE_REFERENCE');
+    if ((units > 0n && units < minimum) || (cents > 0 && cents < basic.value.usdCents))
+      throw new ApiFailure('NAME_PRICE_FLOOR');
+  }
   return kind.value === 'suffix'
     ? nameSellerAction(contract.value, 'regsuffix', {
         suffix: account,
@@ -305,15 +324,32 @@ async function removeListing(value: string, suffix: boolean) {
               Short undotted names require a closed native auction won by your seller account.
             </p></template
           ><label for="seller-tlos">Price in TLOS</label
-          ><input id="seller-tlos" v-model="tlos" inputmode="decimal" required /><label
-            for="seller-usd"
-            >Reference price in USD (card sales unavailable)</label
+          ><input
+            id="seller-tlos"
+            v-model="tlos"
+            inputmode="decimal"
+            required
+            :aria-describedby="needsFloor ? 'seller-price-minimum' : undefined"
+          />
+          <p v-if="needsFloor" id="seller-price-minimum" class="field-help">
+            <template v-if="minimumTlos"
+              >Current suffix minimum: {{ minimumTlos
+              }}<template v-if="basic && basic.usdCents > 0"
+                >; USD reference minimum: ${{ formatUnits(BigInt(basic.usdCents), 2) }}</template
+              >. Suffix accounts cost at least as much as a normal account. The minimum follows
+              current resource and TLOS prices; older offers adjust at purchase.</template
+            >
+            <template v-else
+              >The normal account minimum is unavailable. Refresh the name service before listing a
+              suffix.</template
+            >
+          </p>
+          <label for="seller-usd">Reference price in USD (card sales unavailable)</label
           ><input
             id="seller-usd"
             v-model="usd"
             inputmode="decimal"
-            disabled
-            placeholder="Third-party card routing unavailable"
+            placeholder="Optional USD reference"
           />
           <p class="field-help">
             Third-party card sales are disabled until seller merchant routing is implemented. Set a
