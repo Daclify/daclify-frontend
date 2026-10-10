@@ -115,10 +115,12 @@ The user requests a connector ending at active when no custom children follow an
 - [x] Observe model/browser RED for absent configured-role edges, then derive them from canonical producer fields with both-endpoint/self/missing guards.
 - [x] Preserve name-only selection and the existing permission layout; route dotted cream configured-role lines around intervening nodes.
 - [x] Complete current-version full units/build, Status desktop/mobile regressions, public read-back/geometry and screenshot review.
-- [ ] Record evidence and commit/push the correction to dev.
+- [x] Record evidence and commit/push the correction to dev.
 
 Baseline: `3adc0ac`; initial workspace clean. Initial CSS-only qualification: 207/207 units and four targeted hierarchy/responsive browser cases pass. Configured-role additions: initial positive model/browser regressions fail because the helper ignores configuration and no configuration paths exist; sixteen model cases and the focused desktop role-selection case pass after implementation. A test tuple's string|undefined inference was corrected with a literal const tuple; application interfaces remain canonical and strictly typed.
 
 Final qualification: 209/209 units and 52/52 desktop/mobile Status and permission-guide cases pass. The isolated current-version archive `/data/daclify-runtime/configured-connections-check-69btevis` also passes 209/209 units, four configured-selection/responsive/Axe browser cases and Vue/type/testnet build. Preserve concurrent account-settings source/test/guide work; none is included in the checked archive or this correction's commit.
 
 Published the checked isolated build after guarding against concurrent index changes, retaining old assets and backing up the frontend at `/data/daclify-runtime/configured-connections-before-20261010-181634`. Actual public API/RPC read-back checks ten accounts, five action edges, four configured-role edges, fifty-seven runtime action chips, ten connector endpoints and thirty asset byte matches. Desktop, expanded-action and mobile Axe report zero violations. Actual screenshots inspected; evidence records timestamps and remaining browser limits.
+
+Git delivery: implementation `4f9e754` is pushed to origin/dev; remote SHA `4f9e7542bc176d11be354713264f151fd1be55ab` was verified. Only the eleven correction files were staged. The final ledger update changes documentation only; concurrent account-settings work remains untouched.
