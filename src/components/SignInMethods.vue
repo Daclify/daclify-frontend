@@ -373,7 +373,7 @@ onUnmounted(() => {
 });
 </script>
 <template>
-  <section :class="mode === 'manage' ? 'panel narrow' : 'sign-in-choices'">
+  <section :class="mode === 'manage' ? 'panel method-settings' : 'sign-in-choices'">
     <h2 v-if="mode === 'manage'">Sign-in methods</h2>
     <h3 v-else>Choose your sign-in method</h3>
     <p class="sign-in-scope">
@@ -381,8 +381,8 @@ onUnmounted(() => {
       also unlock your signing and private-document keys.
     </p>
     <p v-if="mode === 'manage' && !vaultUnlocked" class="notice">
-      Prove account control before adding or removing a method. Unlock your keys from the Keys tab,
-      or use an authorized linked wallet.
+      Adding or removing a method needs account approval. Unlock your keys in Access &amp; recovery,
+      or use a paired wallet.
     </p>
     <p v-if="error" class="alert" role="alert">{{ error }}</p>
     <p v-if="notice" class="notice" role="status">{{ notice }}</p>
@@ -422,29 +422,58 @@ onUnmounted(() => {
       </button>
     </div>
     <p v-if="mode === 'enter' && !selected" class="sign-in-hint">Select a method to continue.</p>
-    <div
+    <component
+      :is="mode === 'manage' ? 'details' : 'div'"
       v-if="mode === 'manage' || selected === 'native'"
-      :class="{ 'sign-in-detail': mode === 'enter' }"
+      :class="mode === 'manage' ? 'method-settings-row' : 'sign-in-detail'"
     >
+      <summary v-if="mode === 'manage'">
+        <Wallet aria-hidden="true" /><span
+          ><strong>Telos Zero</strong><small>Pair or manage an Anchor wallet</small></span
+        ><ChevronRight aria-hidden="true" />
+      </summary>
       <NativeWalletPanel
         :mode="mode"
-        :inert="busy"
+        :inert="working"
         @authenticated="emit('authenticated', $event)"
         @busy="walletBusy = $event"
       />
-    </div>
-    <div v-if="mode === 'enter' && selected === 'evm'" class="sign-in-detail">
-      <LinkedAccounts
-        mode="enter"
-        @authenticated="emit('authenticated', $event)"
-        @busy="walletBusy = $event"
-      />
-    </div>
-    <div
-      v-if="mode === 'manage' || selected === 'passkey'"
-      :class="{ 'sign-in-detail': mode === 'enter' }"
+    </component>
+    <component
+      :is="mode === 'manage' ? 'details' : 'div'"
+      v-if="mode === 'manage' || selected === 'evm'"
+      :class="mode === 'manage' ? 'method-settings-row' : 'sign-in-detail'"
     >
-      <h3>Passkey</h3>
+      <summary v-if="mode === 'manage'">
+        <Wallet aria-hidden="true" /><span
+          ><strong>Telos EVM</strong><small>Pair or manage an EVM wallet</small></span
+        ><ChevronRight aria-hidden="true" />
+      </summary>
+      <LinkedAccounts
+        :mode="mode"
+        :inert="working"
+        @authenticated="emit('authenticated', $event)"
+        @busy="walletBusy = $event"
+      />
+    </component>
+    <component
+      :is="mode === 'manage' ? 'details' : 'div'"
+      v-if="mode === 'manage' || selected === 'passkey'"
+      :class="mode === 'manage' ? 'method-settings-row' : 'sign-in-detail'"
+    >
+      <summary v-if="mode === 'manage'">
+        <FingerprintPattern aria-hidden="true" /><span
+          ><strong>Passkey</strong
+          ><small>{{
+            linked
+              ? linked.passkeys.length
+                ? `${linked.passkeys.length} paired`
+                : 'Not paired'
+              : 'Checking…'
+          }}</small></span
+        ><ChevronRight aria-hidden="true" />
+      </summary>
+      <h3 v-else>Passkey</h3>
       <ul v-if="linked" class="method-list">
         <li v-for="passkey in linked.passkeys" :key="passkey.id" class="method-row">
           <span class="mono">{{ passkey.id.slice(0, 10) }}</span>
@@ -480,12 +509,26 @@ onUnmounted(() => {
         an IP address.
       </p>
       <p v-else class="muted">This browser cannot create a passkey.</p>
-    </div>
-    <div
+    </component>
+    <component
+      :is="mode === 'manage' ? 'details' : 'div'"
       v-if="mode === 'manage' || selected === 'telegram'"
-      :class="{ 'sign-in-detail': mode === 'enter' }"
+      :open="mode === 'manage' && !!pendingTelegram?.subject"
+      :class="mode === 'manage' ? 'method-settings-row' : 'sign-in-detail'"
     >
-      <h3>Telegram</h3>
+      <summary v-if="mode === 'manage'">
+        <Send aria-hidden="true" /><span
+          ><strong>Telegram</strong
+          ><small>{{
+            linked
+              ? linked.telegram.subjects.length
+                ? `${linked.telegram.subjects.length} paired`
+                : 'Not paired'
+              : 'Checking…'
+          }}</small></span
+        ><ChevronRight aria-hidden="true" />
+      </summary>
+      <h3 v-else>Telegram</h3>
       <button
         v-if="miniAppAvailable"
         type="button"
@@ -537,12 +580,26 @@ onUnmounted(() => {
       >
         Telegram is not configured on this server.
       </p>
-    </div>
-    <div
+    </component>
+    <component
+      :is="mode === 'manage' ? 'details' : 'div'"
       v-if="mode === 'manage' || selected === 'email'"
-      :class="{ 'sign-in-detail': mode === 'enter' }"
+      :open="mode === 'manage' && awaitingCode"
+      :class="mode === 'manage' ? 'method-settings-row' : 'sign-in-detail'"
     >
-      <h3>Email</h3>
+      <summary v-if="mode === 'manage'">
+        <Mail aria-hidden="true" /><span
+          ><strong>Email</strong
+          ><small>{{
+            linked
+              ? linked.email.subjects.length
+                ? linked.email.subjects.join(', ')
+                : 'Not paired'
+              : 'Checking…'
+          }}</small></span
+        ><ChevronRight aria-hidden="true" />
+      </summary>
+      <h3 v-else>Email</h3>
       <ul v-if="linked" class="method-list">
         <li v-for="subject in linked.email.subjects" :key="subject" class="method-row">
           <span>{{ subject }}</span>
@@ -614,9 +671,9 @@ onUnmounted(() => {
         Mail is not configured, so the pairing code is shown on this page. Signing in with email
         from another browser needs mail delivery.
       </p>
-    </div>
-    <template v-if="mode === 'manage' && history"
-      ><h3>Sign-in changes</h3>
+    </component>
+    <details v-if="mode === 'manage' && history" class="method-history">
+      <summary>Sign-in changes</summary>
       <p class="field-help">
         Recorded credential changes for this account. Sign-in pairing and DAO wallet authorization
         are separate.
@@ -638,11 +695,81 @@ onUnmounted(() => {
         @click="earlierHistory"
       >
         Earlier changes
-      </button></template
-    >
+      </button>
+    </details>
   </section>
 </template>
 <style scoped>
+.method-settings {
+  max-width: none;
+  padding: 24px;
+}
+.method-settings h2 {
+  font-size: 1.125rem;
+  margin: 0;
+}
+.method-settings-row {
+  border-top: 1px solid var(--border-default);
+  padding: 0 0 8px;
+}
+.method-settings-row > summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 72px;
+  cursor: pointer;
+  list-style: none;
+}
+.method-settings-row > summary::-webkit-details-marker {
+  display: none;
+}
+.method-settings-row > summary > svg {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  color: var(--accent-amber);
+}
+.method-settings-row > summary > span {
+  flex: 1;
+  min-width: 0;
+}
+.method-settings-row strong,
+.method-settings-row small {
+  display: block;
+}
+.method-settings-row strong {
+  font-size: 0.875rem;
+}
+.method-settings-row small {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+  margin-top: 4px;
+}
+.method-settings-row[open] > summary > svg:last-child {
+  transform: rotate(90deg);
+}
+.method-settings-row > summary:hover {
+  color: var(--accent-amber);
+}
+.method-settings-row :deep(form) {
+  max-width: 32rem;
+}
+.method-history {
+  border-top: 1px solid var(--border-default);
+  padding-top: 8px;
+}
+.method-history > summary {
+  min-height: 44px;
+  padding-block: 10px;
+  cursor: pointer;
+  font-size: 0.875rem;
+}
+@media (max-width: 740px) {
+  .method-settings {
+    padding: 20px;
+  }
+}
 .sign-in-choices h3 {
   font-size: 1rem;
 }

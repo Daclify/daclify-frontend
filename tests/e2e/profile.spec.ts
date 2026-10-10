@@ -38,7 +38,8 @@ test('publishes a public profile from the unlocked vault', async ({ page }, test
   await expect(page.getByRole('heading', { name: 'Public profile' })).toBeVisible();
   await page.getByLabel('Account name', { exact: true }).fill(name);
   await page.getByLabel('Motto', { exact: true }).fill('Build in public');
-  await page.getByLabel('Avatar CID', { exact: true }).fill(cid);
+  await page.getByText('Profile images', { exact: true }).click();
+  await page.getByLabel('Avatar image CID', { exact: true }).fill(cid);
   await page.getByRole('button', { name: 'Publish profile', exact: true }).click();
   await expect(page.getByText('Profile published.', { exact: true })).toBeVisible({
     timeout: 20_000,
@@ -53,7 +54,8 @@ test('publishes a public profile from the unlocked vault', async ({ page }, test
   await page.getByRole('tab', { name: 'Profile', exact: true }).click();
   await expect(page.getByLabel('Account name', { exact: true })).toHaveValue(name);
   await expect(page.getByLabel('Motto', { exact: true })).toHaveValue('Build in public');
-  await expect(page.getByLabel('Avatar CID', { exact: true })).toHaveValue(cid);
+  await page.getByText('Profile images', { exact: true }).click();
+  await expect(page.getByLabel('Avatar image CID', { exact: true })).toHaveValue(cid);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   );

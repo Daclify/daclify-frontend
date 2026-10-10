@@ -24,11 +24,14 @@ test('pairs a passkey and email with an existing vault', async ({ page }) => {
   await page.getByLabel('I have saved my recovery kit and credential').check();
   await page.getByRole('button', { name: 'Finish account setup' }).click();
   await expect(page.getByText('Vault unlocked', { exact: true })).toBeVisible();
+  await page.getByText('Public join identity', { exact: true }).click();
   const serverId = (await page.locator('p.mono').first().innerText()).trim();
-  await page.getByRole('tab', { name: 'Sign-in', exact: true }).click();
+  await page.getByRole('tab', { name: 'Sign-in methods', exact: true }).click();
+  await page.locator('summary').filter({ hasText: 'Passkey' }).click();
   await page.getByRole('button', { name: 'Add a passkey' }).click();
   await expect(page.getByText('Passkey added.', { exact: true })).toBeVisible();
   const mailbox = `pair.${Date.now()}@example.test`;
+  await page.locator('summary').filter({ hasText: 'Email' }).click();
   await page.getByLabel('Sign-in email').fill(mailbox);
   await page.getByRole('button', { name: 'Send code' }).click();
   const revealed = await page.getByText(/The code for this browser is \d{8}\./).innerText();
@@ -37,15 +40,17 @@ test('pairs a passkey and email with an existing vault', async ({ page }) => {
   await page.getByRole('button', { name: 'Confirm email' }).click();
   await expect(page.getByText('Email paired.', { exact: true })).toBeVisible();
   await expect(page.locator('.method-row').getByText(mailbox, { exact: true })).toBeVisible();
+  await page.locator('summary').filter({ hasText: 'Telegram' }).click();
   await expect(
     page
       .getByText('Telegram is not configured on this server.')
       .or(page.locator('.telegram-host script, .telegram-host iframe')),
   ).toBeVisible();
-  await page.getByRole('tab', { name: 'Keys', exact: true }).click();
+  await page.getByRole('tab', { name: 'Access & recovery', exact: true }).click();
   await page.getByRole('button', { name: 'Sign out' }).click();
   await page.getByRole('button', { name: 'Passkey', exact: true }).click();
   await page.getByRole('button', { name: 'Sign in with a passkey' }).click();
+  await page.getByText('Public join identity', { exact: true }).click();
   await expect(page.getByText(serverId, { exact: true })).toBeVisible();
   await expect(page.getByLabel('Vault password', { exact: true })).toBeVisible();
   await expect(page.getByText('Vault unlocked', { exact: true })).toHaveCount(0);

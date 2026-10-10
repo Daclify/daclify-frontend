@@ -199,6 +199,9 @@ async function approve() {
 <template>
   <section class="device-approval" aria-labelledby="device-approval-heading">
     <h3 id="device-approval-heading">Use another device</h3>
+    <p v-if="vaultUnlocked" class="field-help">
+      Approve a signed-in device to securely send it your existing keys.
+    </p>
     <p v-if="notice" role="status">{{ notice }}</p>
     <p v-if="error" role="alert">{{ error }}</p>
     <template v-if="!vaultUnlocked">
@@ -259,9 +262,18 @@ async function approve() {
 </template>
 <style scoped>
 .device-approval {
-  border-top: 1px solid var(--line);
-  margin-top: 1.5rem;
-  padding-top: 1rem;
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+}
+.device-approval h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+.device-approval button {
+  font-size: 0.8125rem;
 }
 .device-approval img {
   max-width: 100%;

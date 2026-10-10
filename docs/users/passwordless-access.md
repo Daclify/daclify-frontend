@@ -1,6 +1,8 @@
 # Use a paired account on another device
 
-Pairing lets an email, Telegram, passkey, Telos Zero account or Telos EVM account sign into your existing Daclify account. In **Account → Sign-in → Fast sign-in with full access**, choose which paired methods should also unlock your signing and private-document keys.
+Account settings opens **Access & recovery**, where you can check this device’s key status, unlock or lock keys, download a matching backup, and approve another device. Public IDs and keys are inside **Public join identity**. **Sign-in methods** brings all five pairing options together; expand a method to manage it. **Profile** groups your public details and optional links/images. **Billing** contains service checkout and receipts. Sign out is available in every section.
+
+Pairing lets an email, Telegram, passkey, Telos Zero account or Telos EVM account sign into your existing Daclify account. In **Account → Sign-in methods → Fast sign-in with full access**, choose which paired methods should also unlock your signing and private-document keys.
 
 Each method starts as sign-in-only. Unlock your original vault on the current device, select an available protection option and complete setup. On another device, sign in with that enabled method. You receive your original keys and existing private-document access without a vault password or a JSON upload. Keys stay in browser memory and lock when idle; sign in again to unlock them.
 
@@ -12,7 +14,7 @@ The choices have different security properties:
 
 Unavailable options explain the missing qualification. The prepared OpenBao service is off until independent hosting, backups and a source-loss restore have been verified.
 
-If an existing device is unlocked, you can instead use **Account → Keys → Request approval from another device**. Open the QR/link on the unlocked device, compare the displayed verification code on both devices, recognize the receiver and approve. Transfer expires in five minutes and can be received once. The approval link contains no unlocking key. The new device needs no vault JSON or password.
+If an existing device is unlocked, you can instead use **Account → Access & recovery → Request approval from another device**. Open the QR/link on the unlocked device, compare the displayed verification code on both devices, recognize the receiver and approve. Transfer expires in five minutes and can be received once. The approval link contains no unlocking key. The new device needs no vault JSON or password.
 
 Keep the encrypted JSON kit and its original vault password or separate recovery code as a fallback. No backup system can recover missing keys if every device, kit, supported unlocking method and independent service backup is lost. Recovery retains your account and existing permissions; it does not create new DAO rights.
 

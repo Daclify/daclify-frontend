@@ -146,13 +146,15 @@ test('shows wallet-only recovery honestly and gates paid DAO creation before che
 }) => {
   await fixture(page);
   await page.goto('/account');
-  await expect(page.getByRole('heading', { name: 'Blockchain wallet access' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'This device' })).toBeVisible();
   await expect(
     page.getByText(
       /document-decryption keys and lost social-login pairings have not been restored/,
     ),
   ).toBeVisible();
   await expect(page.getByText('Signing public key', { exact: true })).toHaveCount(0);
+  await page.getByText('Account details', { exact: true }).click();
+  await expect(page.getByText(id, { exact: true })).toBeVisible();
   await page.goto('/create');
   await expect(page.getByRole('heading', { name: 'Set up your Daclify keys' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Set up or restore keys' })).toBeVisible();
@@ -165,20 +167,20 @@ test('attaches a proved new vault to the recovered profile with a separate walle
 }) => {
   await fixture(page);
   await page.goto('/account');
-  await page.getByRole('tab', { name: 'Linked', exact: true }).click();
+  await page.getByRole('tab', { name: 'Sign-in methods', exact: true }).click();
+  await page.locator('summary').filter({ hasText: 'Telos EVM' }).click();
   await page.getByRole('button', { name: 'Use paired EVM wallet for account control' }).click();
   await expect(
     page.getByText('Paired EVM wallet selected for account-control proofs.'),
   ).toBeVisible();
-  await page.getByRole('tab', { name: 'Keys', exact: true }).click();
+  await page.getByRole('tab', { name: 'Access & recovery', exact: true }).click();
   await page.getByText('Create Daclify keys for a new DAO', { exact: true }).click();
   await page.getByLabel('New vault password', { exact: true }).fill('fixture-vault-password-2026');
   await page.getByRole('button', { name: 'Create encrypted vault', exact: true }).click();
   await page.getByLabel('I have saved my recovery kit and credential').check();
   await page.getByRole('button', { name: 'Finish account setup' }).click();
-  await expect(
-    page.getByRole('heading', { name: 'User-controlled account', exact: true }),
-  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'This device', exact: true })).toBeVisible();
+  await page.getByText('Public join identity', { exact: true }).click();
   await expect(page.getByText(id, { exact: true })).toBeVisible();
   await expect(page.getByText('Vault unlocked', { exact: true })).toBeVisible();
   const raw = await page.evaluate(() => localStorage.getItem('daclify.vault.v1'));

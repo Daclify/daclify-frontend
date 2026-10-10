@@ -177,9 +177,8 @@ async function useControl() {
 }
 </script>
 <template>
-  <section :class="mode === 'manage' ? 'panel narrow' : ''" aria-label="Telos EVM sign-in">
-    <h2 v-if="mode === 'manage'">Linked accounts</h2>
-    <h3 v-else>Telos EVM</h3>
+  <section aria-label="Telos EVM sign-in">
+    <h3 v-if="mode === 'enter'">Telos EVM</h3>
     <p>
       Sign in with a paired Telos EVM wallet or recover its current on-chain DAO access after a
       service failure. Recovery creates no new DAO membership and does not restore decryption keys.

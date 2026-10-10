@@ -477,7 +477,7 @@ for (const recoveryMethod of ['recovery code', 'vault password']) {
       .check();
     await main(page).getByRole('button', { name: 'Finish account setup', exact: true }).click();
     await expect(
-      main(page).getByRole('heading', { name: 'User-controlled account', exact: true }),
+      main(page).getByRole('heading', { name: 'This device', exact: true }),
     ).toBeVisible();
     expect(accounts.size).toBe(1);
     const original = [...accounts.values()][0];
@@ -506,6 +506,7 @@ for (const recoveryMethod of ['recovery code', 'vault password']) {
       await main(recovered)
         .getByRole('button', { name: 'Restore and sign in', exact: true })
         .click();
+      await main(recovered).getByText('Public join identity', { exact: true }).click();
       await expect(main(recovered).getByText(original.id, { exact: true })).toBeVisible();
       await expect(recovered.getByText('Vault unlocked', { exact: true })).toBeVisible();
       expect(accounts.size).toBe(1);
@@ -664,13 +665,14 @@ test('authenticated account tabs retain all paired-method management and key con
     .getByLabel('I have saved my recovery kit and credential', { exact: true })
     .check();
   await main(page).getByRole('button', { name: 'Finish account setup', exact: true }).click();
-  await expect(
-    main(page).getByRole('heading', { name: 'User-controlled account', exact: true }),
-  ).toBeVisible();
-  await main(page).getByRole('tab', { name: 'Sign-in', exact: true }).click();
+  await expect(main(page).getByRole('heading', { name: 'This device', exact: true })).toBeVisible();
+  await main(page).getByRole('tab', { name: 'Sign-in methods', exact: true }).click();
   await expect(
     main(page).getByRole('heading', { name: 'Sign-in methods', exact: true }),
   ).toBeVisible();
+  for (const method of ['Telos Zero', 'Passkey', 'Telegram', 'Email']) {
+    await main(page).locator('summary').filter({ hasText: method }).first().click();
+  }
   await expect(
     main(page).getByRole('button', { name: 'Pair Telos Zero', exact: true }),
   ).toBeVisible();
@@ -681,15 +683,15 @@ test('authenticated account tabs retain all paired-method management and key con
     main(page).getByRole('button', { name: 'Pair Telegram', exact: true }),
   ).toBeVisible();
   await expect(main(page).getByText('Telegram 123456789', { exact: true })).toBeVisible();
-  await expect(main(page).getByText('member@example.test', { exact: true })).toBeVisible();
-  await expect(main(page).getByLabel('Sign-in email', { exact: true })).toBeVisible();
   await expect(
-    main(page).getByRole('heading', { name: 'Sign-in changes', exact: true }),
+    main(page).locator('.method-row').getByText('member@example.test', { exact: true }),
   ).toBeVisible();
+  await expect(main(page).getByLabel('Sign-in email', { exact: true })).toBeVisible();
+  await expect(main(page).getByText('Sign-in changes', { exact: true })).toBeVisible();
   await expect(
     main(page).getByRole('group', { name: 'Paired sign-in methods', exact: true }),
   ).toHaveCount(0);
-  await main(page).getByRole('tab', { name: 'Keys', exact: true }).click();
+  await main(page).getByRole('tab', { name: 'Access & recovery', exact: true }).click();
   await expect(
     main(page).getByRole('button', { name: 'Download encrypted backup', exact: true }),
   ).toBeVisible();

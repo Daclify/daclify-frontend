@@ -65,7 +65,7 @@ test('reviews EVM pairing and removal using a provider fixture', async ({ page }
   await page.getByRole('button', { name: 'Create encrypted vault' }).click();
   await page.getByLabel('I have saved my recovery kit and credential').check();
   await page.getByRole('button', { name: 'Finish account setup' }).click();
-  await expect(page.getByRole('tab', { name: 'Keys', exact: true })).toHaveAttribute(
+  await expect(page.getByRole('tab', { name: 'Access & recovery', exact: true })).toHaveAttribute(
     'aria-selected',
     'true',
   );
@@ -110,8 +110,9 @@ test('reviews EVM pairing and removal using a provider fixture', async ({ page }
       },
     });
   });
-  await page.getByRole('tab', { name: 'Linked', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Linked accounts', exact: true })).toBeVisible();
+  await page.getByRole('tab', { name: 'Sign-in methods', exact: true }).click();
+  await page.locator('summary').filter({ hasText: 'Telos EVM' }).click();
+  await expect(page.getByRole('heading', { name: 'Sign-in methods', exact: true })).toBeVisible();
   await page.getByLabel('Telos EVM network', { exact: true }).selectOption('41');
   await page.getByRole('button', { name: 'Pair Telos EVM wallet', exact: true }).click();
   await expect(
@@ -129,9 +130,9 @@ test('reviews EVM pairing and removal using a provider fixture', async ({ page }
     ),
   ).toBeVisible();
   await expect(page.getByRole('button', { name: 'Remove sign-in pairing' })).toHaveCount(0);
-  await page.getByRole('tab', { name: 'Sign-in', exact: true }).click();
+  await page.getByRole('tab', { name: 'Sign-in methods', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Sign-in methods', exact: true })).toBeVisible();
-  await page.getByRole('tab', { name: 'Service', exact: true }).click();
+  await page.getByRole('tab', { name: 'Billing', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Service payment', exact: true })).toBeVisible();
   await noOverflow(page);
 });

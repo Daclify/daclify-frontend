@@ -165,7 +165,7 @@ async function useControl() {
 </script>
 <template>
   <section aria-label="Telos Zero sign-in">
-    <h3>Telos Zero</h3>
+    <h3 v-if="mode === 'enter'">Telos Zero</h3>
     <p>
       Use an Anchor wallet to sign in with a paired account or recover its existing on-chain DAO
       access after a service failure. Recovery uses the current blockchain binding; it creates no

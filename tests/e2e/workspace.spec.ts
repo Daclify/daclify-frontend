@@ -93,7 +93,7 @@ test('shows card payment state without treating the return page as paid', async 
   await page.getByRole('button', { name: 'Create encrypted vault' }).click();
   await page.getByLabel('I have saved my recovery kit and credential').check();
   await page.getByRole('button', { name: 'Finish account setup' }).click();
-  await page.getByRole('tab', { name: 'Service', exact: true }).click();
+  await page.getByRole('tab', { name: 'Billing', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Service payment', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Continue to card payment' }).click();
   await expect(page.getByRole('alert')).toContainText(

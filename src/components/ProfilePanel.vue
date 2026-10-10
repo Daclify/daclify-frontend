@@ -117,16 +117,17 @@ async function publish() {
 }
 </script>
 <template>
-  <section class="panel narrow">
+  <section class="panel profile-settings">
     <h2>Public profile</h2>
     <p>
-      Your profile appears publicly in Users and your DAO’s Members section. Avatar and background
-      are IPFS CIDs, the same identifier a document uses. The image file stays on IPFS. Email and
-      links are public on the chain.
+      Choose how you appear in Users and your DAO’s Members section. Published information is
+      public, including contact details and links.
     </p>
-    <p v-if="!signerReady" class="notice">Connect an authorized signer to edit this profile.</p>
-    <p v-else-if="state.memberships.length === 0" class="notice">
-      Create or join a DAO to publish. The contract accepts a profile only from a member.
+    <p v-if="state.memberships.length === 0" class="notice">
+      Join or create a DAO to publish your public profile.
+    </p>
+    <p v-else-if="!signerReady" class="notice">
+      Unlock your keys or connect an authorized wallet to edit this profile.
     </p>
     <form v-else @input="edited = true" @submit.prevent="publish">
       <template v-if="state.memberships.length > 1">
@@ -142,59 +143,140 @@ async function publish() {
         </select>
       </template>
       <p v-else-if="membership" class="muted">Publishing for {{ daoTitle(membership) }}.</p>
-      <label for="profile-name">Account name</label>
-      <input
-        id="profile-name"
-        v-model="draft.name"
-        :disabled="savedName !== ''"
-        autocomplete="off"
-        spellcheck="false"
-        required
-        maxlength="12"
-      />
-      <p class="field-help">
-        At most 12 characters: a–z, 1–5, and a dot. This is your public handle. It does not create a
-        Telos account, and it stays fixed after the first publish.
-      </p>
-      <label for="profile-full-name">Full name</label>
-      <input id="profile-full-name" v-model="draft.fullName" maxlength="80" autocomplete="name" />
-      <label for="profile-location">Location</label>
-      <input id="profile-location" v-model="draft.location" maxlength="80" autocomplete="off" />
-      <label for="profile-email">Email</label>
-      <input id="profile-email" v-model="draft.email" maxlength="254" autocomplete="email" />
-      <label for="profile-telegram">Telegram</label>
-      <input id="profile-telegram" v-model="draft.telegram" maxlength="32" autocomplete="off" />
-      <label for="profile-motto">Motto</label>
-      <input id="profile-motto" v-model="draft.motto" maxlength="140" />
-      <label for="profile-introduction">Introduction</label>
-      <textarea
-        id="profile-introduction"
-        v-model="draft.introduction"
-        maxlength="2000"
-        rows="4"
-      ></textarea>
-      <label for="profile-website">Company website</label>
-      <input id="profile-website" v-model="draft.website" maxlength="300" autocomplete="url" />
-      <label for="profile-facebook">Facebook</label>
-      <input id="profile-facebook" v-model="draft.facebook" maxlength="300" autocomplete="url" />
-      <label for="profile-instagram">Instagram</label>
-      <input id="profile-instagram" v-model="draft.instagram" maxlength="300" autocomplete="url" />
-      <label for="profile-youtube">YouTube</label>
-      <input id="profile-youtube" v-model="draft.youtube" maxlength="300" autocomplete="url" />
-      <label for="profile-linkedin">LinkedIn</label>
-      <input id="profile-linkedin" v-model="draft.linkedin" maxlength="300" autocomplete="url" />
-      <label for="profile-avatar">Avatar image CID</label>
-      <input id="profile-avatar" v-model="draft.avatar" spellcheck="false" autocomplete="off" />
-      <label for="profile-background">Background CID</label>
-      <input
-        id="profile-background"
-        v-model="draft.background"
-        spellcheck="false"
-        autocomplete="off"
-      />
-      <p class="field-help">
-        Leave an image blank, or paste its IPFS CID. An image address is not stored.
-      </p>
+      <div class="profile-fields">
+        <div class="profile-wide">
+          <label for="profile-name">Account name</label>
+          <input
+            id="profile-name"
+            v-model="draft.name"
+            :disabled="savedName !== ''"
+            autocomplete="off"
+            spellcheck="false"
+            required
+            maxlength="12"
+          />
+          <p class="field-help">
+            At most 12 characters: a–z, 1–5, and a dot. This is your public handle. It does not
+            create a Telos account, and it stays fixed after the first publish.
+          </p>
+        </div>
+        <div>
+          <label for="profile-full-name">Full name</label>
+          <input
+            id="profile-full-name"
+            v-model="draft.fullName"
+            maxlength="80"
+            autocomplete="name"
+          />
+        </div>
+        <div>
+          <label for="profile-location">Location</label>
+          <input id="profile-location" v-model="draft.location" maxlength="80" autocomplete="off" />
+        </div>
+        <div class="profile-wide">
+          <label for="profile-motto">Motto</label>
+          <input id="profile-motto" v-model="draft.motto" maxlength="140" />
+        </div>
+        <div class="profile-wide">
+          <label for="profile-introduction">Introduction</label>
+          <textarea
+            id="profile-introduction"
+            v-model="draft.introduction"
+            maxlength="2000"
+            rows="4"
+          ></textarea>
+        </div>
+      </div>
+      <details class="profile-options">
+        <summary>Public contact &amp; links</summary>
+        <p class="field-help">These details are public. They do not pair a sign-in method.</p>
+        <div class="profile-fields">
+          <div>
+            <label for="profile-email">Email</label>
+            <input id="profile-email" v-model="draft.email" maxlength="254" autocomplete="email" />
+          </div>
+          <div>
+            <label for="profile-telegram">Telegram</label>
+            <input
+              id="profile-telegram"
+              v-model="draft.telegram"
+              maxlength="32"
+              autocomplete="off"
+            />
+          </div>
+          <div>
+            <label for="profile-website">Company website</label>
+            <input
+              id="profile-website"
+              v-model="draft.website"
+              maxlength="300"
+              autocomplete="url"
+            />
+          </div>
+          <div>
+            <label for="profile-facebook">Facebook</label>
+            <input
+              id="profile-facebook"
+              v-model="draft.facebook"
+              maxlength="300"
+              autocomplete="url"
+            />
+          </div>
+          <div>
+            <label for="profile-instagram">Instagram</label>
+            <input
+              id="profile-instagram"
+              v-model="draft.instagram"
+              maxlength="300"
+              autocomplete="url"
+            />
+          </div>
+          <div>
+            <label for="profile-youtube">YouTube</label>
+            <input
+              id="profile-youtube"
+              v-model="draft.youtube"
+              maxlength="300"
+              autocomplete="url"
+            />
+          </div>
+          <div>
+            <label for="profile-linkedin">LinkedIn</label>
+            <input
+              id="profile-linkedin"
+              v-model="draft.linkedin"
+              maxlength="300"
+              autocomplete="url"
+            />
+          </div>
+        </div>
+      </details>
+      <details class="profile-options">
+        <summary>Profile images</summary>
+        <div class="profile-fields">
+          <div>
+            <label for="profile-avatar">Avatar image CID</label>
+            <input
+              id="profile-avatar"
+              v-model="draft.avatar"
+              spellcheck="false"
+              autocomplete="off"
+            />
+          </div>
+          <div>
+            <label for="profile-background">Background CID</label>
+            <input
+              id="profile-background"
+              v-model="draft.background"
+              spellcheck="false"
+              autocomplete="off"
+            />
+            <p class="field-help">
+              Leave an image blank, or paste its IPFS CID. An image address is not stored.
+            </p>
+          </div>
+        </div>
+      </details>
       <p v-if="error" class="alert" role="alert">{{ error }}</p>
       <p v-if="notice" class="notice" role="status">{{ notice }}</p>
       <button :disabled="busy || !signerReady">
@@ -203,3 +285,45 @@ async function publish() {
     </form>
   </section>
 </template>
+
+<style scoped>
+.profile-settings {
+  max-width: none;
+  padding: 24px;
+}
+.profile-settings h2 {
+  font-size: 1.125rem;
+  margin: 0;
+}
+.profile-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 20px;
+}
+.profile-fields > div {
+  min-width: 0;
+}
+.profile-wide {
+  grid-column: 1 / -1;
+}
+.profile-options {
+  border-top: 1px solid var(--border-default);
+  margin-top: 16px;
+  padding-top: 4px;
+}
+.profile-options > summary {
+  min-height: 44px;
+  padding-block: 10px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+@media (max-width: 600px) {
+  .profile-settings {
+    padding: 20px;
+  }
+  .profile-fields {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

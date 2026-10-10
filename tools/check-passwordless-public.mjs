@@ -56,6 +56,7 @@ try {
   await expect(old.getByRole('button', { name: 'Lock vault', exact: true })).toBeVisible({
     timeout: 30000,
   });
+  await fresh.getByText('Public join identity', { exact: true }).click();
   await expect(fresh.getByText(fixture.account.id, { exact: true })).toBeVisible({
     timeout: 30000,
   });
@@ -80,7 +81,6 @@ try {
     timeout: 30000,
   });
   assert.equal(await fresh.evaluate(() => localStorage.getItem('daclify.vault.v1')), null);
-  await fresh.getByText('Public join identity', { exact: true }).click();
   const identity = JSON.parse(
     await fresh.getByLabel('Public join identity JSON', { exact: true }).inputValue(),
   );
@@ -89,7 +89,7 @@ try {
   const scan = await new AxeBuilder({ page: fresh }).include('#main').analyze();
   assert.deepEqual(scan.violations, []);
   assert.deepEqual(errors, []);
-  await fresh.getByRole('tab', { name: 'Sign-in', exact: true }).click();
+  await fresh.getByRole('tab', { name: 'Sign-in methods', exact: true }).click();
   await expect(
     fresh.getByRole('heading', { name: 'Fast sign-in with full access', exact: true }),
   ).toBeVisible();

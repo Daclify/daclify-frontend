@@ -217,6 +217,7 @@ test('approves a fresh browser without a JSON kit or vault password and transfer
     await expect(fresh.getByRole('button', { name: 'Lock vault', exact: true })).toBeVisible({
       timeout: 15000,
     });
+    await fresh.getByText('Public join identity', { exact: true }).click();
     await expect(fresh.getByText(account.id, { exact: true })).toBeVisible();
     expect(await fresh.evaluate(() => localStorage.getItem('daclify.vault.v1'))).toBeNull();
     expect((await new AxeBuilder({ page: fresh }).analyze()).violations).toEqual([]);

@@ -1,7 +1,15 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { ArrowUpRight, KeyRound, ShieldCheck, LifeBuoy } from '@lucide/vue';
+import {
+  ArrowUpRight,
+  KeyRound,
+  ShieldCheck,
+  LifeBuoy,
+  FingerprintPattern,
+  UserRound,
+  CreditCard,
+} from '@lucide/vue';
 import { useWorkspace } from '../state/workspace';
 import { api, friendlyError, type ServiceReceipt } from '../api/client';
 import { formatReceiptAmount, hostedCheckoutUrl } from '../api/billing';
@@ -28,7 +36,6 @@ import SignInMethods from '../components/SignInMethods.vue';
 import FastSignInMethods from '../components/FastSignInMethods.vue';
 import DeviceApproval from '../components/DeviceApproval.vue';
 import { restoreFastSignIn } from '../auth/fast-sign-in';
-import LinkedAccounts from '../components/LinkedAccounts.vue';
 const props = defineProps<{
   embedded?: boolean;
   profileDaoId?: string | undefined;
@@ -36,11 +43,10 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ 'profile-updated': [] }>();
 const accountTabs = [
-  { id: 'keys', label: 'Keys' },
-  { id: 'sign-in', label: 'Sign-in' },
-  { id: 'profile', label: 'Profile' },
-  { id: 'linked', label: 'Linked' },
-  { id: 'service', label: 'Service' },
+  { id: 'keys', label: 'Access & recovery', icon: ShieldCheck },
+  { id: 'sign-in', label: 'Sign-in methods', icon: FingerprintPattern },
+  { id: 'profile', label: 'Profile', icon: UserRound },
+  { id: 'service', label: 'Billing', icon: CreditCard },
 ] as const;
 type AccountTab = (typeof accountTabs)[number]['id'];
 function billingTab(value: unknown): boolean {
@@ -55,15 +61,19 @@ const router = useRouter();
 const destination = computed(() => accountDestination(route.query.returnTo));
 const state = useWorkspace();
 const recoveryInfo = ref<RecoveryMethods>();
+const recoveryCheckFailed = ref(false);
 watch(
   () => state.account?.id,
   async (id) => {
     recoveryInfo.value = undefined;
+    recoveryCheckFailed.value = false;
     if (!id) return;
     try {
       const response = await api.recoveryMethods();
       if (state.account?.id === id) recoveryInfo.value = response;
-    } catch {}
+    } catch {
+      if (state.account?.id === id) recoveryCheckFailed.value = true;
+    }
   },
   { immediate: true },
 );
@@ -105,12 +115,12 @@ const opened = ref<Record<AccountTab, boolean>>({
   keys: true,
   'sign-in': false,
   profile: !!props.embedded,
-  linked: false,
   service: true,
 });
 function openTab(next: AccountTab) {
   tab.value = next;
   opened.value = { ...opened.value, [next]: true };
+  void nextTick(() => document.getElementById(`account-tab-${next}`)?.focus());
 }
 function navigateTabs(event: KeyboardEvent) {
   const current = accountTabs.findIndex((item) => item.id === tab.value);
@@ -129,7 +139,6 @@ function navigateTabs(event: KeyboardEvent) {
   if (!item) return;
   event.preventDefault();
   openTab(item.id);
-  void nextTick(() => document.getElementById(`account-tab-${item.id}`)?.focus());
 }
 onMounted(async () => {
   if (typeof route.query.telegramPair === 'string') openTab('sign-in');
@@ -362,12 +371,20 @@ function backup() {
 }
 </script>
 <template>
-  <div v-if="!embedded" class="page-heading account-heading">
+  <div
+    v-if="!embedded"
+    class="page-heading account-heading"
+    :class="{ 'settings-heading': state.account }"
+  >
     <div>
-      <p class="eyebrow">IDENTITY &amp; RECOVERY</p>
+      <p class="eyebrow">{{ state.account ? 'ACCOUNT SETTINGS' : 'IDENTITY & RECOVERY' }}</p>
       <h1>{{ heading }}</h1>
       <p class="lead">
-        One Daclify identity for your communities. A blockchain account is optional.
+        {{
+          state.account
+            ? 'Your sign-in methods, devices and public profile.'
+            : 'One Daclify identity for your communities. A blockchain account is optional.'
+        }}
       </p>
     </div>
     <RouterLink class="help-link" to="/docs/accounts">Account help ↗</RouterLink>
@@ -454,7 +471,23 @@ function backup() {
       {{ busy ? 'Finishing…' : 'Finish account setup' }}
     </button>
   </section>
-  <template v-else-if="state.account">
+  <div v-else-if="state.account" class="account-settings">
+    <div class="account-session-bar">
+      <span class="pill">{{
+        state.account.signingKey === null
+          ? 'Wallet only'
+          : !recoveryInfo
+            ? recoveryCheckFailed
+              ? 'Recovery status unavailable'
+              : 'Checking recovery…'
+            : recoveryInfo.assistedEver
+              ? 'Assisted recovery'
+              : state.account.custody === 'user-controlled'
+                ? 'You hold the keys'
+                : 'Managed account'
+      }}</span>
+      <button class="text-button danger" :disabled="busy" @click="logout">Sign out</button>
+    </div>
     <p v-if="recoveryInfo?.assistedEver" class="notice" role="status">
       This vault authorized Daclify-assisted recovery. Daclify may hold a spare unlocking key for
       its signing and private-document keys. Your selected sign-in methods control when recovery is
@@ -472,98 +505,103 @@ function backup() {
         :tabindex="tab === item.id ? 0 : -1"
         @click="openTab(item.id)"
       >
-        {{ item.label }}
+        <component :is="item.icon" aria-hidden="true" /><span>{{ item.label }}</span>
       </button>
     </div>
     <section
       v-show="tab === 'keys'"
       id="account-panel-keys"
-      class="panel narrow"
+      class="panel settings-panel"
       role="tabpanel"
       aria-labelledby="account-tab-keys"
     >
-      <div class="panel-heading">
-        <h2>
-          {{
-            state.account.signingKey === null
-              ? 'Blockchain wallet access'
-              : recoveryInfo?.assistedEver
-                ? 'Account with assisted recovery'
-                : state.account.custody === 'user-controlled'
-                  ? 'User-controlled account'
-                  : 'Managed account'
-          }}
-        </h2>
-        <span class="pill">{{
-          state.account.signingKey === null
-            ? 'Wallet only'
-            : recoveryInfo?.assistedEver
-              ? 'Assisted recovery authority'
-              : state.account.custody
-        }}</span>
+      <div class="access-grid">
+        <section class="device-access" aria-labelledby="this-device-title">
+          <div class="panel-heading">
+            <h2 id="this-device-title">This device</h2>
+            <span :class="['pill', { success: vaultUnlocked }]">{{
+              vaultUnlocked ? 'Keys unlocked' : 'Sign-in only'
+            }}</span>
+          </div>
+          <p v-if="vaultUnlocked">Ready to sign actions and open your private documents.</p>
+          <p v-if="state.account.signingKey === null" class="notice" role="status">
+            Your wallet restores access to its current on-chain memberships and permissions. Your
+            original document-decryption keys and lost social-login pairings have not been restored.
+            To recover private content, import your original encrypted kit and confirm with your
+            wallet.
+          </p>
+          <form v-if="!vaultUnlocked && accountKit" @submit.prevent="unlock">
+            <label for="unlock">Vault password</label
+            ><input
+              id="unlock"
+              v-model="password"
+              type="password"
+              autocomplete="current-password"
+              required
+            /><button :disabled="busy">Unlock and sign in</button>
+          </form>
+          <div v-else-if="vaultUnlocked" class="button-row">
+            <button class="secondary" @click="lockVault">Lock vault</button
+            ><button v-if="accountKit" class="secondary" @click="backup">
+              Download encrypted backup
+            </button>
+          </div>
+          <p v-if="!vaultUnlocked && !accountKit" class="muted">
+            Your account is signed in. To sign actions and open private documents, use a paired
+            method with full access, approve this device, or restore your encrypted kit.
+          </p>
+          <button
+            v-if="!vaultUnlocked && !accountKit"
+            type="button"
+            class="secondary"
+            @click="restoring = true"
+          >
+            Recover from an encrypted kit
+          </button>
+          <p class="field-help">Keys lock after ten minutes without a signing action.</p>
+          <button
+            v-if="!vaultUnlocked"
+            type="button"
+            class="text-button"
+            @click="openTab('sign-in')"
+          >
+            View paired sign-in methods <ArrowUpRight aria-hidden="true" />
+          </button>
+        </section>
+        <DeviceApproval
+          :account="state.account"
+          :approve-id="
+            typeof route.query.deviceApproval === 'string' ? route.query.deviceApproval : undefined
+          "
+        />
       </div>
-      <p class="muted">Server login id</p>
-      <p class="mono wrap">{{ state.account.id }}</p>
-      <p class="field-help">
-        This service ID connects your paired sign-in methods. DAO membership and permissions are
-        verified separately.
-      </p>
-      <p v-if="state.account.signingKey === null" class="notice" role="status">
-        Your wallet restores access to its current on-chain memberships and permissions. Your
-        original document-decryption keys and lost social-login pairings have not been restored. To
-        recover private content, import your original encrypted kit and confirm with your wallet.
-      </p>
-      <template v-else
-        ><p class="muted">Signing public key</p>
-        <p class="mono wrap">{{ state.account.signingKey }}</p></template
-      >
-      <details v-if="state.account.signingKey !== null">
-        <summary>Public join identity</summary>
-        <p>
-          Share this JSON with the DAO administrator to request admission. It contains public
-          signing and encryption keys only. Keep your recovery kit private.
-        </p>
-        <label for="public-join-identity">Public join identity JSON</label>
-        <textarea id="public-join-identity" readonly rows="7" :value="joinIdentity"></textarea>
-        <button class="secondary" :disabled="!joinIdentity" @click="copyJoinIdentity">
-          Copy public join identity
-        </button>
-        <p v-if="!recoveryInfo" class="field-help">
-          Recovery authority must be checked before sharing a join identity.
-        </p>
-        <p v-if="joinCopied" role="status">Public join identity copied.</p>
+      <details class="identity-details">
+        <summary>
+          {{ state.account.signingKey === null ? 'Account details' : 'Public join identity' }}
+        </summary>
+        <p class="muted">Account ID</p>
+        <p class="mono wrap">{{ state.account.id }}</p>
+        <template v-if="state.account.signingKey !== null">
+          <p class="muted">Signing public key</p>
+          <p class="mono wrap">{{ state.account.signingKey }}</p>
+          <p>
+            Share this JSON with the DAO administrator to request admission. It contains public
+            signing and encryption keys only. Keep your recovery kit private.
+          </p>
+          <label for="public-join-identity">Public join identity JSON</label>
+          <textarea id="public-join-identity" readonly rows="7" :value="joinIdentity"></textarea>
+          <button class="secondary" :disabled="!joinIdentity" @click="copyJoinIdentity">
+            Copy public join identity
+          </button>
+          <p v-if="!recoveryInfo" class="field-help">
+            Recovery authority must be checked before sharing a join identity.
+          </p>
+          <p v-if="joinCopied" role="status">Public join identity copied.</p>
+        </template>
       </details>
       <RouterLink v-if="destination" class="button secondary" :to="destination"
         >Return to your DAO or setup</RouterLink
       >
-      <form v-if="!vaultUnlocked && accountKit" @submit.prevent="unlock">
-        <label for="unlock">Vault password</label
-        ><input
-          id="unlock"
-          v-model="password"
-          type="password"
-          autocomplete="current-password"
-          required
-        /><button :disabled="busy">Unlock and sign in</button>
-      </form>
-      <div v-else-if="vaultUnlocked" class="button-row">
-        <button class="secondary" @click="lockVault">Lock vault</button
-        ><button v-if="accountKit" class="secondary" @click="backup">
-          Download encrypted backup
-        </button>
-      </div>
-      <p v-if="!vaultUnlocked && !accountKit" class="muted">
-        You are signed in. To open your private keys, sign in again through a paired method with
-        full access enabled, approve this device from an unlocked device, or use your encrypted kit.
-      </p>
-      <button
-        v-if="!vaultUnlocked && !accountKit"
-        type="button"
-        class="secondary"
-        @click="restoring = true"
-      >
-        Recover from an encrypted kit
-      </button>
       <details v-if="state.account.signingKey === null && !saved">
         <summary>Create Daclify keys for a new DAO</summary>
         <p>
@@ -584,17 +622,6 @@ function backup() {
           <button :disabled="busy">Create encrypted vault</button>
         </form>
       </details>
-      <button class="text-button danger" :disabled="busy" @click="logout">Sign out</button>
-      <DeviceApproval
-        :account="state.account"
-        :approve-id="
-          typeof route.query.deviceApproval === 'string' ? route.query.deviceApproval : undefined
-        "
-      />
-      <p class="muted">
-        Keys lock after ten minutes without a signing action. Signing keys are separate from
-        document encryption keys.
-      </p>
     </section>
     <div
       v-if="opened['sign-in']"
@@ -603,13 +630,13 @@ function backup() {
       role="tabpanel"
       aria-labelledby="account-tab-sign-in"
     >
+      <SignInMethods mode="manage" />
       <FastSignInMethods
         v-if="state.account"
         :account="state.account"
         @changed="recoveryInfo = $event"
         @unlock-needed="openTab('keys')"
       />
-      <SignInMethods mode="manage" />
     </div>
     <div
       v-if="opened.profile"
@@ -624,19 +651,10 @@ function backup() {
         @updated="emit('profile-updated')"
       />
     </div>
-    <div
-      v-if="opened.linked"
-      v-show="tab === 'linked'"
-      id="account-panel-linked"
-      role="tabpanel"
-      aria-labelledby="account-tab-linked"
-    >
-      <LinkedAccounts />
-    </div>
     <section
       v-show="tab === 'service'"
       id="account-panel-service"
-      class="panel narrow"
+      class="panel settings-panel"
       role="tabpanel"
       aria-labelledby="account-tab-service"
     >
@@ -659,7 +677,7 @@ function backup() {
         </button>
       </div>
     </section>
-  </template>
+  </div>
   <div v-else class="account-access">
     <nav class="account-shortcuts" aria-label="Account options">
       <a v-if="!saved" href="#new-account">Create an account <ArrowUpRight aria-hidden="true" /></a>
@@ -827,6 +845,113 @@ function backup() {
   </div>
 </template>
 <style scoped>
+.account-settings {
+  max-width: 960px;
+}
+.account-session-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: -12px;
+  margin-bottom: 12px;
+}
+.account-settings .account-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  margin-bottom: 20px;
+}
+.account-settings .account-tabs button {
+  min-width: 0;
+  min-height: 44px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  padding: 8px;
+  box-shadow: none;
+  transform: none;
+  font-size: 0.8125rem;
+}
+.account-settings .account-tabs button[aria-selected='true'] {
+  border-color: var(--border-warm);
+  background: var(--surface-raised);
+  color: var(--accent-amber);
+}
+.account-settings .account-tabs svg {
+  width: 17px;
+  height: 17px;
+  flex: none;
+}
+.settings-panel {
+  padding: 24px;
+}
+.access-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  align-items: start;
+}
+.device-access {
+  min-width: 0;
+}
+.device-access h2 {
+  font-size: 1.125rem;
+}
+.device-access .panel-heading {
+  flex-wrap: wrap;
+}
+.device-access .button-row {
+  gap: 8px;
+}
+.device-access button {
+  font-size: 0.8125rem;
+}
+.identity-details {
+  border-top: 1px solid var(--border-default);
+  margin-top: 24px;
+  padding-top: 8px;
+}
+.identity-details summary {
+  min-height: 44px;
+  padding-block: 10px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+@media (max-width: 740px) {
+  .settings-heading {
+    position: relative;
+    gap: 4px;
+    margin-bottom: 20px;
+  }
+  .settings-heading h1 {
+    font-size: 1.75rem;
+  }
+  .settings-heading .lead {
+    font-size: 0.875rem;
+  }
+  .settings-heading .help-link {
+    position: absolute;
+    top: 0;
+    right: 0;
+    font-size: 0.8125rem;
+  }
+  .access-grid {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+  .settings-panel {
+    padding: 20px;
+  }
+  .account-settings .account-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
 .account-heading h1 {
   font-size: clamp(2rem, 3vw, 2.5rem);
 }

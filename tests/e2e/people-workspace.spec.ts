@@ -395,8 +395,9 @@ test('Users replaces Account; your profile is first, and only your detail has ed
   await page.getByRole('button', { name: 'Edit profile & account' }).click();
   await expect(page.getByRole('heading', { name: 'Public profile', exact: true })).toBeVisible();
   await page.getByRole('tab', { name: 'Profile', exact: true }).focus();
-  await page.keyboard.press('ArrowRight');
-  await expect(page.getByRole('tab', { name: 'Linked', exact: true })).toBeFocused();
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.getByRole('tab', { name: 'Sign-in methods', exact: true })).toBeFocused();
+  await page.locator('summary').filter({ hasText: 'Telos EVM' }).click();
   await expect(
     page.getByRole('button', { name: 'Pair Telos EVM wallet', exact: true }),
   ).toBeVisible();

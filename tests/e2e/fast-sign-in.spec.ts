@@ -8,6 +8,8 @@ import {
   RecoveryMethodsSchema,
   RecoveryClaimSchema,
   VERSION,
+  UserMembershipSchema,
+  MemberProfileSchema,
   recoveryVaultDomain,
 } from '@daclify/core-protocol';
 import {
@@ -15,7 +17,7 @@ import {
   createRecoveryPayload,
   sealRecoveryDelivery,
 } from '@daclify/core-protocol/sdk';
-async function fixture(page: Page) {
+async function fixture(page: Page, withProfile = false) {
   const signing = PrivateKey.generate('K1'),
     encryption = await createRecoveryRecipient();
   const account = {
@@ -50,7 +52,46 @@ async function fixture(page: Page) {
           ? { json: { account } }
           : { status: 401, json: { code: 'AUTH_REQUIRED', message: 'Sign in' } },
       );
-    if (path === '/v1/me/memberships') return route.fulfill({ json: { memberships: [] } });
+    if (path === '/v1/me/memberships')
+      return route.fulfill({
+        json: {
+          memberships: withProfile
+            ? [
+                UserMembershipSchema.parse({
+                  dao: {
+                    chainId: 'ab'.repeat(32),
+                    contract: 'daclifycore',
+                    daoId: '1',
+                    interfaceVersion: 1,
+                  },
+                  memberId: '1',
+                  nonce: '0',
+                  active: true,
+                  admin: false,
+                  reviewer: false,
+                  credits: '0',
+                  claim: '0',
+                  stake: '0',
+                  nativeAccount: 'alice',
+                  custody: 'user-controlled',
+                  signingKey: account.signingKey,
+                }),
+              ]
+            : [],
+        },
+      });
+    if (path === '/v1/profile')
+      return route.fulfill({
+        json: MemberProfileSchema.parse({
+          accountName: 'alice',
+          profile: JSON.stringify({
+            name: 'alice',
+            fullName: 'Alice Example',
+            motto: 'Build together',
+            email: 'alice@example.test',
+          }),
+        }),
+      });
     if (path === '/v1/sign-in/options')
       return route.fulfill({
         json: {
@@ -142,9 +183,10 @@ test('gets full account access on a fresh device using the selected paired email
   await page.getByLabel('Email code', { exact: true }).fill('12345678');
   await page.getByRole('button', { name: 'Sign in with email', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Lock vault', exact: true })).toBeVisible();
+  await page.getByText('Public join identity', { exact: true }).click();
   await expect(page.getByText(account.id, { exact: true })).toBeVisible();
   await expect(page.getByLabel('Vault password', { exact: true })).toBeHidden();
-  await page.getByRole('tab', { name: 'Sign-in', exact: true }).click();
+  await page.getByRole('tab', { name: 'Sign-in methods', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Fast sign-in with full access' })).toBeVisible();
   await expect(
     page.getByText('Daclify keeps a spare unlocking key.', { exact: false }),
@@ -177,6 +219,7 @@ test('preserves another account’s local kit and does not offer it as the recov
   await page.getByLabel('Email code', { exact: true }).fill('12345678');
   await page.getByRole('button', { name: 'Sign in with email', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Lock vault', exact: true })).toBeVisible();
+  await page.getByText('Public join identity', { exact: true }).click();
   await expect(page.getByText(account.id, { exact: true })).toBeVisible();
   await expect(
     page.getByRole('button', { name: 'Download encrypted backup', exact: true }),
@@ -188,4 +231,32 @@ test('preserves another account’s local kit and does not offer it as the recov
   ).toBe(other.signingPublicKey);
   await page.getByRole('button', { name: 'Lock vault', exact: true }).click();
   await expect(page.getByLabel('Vault password', { exact: true })).toBeHidden();
+});
+
+test('keeps public profile fields compact and retains drafts when optional sections close', async ({
+  page,
+}) => {
+  await fixture(page, true);
+  await page.goto('/account');
+  await page.getByRole('button', { name: /^Email/ }).click();
+  await page.getByLabel('Sign-in email', { exact: true }).fill('alice@example.test');
+  await page.getByRole('button', { name: /Send.*code/ }).click();
+  await page.getByLabel('Email code', { exact: true }).fill('12345678');
+  await page.getByRole('button', { name: 'Sign in with email', exact: true }).click();
+  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
+  await expect(page.getByLabel('Full name', { exact: true })).toHaveValue('Alice Example');
+  await expect(page.getByLabel('Account name', { exact: true })).toBeDisabled();
+  await expect(page.getByLabel('Email', { exact: true })).toBeHidden();
+  await expect(page.getByLabel('Avatar image CID', { exact: true })).toBeHidden();
+  await page.screenshot({ path: test.info().outputPath('account-profile.png'), fullPage: true });
+  const contacts = page.getByText('Public contact & links', { exact: true });
+  await contacts.click();
+  await page.getByLabel('Email', { exact: true }).fill('public@example.test');
+  await contacts.click();
+  await contacts.click();
+  await expect(page.getByLabel('Email', { exact: true })).toHaveValue('public@example.test');
+  await page.getByText('Profile images', { exact: true }).click();
+  await expect(page.getByLabel('Avatar image CID', { exact: true })).toBeVisible();
+  expect((await new AxeBuilder({ page }).include('#main').analyze()).violations).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
