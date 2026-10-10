@@ -43,8 +43,6 @@ test('permission examples are discoverable through documentation search', async 
   await page.goto('/docs');
   await page.getByLabel('Search guides').fill('execctx');
   await expect(
-    page
-      .locator('.docs-content')
-      .getByRole('link', { name: 'Smart contracts and permissions', exact: true }),
+    page.locator('.docs-content').getByRole('link', { name: /^Smart contracts and permissions/ }),
   ).toBeVisible();
 });

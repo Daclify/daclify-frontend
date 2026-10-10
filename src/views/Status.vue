@@ -5,6 +5,7 @@ import { ArrowRight, Bot, Database, Globe, RefreshCw, Server, TrendingUp } from 
 import { api, friendlyError } from '../api/client';
 import { useWorkspace } from '../state/workspace';
 import ServiceDirectory from '../components/ServiceDirectory.vue';
+import ContractExplorer from '../components/ContractExplorer.vue';
 const workspace = useWorkspace();
 const status = ref<PlatformStatus>();
 const assistant = ref<Awaited<ReturnType<typeof api.docsAgent>>>();
@@ -183,7 +184,7 @@ onUnmounted(() => {
     <div>
       <p class="eyebrow">PLATFORM</p>
       <h1>Status</h1>
-      <p class="lead">Network checks, service configuration and Daxi support.</p>
+      <p class="lead">Network health, contract authorities, account resources and Daxi support.</p>
     </div>
     <button type="button" class="secondary" :aria-disabled="busy" @click="load()">
       <RefreshCw aria-hidden="true" :size="18" />
@@ -274,6 +275,9 @@ onUnmounted(() => {
           /></RouterLink>
           <button type="button" class="text-button" @click="showTab('services')">
             Review services <ArrowRight aria-hidden="true" />
+          </button>
+          <button type="button" class="text-button" @click="showTab('contracts')">
+            Explore contract map <ArrowRight aria-hidden="true" />
           </button>
         </div>
         <details class="status-disclosure">
@@ -374,93 +378,7 @@ onUnmounted(() => {
       aria-labelledby="status-tab-contracts"
       tabindex="0"
     >
-      <section class="panel">
-        <h2>Contracts and authorities</h2>
-        <p>
-          Compare deployed code with its release pin and inspect public permissions. Native upgrade
-          authority remains with each account.
-        </p>
-        <article
-          class="status-contract"
-          v-for="contract in status.chain?.contracts"
-          :key="contract.account"
-        >
-          <div class="contract-heading">
-            <h3>
-              {{ contract.account
-              }}<span v-if="contract.moduleId" class="contract-module">{{
-                contract.moduleId
-              }}</span>
-            </h3>
-            <span
-              class="pill"
-              :class="{
-                success: contract.codeHash && contract.expectedHash && contract.verified,
-              }"
-              >{{
-                !contract.codeHash
-                  ? 'Not read'
-                  : contract.expectedHash
-                    ? contract.verified
-                      ? 'Verified'
-                      : 'Hash mismatch'
-                    : 'No release pin'
-              }}</span
-            >
-          </div>
-          <dl class="fact-list">
-            <dt>Code hash</dt>
-            <dd class="break-word">{{ contract.codeHash ?? 'Unknown' }}</dd>
-            <dt>Pinned hash</dt>
-            <dd class="break-word">{{ contract.expectedHash ?? 'No pin' }}</dd>
-            <dt>Artifact match</dt>
-            <dd>
-              {{
-                !contract.codeHash
-                  ? 'Not read'
-                  : contract.expectedHash
-                    ? contract.verified
-                      ? 'Verified'
-                      : 'MISMATCH'
-                    : 'Unverified'
-              }}
-            </dd>
-            <dt>RAM used / quota</dt>
-            <dd>
-              {{ contract.ramUsed ?? 'Unknown' }} /
-              {{ contract.ramBytes === -1 ? 'Unlimited' : (contract.ramBytes ?? 'Unknown') }}
-              bytes
-            </dd>
-          </dl>
-          <details class="status-disclosure">
-            <summary>Public permission authorities</summary>
-            <ul>
-              <li v-for="permission in contract.permissions" :key="permission.name">
-                <strong>{{ permission.name }}</strong> · parent {{ permission.parent || 'none' }} ·
-                threshold {{ permission.threshold }}
-                <ul>
-                  <li v-for="key in permission.keys" :key="key.key" class="break-word">
-                    Key {{ key.key }} · weight {{ key.weight }}
-                  </li>
-                  <li
-                    v-for="account in permission.accounts"
-                    :key="account.actor + '@' + account.permission"
-                  >
-                    {{ account.actor }}@{{ account.permission }} · weight {{ account.weight }}
-                  </li>
-                  <li v-for="wait in permission.waits" :key="wait.seconds">
-                    Wait {{ wait.seconds }} seconds · weight {{ wait.weight }}
-                  </li>
-                </ul>
-              </li>
-            </ul>
-          </details>
-        </article>
-        <p v-if="!status.chain?.contracts.length">
-          Contract readings unavailable. Refresh to check again; no contract verification is
-          implied.
-        </p>
-      </section>
+      <ContractExplorer :chain="status.chain" :active="tab === 'contracts'" />
     </div>
     <div
       v-show="tab === 'fees'"
@@ -694,8 +612,7 @@ onUnmounted(() => {
   box-shadow: none;
   transform: none;
 }
-.status-meta,
-.contract-heading {
+.status-meta {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -826,24 +743,6 @@ onUnmounted(() => {
   font-size: 0.875rem;
   line-height: 1.7;
 }
-.status-contract {
-  padding: 22px 0;
-  border-bottom: 1px solid var(--line);
-}
-.status-contract:last-child {
-  border-bottom: 0;
-}
-.contract-heading h3 {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-.contract-module {
-  margin-left: 12px;
-  font-size: 0.875rem;
-  color: var(--text-muted);
-  font-weight: 450;
-}
-
 .panel-heading h2 {
   display: flex;
   align-items: center;

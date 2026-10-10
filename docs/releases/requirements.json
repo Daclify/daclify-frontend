@@ -131,6 +131,14 @@
       "tests": ["tests/e2e/status-tabs.spec.ts"]
     },
     {
+      "id": "STATUS-CONTRACT-PERMISSION-MAP-AND-RESOURCES",
+      "tests": [
+        "tests/unit/contract-map.test.ts",
+        "tests/e2e/status-map.spec.ts",
+        "tests/e2e/status-tabs.spec.ts"
+      ]
+    },
+    {
       "id": "SDK-ONLY-MODULE-COMPATIBILITY",
       "tests": ["tests/unit/module-release.test.ts"]
     }

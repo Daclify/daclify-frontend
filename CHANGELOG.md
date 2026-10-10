@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased — interactive contract authorities
+
+Explore observed contract permissions through selectable maps, weighted signer connections, owner/active hierarchy and shared-key/delegation details. Contract cards reveal their authority summaries when opened and retain release verification and full public diagnostics. Add separately checked live RAM, CPU and NET with exact integer readings, explicit unlimited/unknown/failure states, chain checks and retry. Include keyboard-accessible nodes and a readable mobile/list view. No authority changes or new dependencies.
+
 ## 0.10.0-alpha.10 development — recover with a kit's vault password
 
 Restore an unchanged encrypted recovery kit using either its saved vault password or its separate recovery code. Preserve the original signing and document keys, verify the public identity, and protect the restored device with a new password. Clarify the recovery form and backup guidance; retain compatibility with existing recovery codes and encrypted kits.
