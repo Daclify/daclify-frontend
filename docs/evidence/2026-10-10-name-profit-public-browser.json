@@ -1,0 +1,37 @@
+{
+  "verifiedAt": "2026-10-10T14:28:00.394Z",
+  "url": "https://testnet.app.daclify.com/names",
+  "scope": "Public deployed frontend and real API; read-only, no account keys or payment",
+  "reports": [
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "quoteVisible": true,
+      "cardUsdCents": 142,
+      "nativePrice": "71.5910 TLOS",
+      "ramBytes": 30720,
+      "cpuStake": "0.5000 TLOS",
+      "netStake": "0.5000 TLOS",
+      "accessibilityViolations": 0,
+      "pageErrors": 0,
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "quoteVisible": true,
+      "cardUsdCents": 142,
+      "nativePrice": "71.5910 TLOS",
+      "ramBytes": 30720,
+      "cpuStake": "0.5000 TLOS",
+      "netStake": "0.5000 TLOS",
+      "accessibilityViolations": 0,
+      "pageErrors": 0,
+      "horizontalOverflow": false
+    }
+  ]
+}
