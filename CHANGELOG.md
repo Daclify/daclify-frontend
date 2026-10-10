@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.12.0-alpha.2 development — reviewed contract compatibility
+
+Consume core SDK 0.12.0-alpha.2 and module SDK 0.9.0-alpha.16, with exact compatibility for reviewed core 0.12.0-alpha.1 and 0.12.0-alpha.2 across all five installed module manifests. Preserve code-hash and compatibility guards. The new core artifact pins the reviewed wallet-consent fix; rollout requires matching runtime/API artifacts. No deployment or native authority change is performed.
+
 ## 0.12.0-alpha.1 development — password-free devices
 
 Choose which paired methods unlock the original vault on another device, with distinct wallet, passkey and assisted security disclosures. Add QR/link approval from an unlocked device, memory-only recovered keys and account-wide assisted authority disclosure. Preserve existing JSON/password fallback and reject managed identities in strict private DAO admission. Consume core 0.12.0-alpha.1 and modules 0.9.0-alpha.14; hosted modes remain unavailable until configured and qualified.
