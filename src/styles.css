@@ -2032,11 +2032,68 @@ nav a,
   margin: 8px 0;
   font-size: 0.875rem;
   line-height: 1.65;
+}
+.help-message.user p {
   white-space: pre-wrap;
 }
-.help-message strong {
+.help-message > strong {
   font-size: 0.75rem;
   color: var(--accent-amber);
+}
+.help-answer {
+  font-size: 0.875rem;
+  line-height: 1.65;
+}
+.help-answer > :first-child {
+  margin-top: 8px;
+}
+.help-answer > :last-child {
+  margin-bottom: 0;
+}
+.help-answer :is(h1, h2, h3, h4, h5, h6) {
+  margin: 16px 0 8px;
+  font-size: 1rem;
+  line-height: 1.4;
+}
+.help-answer :is(ul, ol) {
+  margin: 10px 0;
+  padding-left: 1.5rem;
+}
+.help-answer li {
+  margin: 4px 0;
+}
+.help-answer a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.help-answer blockquote {
+  margin: 12px 0;
+  padding-left: 12px;
+  border-left: 2px solid var(--border-warm);
+  color: var(--text-secondary);
+}
+.help-answer code {
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: var(--surface-soft);
+  font-size: 0.8125rem;
+}
+.help-answer pre {
+  margin: 12px 0;
+  padding: 12px;
+  overflow-x: auto;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-base);
+  white-space: pre;
+}
+.help-answer pre code {
+  padding: 0;
+  background: transparent;
+}
+.help-answer table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
 }
 .help-source {
   display: flex;

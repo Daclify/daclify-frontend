@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
 
 test.beforeEach(async ({ page }) => {
   await page.route('**/v1/**', (route) =>
@@ -7,6 +8,77 @@ test.beforeEach(async ({ page }) => {
       json: { code: 'SERVICE_UNAVAILABLE', message: 'Unconnected UI fixture' },
     }),
   );
+});
+
+test('assistant formats Markdown while HTML, tracking images and unsafe links remain inert', async ({
+  page,
+}) => {
+  await page.route('**/v1/docs/agent', (route) => route.fulfill({ json: { configured: true } }));
+  let trackingRequests = 0;
+  await page.route('https://tracker.example/**', (route) => {
+    trackingRequests++;
+    return route.abort();
+  });
+  const answer = [
+    '## Telos at a glance',
+    '**Telos Zero** and *Telos EVM*.',
+    '- Native accounts\n- Ethereum tools',
+    '1. Choose a network\n2. Check your wallet',
+    'Use `cleos`.',
+    '```txt\n<img src=x onerror=alert(1)>\n```',
+    'Learn [Telos introduction](https://docs.telos.net/overview/what-is-telos/introduction/).',
+    '<https://docs.telos.net/zero/telos_zero/>',
+    '[unsafe](javascript:alert(1)) [data](data:text/html,evil) [credentials](https://user:pass@docs.telos.net/private)',
+    '<img src="https://tracker.example/image" onerror=alert(1)>',
+    '![Tracking image](https://tracker.example/pixel)',
+    '<script>globalThis.daxiUnsafe = true</script>',
+  ].join('\n\n');
+  await page.route('**/v1/docs/ask', (route) =>
+    route.fulfill({
+      json: {
+        status: 'answered',
+        topicId: 'telos',
+        title: 'Telos guide',
+        answer,
+      },
+    }),
+  );
+  await page.goto('/');
+  const menu = page.getByRole('button', { name: 'Menu', exact: true });
+  if (await menu.isVisible()) await menu.click();
+  await page.getByRole('button', { name: 'Help', exact: true }).click();
+  const assistant = page.getByRole('region', { name: 'Daxi assistant' });
+  await assistant.getByLabel('Question', { exact: true }).fill('Tell me about Telos');
+  await assistant.getByRole('button', { name: 'Ask', exact: true }).click();
+  const reply = assistant.locator('.help-message.assistant');
+  await expect(reply.getByRole('heading', { name: 'Telos at a glance' })).toBeVisible();
+  await expect(reply.locator('strong').filter({ hasText: 'Telos Zero' })).toHaveCount(1);
+  await expect(reply.locator('em')).toHaveText('Telos EVM');
+  await expect(reply.locator('ul > li')).toHaveText(['Native accounts', 'Ethereum tools']);
+  await expect(reply.locator('ol > li')).toHaveText(['Choose a network', 'Check your wallet']);
+  await expect(reply.locator('pre code')).toHaveText('<img src=x onerror=alert(1)>\n');
+  const source = reply.getByRole('link', { name: 'Telos introduction', exact: true });
+  await expect(source).toHaveAttribute(
+    'href',
+    'https://docs.telos.net/overview/what-is-telos/introduction/',
+  );
+  await expect(source).toHaveAttribute('rel', 'noopener noreferrer');
+  await expect(source).toHaveAttribute('target', '_blank');
+  await expect(
+    reply.getByRole('link', { name: 'https://docs.telos.net/zero/telos_zero/', exact: true }),
+  ).toBeVisible();
+  await expect(reply.locator('img,script,iframe')).toHaveCount(0);
+  await expect(
+    reply.locator('a[href^="javascript:"],a[href^="data:"],a[href*="user:pass"]'),
+  ).toHaveCount(0);
+  expect(trackingRequests).toBe(0);
+  expect(await page.evaluate(() => 'daxiUnsafe' in globalThis)).toBe(false);
+  expect((await new AxeBuilder({ page }).include('#help-window').analyze()).violations).toEqual([]);
+  await assistant.screenshot({ path: test.info().outputPath('formatted-answer.png') });
+  await page.reload();
+  if (await menu.isVisible()) await menu.click();
+  await page.getByRole('button', { name: 'Help', exact: true }).click();
+  await expect(assistant.locator('ul > li')).toHaveText(['Native accounts', 'Ethereum tools']);
 });
 
 test('handbook assistant shows a source and renders model text safely', async ({ page }) => {

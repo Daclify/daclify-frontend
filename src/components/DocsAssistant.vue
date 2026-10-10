@@ -5,6 +5,7 @@ import { resolveApiUrl } from '../api/networks';
 import { api, friendlyError } from '../api/client';
 import { appendMessage, historyKey, readHistory, type HelpMessage } from '../help/history';
 import { useWorkspace } from '../state/workspace';
+import HelpAnswer from './HelpAnswer.vue';
 const state = useWorkspace();
 const emit = defineEmits<{ ready: [] }>();
 const configured = ref<boolean>(),
@@ -169,7 +170,8 @@ async function ask(text = question.value.trim(), retry = false) {
           :class="message.role"
         >
           <strong>{{ message.role === 'user' ? 'You' : 'Daxi Help' }}</strong>
-          <p>{{ message.text }}</p>
+          <HelpAnswer v-if="message.role === 'assistant'" :text="message.text" />
+          <p v-else>{{ message.text }}</p>
           <RouterLink v-if="message.topicId" :to="`/docs/${message.topicId}`" class="help-source"
             ><BookOpen aria-hidden="true" :size="16" /><span>Open {{ message.title }}</span
             ><ArrowUpRight aria-hidden="true" :size="16"
