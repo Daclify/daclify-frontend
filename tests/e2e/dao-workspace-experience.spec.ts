@@ -187,6 +187,23 @@ test('overview does not advertise tools that this DAO has not installed', async 
   await expect(main(page).getByRole('link', { name: /Open Members/ })).toBeVisible();
   await accessible(page);
 });
+test('long public identity and expanded DAO references fit a narrow screen', async ({ page }) => {
+  await fixture(page, {
+    dao: DaoSummarySchema.parse({
+      ...dao,
+      title: 'Community'.repeat(17),
+      description: 'https://example.test/' + 'a'.repeat(600),
+    }),
+  });
+  await page.setViewportSize({ width: 320, height: 812 });
+  await page.goto('/dao/1');
+  await expect(
+    main(page).getByRole('heading', { name: 'Workspace overview', exact: true }),
+  ).toBeVisible();
+  await main(page).locator('.workspace-reference summary').click();
+  await expect(main(page).getByText(reference.chainId, { exact: true })).toBeVisible();
+  await accessible(page);
+});
 test('settings has clear Identity, Governance and Services destinations with URL state', async ({
   page,
 }) => {

@@ -14,6 +14,7 @@ Frontend development release **0.10.0-alpha.3**, starting from fetched `dev` **7
 | Medium | Settings combined identity, capacity, payments, governance and technical information. | Identity preserves name/card editing; Governance contains existing policies, executives and election/guardian controls; Services distinguishes hosting, resources and merchant payments. Technical identity/privacy/epoch records move to an expandable reference panel. |
 | Medium | Public-image consent checkbox measured 710px wide due to an undefined class. | Reuse the existing `.checkbox` style and assert its width in both browser projects. Configuration headings/labels/help scale with root text size. |
 | Medium | Unknown sections claimed module APIs were still being connected. | Truthful unavailable-section state with overview/module recovery links. |
+| Medium | A valid long URL in the description caused horizontal scrolling at 320px. | Reuse the existing `.wrap` class; test long identities with the technical reference expanded. |
 
 The overview does not request activity counts or invent open-ballot, project or wallet statistics. Module discovery uses the same manifest-only request cursors. User membership matches the canonical complete DAO reference; inactive records remain available for existing exits. Settings remains discoverable to visitors without granting mutation rights.
 
@@ -30,15 +31,15 @@ Node **24.21.0**, npm **11.19.0**; isolated Vite/browser port **5358**. The exis
 | `npm run verify` | Passed lint policy (5 checks), Vue/TypeScript and **168 unit tests** across 33 files. |
 | `npm run format:check` | Passed. |
 | Testnet static build | Passed with fixed testnet environment values. Existing large-chunk warning remains. |
-| Workspace + preset/executive/people/Hub/theme browser integration | **92 passed** across desktop and mobile Chromium. |
-| Final workspace follow-up | **28 passed** after blank-name and configuration text-size refinements; includes the same 14 workspace cases on both projects. This is a follow-up, not 28 additional unique integration cases. |
+| Final workspace + preset/executive/people/Hub/theme browser integration | **94 passed** across desktop and mobile Chromium, including the added long-identity regression. |
+| Earlier workspace follow-up | **28 passed** after blank-name and configuration text-size refinements; the later final integration includes these cases. This is a follow-up, not 28 additional unique integration cases. |
 | Accessibility/layout | Zero Axe violations in scanned states; no horizontal overflow at tested dimensions and 200% root text size. Native disclosure keyboard toggle checked. This is not complete WCAG qualification. |
 | Visual inspection | Actual desktop, phone, tablet, landscape, enlarged-text configuration, locked signer and unlocked administrator identity screenshots inspected. |
 | Final review | Connected calls, schema/signature path, stale reads, access guards, route callers, leaf panels, pinned packages and documentation reviewed; `git diff --check` passed. |
 
 The signed rename test creates a disposable real encrypted vault, verifies the browser's login signature and governance instruction signature, and compares the exact ABI-encoded `setmeta` payload against canonical expected metadata. It checks blank-name blocking, once-only submission while pending, preserved metadata and refreshed identity. HTTP responses are synthetic: this does not establish native chain execution.
 
-Other coverage includes paused/unverified tools, unavailable-tool retry, wrong-DAO module responses, late reads after switching DAOs, unsigned action gating, visitor/read-only configuration, inactive-member exits, foreign chain/contract/interface memberships, full sign-in return destinations, query/hash preservation, direct settings links, obsolete sections and responsive layouts. Existing executive tests still exercise last-paired-controller protection and unsigned quorum appointments; platform DAO navigation still reaches the same workspace.
+Other coverage includes paused/unverified tools, unavailable-tool retry, wrong-DAO module responses, late reads after switching DAOs, unsigned action gating, visitor/read-only configuration, inactive-member exits, foreign chain/contract/interface memberships, full sign-in return destinations, query/hash preservation, direct settings links, obsolete sections, long identity text, expanded technical references and responsive layouts. Existing executive tests still exercise last-paired-controller protection and unsigned quorum appointments; platform DAO navigation still reaches the same workspace.
 
 Viewport checks: **1440×1100**, **375×812**, **768×1024**, **812×375** and **320×812**, with reduced motion. Configuration also runs at **200% root text size**. This measures text resizing, not every browser zoom or physical-device configuration.
 
@@ -53,7 +54,7 @@ npm run format:check
 VITE_NETWORK=testnet VITE_API_TESTNET=https://testnet.api.daclify.com npm run build
 ```
 
-Ignored local logs: `.artifacts/dao-workspace-red.log`, `.artifacts/dao-workspace-checkbox-red.log`, `.artifacts/dao-workspace-integration.log`, `.artifacts/dao-workspace-browser-final.log`, `.artifacts/dao-workspace-verify-final.log`, `.artifacts/dao-workspace-format-final.log`, `.artifacts/dao-workspace-build-final.log`. Screenshots are reproducible under `.artifacts/browser/dao-workspace-experience-*`.
+Ignored local logs: `.artifacts/dao-workspace-red.log`, `.artifacts/dao-workspace-checkbox-red.log`, `.artifacts/dao-workspace-long-content-red.log`, `.artifacts/dao-workspace-integration-final.log`, `.artifacts/dao-workspace-browser-final.log`, `.artifacts/dao-workspace-verify-final.log`, `.artifacts/dao-workspace-format-final.log`, `.artifacts/dao-workspace-build-final.log`. Screenshots are reproducible under `.artifacts/browser/dao-workspace-experience-*`.
 
 An initial expanded browser run was 11/14: its three test-harness problems were an incorrect accessible link name, uint64 decoding expectations and an accessibility scan before the route had loaded. Those were corrected before the passing integration/final runs. No selected final tests failed or were skipped.
 

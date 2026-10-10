@@ -165,7 +165,7 @@ const setupTabs = computed<ReadonlyArray<readonly [string, string]>>(() => [
         <div>
           <p class="eyebrow">{{ preset?.title }} WORKSPACE</p>
           <h1>{{ dao.title }}</h1>
-          <p class="lead">
+          <p class="lead wrap">
             {{ dao.description || 'A shared place for decisions and contributions.' }}
           </p>
         </div>
