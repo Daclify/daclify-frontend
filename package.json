@@ -16,6 +16,7 @@
     "verify": "npm run lint && npm run typecheck && npm test",
     "test": "vitest run",
     "test:e2e": "npm run test:e2e:paid",
+    "test:testnet-public": "node tools/check-testnet-public.mjs",
     "test:e2e:payments": "playwright test --config playwright.payments.config.ts",
     "test:e2e:paid": "playwright test --config playwright.paid.config.ts",
     "test:e2e:research": "playwright test --config playwright.research.config.ts",
