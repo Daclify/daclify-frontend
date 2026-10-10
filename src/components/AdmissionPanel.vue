@@ -165,7 +165,8 @@ async function run(target: string, action: string, bytes: Uint8Array, message: s
 }
 function publicFields() {
   const person = JoinIdentitySchema.parse(JSON.parse(identity.value));
-  if (person.custody !== 'user-controlled') throw new Error('MANAGED_UNAVAILABLE');
+  if (person.custody === 'managed' && props.dao.privacy === 'encrypted-user-controlled')
+    throw new Error('CUSTODY_POLICY');
   if (
     (props.dao.participantMode === 'agents-guarded' && kind.value !== 1) ||
     (props.dao.participantMode === 'humans' && kind.value !== 0)
@@ -174,7 +175,7 @@ function publicFields() {
   return {
     signing_key: person.signingKey,
     encryption_key: JSON.stringify(person.encryptionKey),
-    custody: 0,
+    custody: person.custody === 'managed' ? 1 : 0,
     kind: kind.value,
     operator_label: kind.value === 1 ? operator.value : '',
   };
@@ -368,8 +369,8 @@ function eligibleAction(action: string) {
         participant identity and application terms</label
       >
       <p>
-        Never paste a recovery kit or private key. Managed admission is unavailable on this
-        deployment.
+        Never paste a recovery kit or private key. A managed or assisted identity can join only a
+        DAO whose privacy policy allows operator access.
       </p>
       <button
         :disabled="!confirmed || (requiresEndorsement ? !eligibleAction('applyjoin') : !canAdmit)"

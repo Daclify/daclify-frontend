@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.12.0-alpha.1 development — password-free devices
+
+Choose which paired methods unlock the original vault on another device, with distinct wallet, passkey and assisted security disclosures. Add QR/link approval from an unlocked device, memory-only recovered keys and account-wide assisted authority disclosure. Preserve existing JSON/password fallback and reject managed identities in strict private DAO admission. Consume core 0.12.0-alpha.1 and modules 0.9.0-alpha.14; hosted modes remain unavailable until configured and qualified.
+
 ## Unreleased — interactive contract authorities
 
 Explore observed contract permissions through a nested permission tree with inline full keys, threshold badges, signer weights, owner/active hierarchy and shared-key/delegation details. Show reported linked actions when the RPC authority matches the status snapshot. Contract cards reveal their authority summaries when opened and retain release verification and full public diagnostics. Add separately checked live RAM, CPU and NET with exact integer readings, explicit unlimited/unknown/failure states, chain checks and retry. Include keyboard-accessible nodes and a readable mobile/list view. No authority changes or new dependencies.

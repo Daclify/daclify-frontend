@@ -1,0 +1,9 @@
+# Password-free device access — 2026-10-10
+
+The frontend adds per-method full-access choices, wallet/passkey/assisted security disclosures, private unlocking material, memory-only recovered keys and original-key QR/link approval. Existing JSON/password/code fallback is retained. A local kit for another account is preserved and never offered as the signed-in account's backup. Managed/assisted public identities are encoded as managed in allowed admission and rejected for strict private DAOs.
+
+The 205-unit-test suite, lint, strict typecheck and testnet build passed. Six desktop/mobile browser cases passed using mocked producer transport, including zero checked Axe violations, original-key restoration, no receiver JSON/password/plaintext persistence and the foreign-kit regression. A recovered original key decrypts a private file produced before recovery.
+
+The [public testnet report](2026-10-10-passwordless-public.json) records an actual HTTPS API/database/browser device-transfer journey with a fresh, cryptographically verified paired EVM session, the same original identity, zero checked Axe violations/page errors and no JSON/password on the receiver. This uses a software-generated disposable EVM signer; it does not qualify a hardware wallet or PRF authenticator.
+
+Core/frontend `0.12.0-alpha.1` and modules `0.9.0-alpha.14` are pinned development artifacts. See the [producer verification and limitations](../../../daclify-backend-core/docs/evidence/2026-10-10-passwordless-recovery.md) and [OpenBao setup](../../../daclify-backend-core/ops/recovery/README.md). Hosted recovery remains disabled until actual independent storage/restore and client qualification. No original user key was placed in an operator-held recovery wrap. Registry/main/production release and chain authority changes are outside this delivery.

@@ -15,6 +15,9 @@ import {
   canSignMember,
 } from '../../src/auth/action-signer';
 import { api, friendlyError } from '../../src/api/client';
+import * as evm from '../../src/auth/telos-evm';
+import { PrivateKey } from '@wharfkit/antelope';
+import { RecoveryContextSchema } from '@daclify/core-protocol';
 import { makeInstruction, encodeAction, governanceTypedData } from '@daclify/core-protocol/sdk';
 import { UserMembershipSchema } from '@daclify/core-protocol';
 const address = '0x7e5f4552091a69125d5dfcb7b8c2659029395bdf',
@@ -90,6 +93,33 @@ it('asks for the exact independently tested typed governance fields and uses a s
   expect(calls.find((c) => c.method === 'personal_sign')?.params).toEqual(['0x41', address]);
   complete(signature);
   await expect(login).resolves.toBe(signature);
+});
+it('uses a separate private vault message bound to the selected paired wallet', async () => {
+  const context = RecoveryContextSchema.parse({
+    version: 1,
+    id: crypto.randomUUID(),
+    accountId: crypto.randomUUID(),
+    origin: 'https://app.example.test',
+    credentialKey: 'evm:41:' + address,
+    mode: 'wallet-protected',
+    signingPublicKey: PrivateKey.generate('K1').toPublic().toString(),
+    encryptionPublicKey: { kty: 'EC', crv: 'P-256', x: 'a'.repeat(43), y: 'b'.repeat(43) },
+    salt: btoa('a'.repeat(32)),
+  });
+  const fn = Reflect.get(evm, 'evmRecoveryMaterial');
+  expect(typeof fn).toBe('function');
+  if (typeof fn !== 'function') throw new Error('Missing private EVM recovery');
+  const operation = fn(context);
+  await pending();
+  const signed = calls.find((c) => c.method === 'personal_sign');
+  const encoded = String(signed?.params?.[0]);
+  const plain = new TextDecoder().decode(
+    Uint8Array.from(encoded.slice(2).match(/../g) ?? [], (value) => parseInt(value, 16)),
+  );
+  expect(plain).toContain('Keep this signature private');
+  expect(plain).toContain(context.id);
+  complete(signature);
+  await expect(operation).resolves.toBeInstanceOf(Uint8Array);
 });
 it.each(['account', 'chain', 'route', 'disconnect', 'network'] as const)(
   'rejects a %s change while a wallet approval is pending',

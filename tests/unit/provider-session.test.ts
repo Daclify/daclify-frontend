@@ -24,6 +24,7 @@ import {
   ChallengeRequestSchema,
   LoginRequestSchema,
   LoginMessageSchema,
+  VaultAccountSchema,
   type Account,
 } from '@daclify/core-protocol';
 import { configureNetworks } from '../../src/api/networks';
@@ -38,11 +39,11 @@ import {
 } from '../../src/auth/session';
 const password = 'long disposable fixture password';
 const csrf = 'a'.repeat(43);
-function account(signingKey: string): Account {
+function account(signingKey: string) {
   const jwk = generateKeyPairSync('ec', { namedCurve: 'prime256v1' }).publicKey.export({
     format: 'jwk',
   });
-  return AccountSchema.parse({
+  return VaultAccountSchema.parse({
     id: randomUUID(),
     custody: 'user-controlled',
     signingKey,
@@ -63,7 +64,10 @@ describe('provider sessions leave the user-controlled vault locked', () => {
     async (change) => {
       const created = await createVault(password);
       saveVault(created);
-      const owned = account(created.signingPublicKey);
+      const owned = {
+        ...account(created.signingPublicKey),
+        encryptionKey: created.encryptionPublicKey,
+      };
       vi.spyOn(api, 'challenge').mockResolvedValue({
         id: randomUUID(),
         message: 'fixture-message',
@@ -88,7 +92,10 @@ describe('provider sessions leave the user-controlled vault locked', () => {
   it('locks an open vault when the provider account is a different signing key', async () => {
     const created = await createVault(password);
     saveVault(created);
-    const owned = account(created.signingPublicKey);
+    const owned = {
+      ...account(created.signingPublicKey),
+      encryptionKey: created.encryptionPublicKey,
+    };
     vi.spyOn(api, 'challenge').mockResolvedValue({
       id: randomUUID(),
       message: 'fixture-message',
@@ -100,10 +107,13 @@ describe('provider sessions leave the user-controlled vault locked', () => {
     acceptProviderSession(account(PrivateKey.generate('K1').toPublic().toString()), csrf);
     expect(vaultUnlocked.value).toBe(false);
   });
-  it('keeps the same unlocked vault when the provider account matches its signing key', async () => {
+  it('keeps matching original keys unlocked and locks when the document identity changes', async () => {
     const created = await createVault(password);
     saveVault(created);
-    const owned = account(created.signingPublicKey);
+    const owned = {
+      ...account(created.signingPublicKey),
+      encryptionKey: created.encryptionPublicKey,
+    };
     vi.spyOn(api, 'challenge').mockResolvedValue({
       id: randomUUID(),
       message: 'fixture-message',
@@ -113,6 +123,12 @@ describe('provider sessions leave the user-controlled vault locked', () => {
     await unlockAndLogin(password);
     acceptProviderSession(owned, csrf);
     expect(vaultUnlocked.value).toBe(true);
+    const { createRecoveryRecipient } = await import('@daclify/core-protocol/sdk');
+    acceptProviderSession(
+      { ...owned, encryptionKey: (await createRecoveryRecipient()).publicKey },
+      csrf,
+    );
+    expect(vaultUnlocked.value).toBe(false);
   });
 });
 

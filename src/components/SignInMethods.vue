@@ -15,7 +15,9 @@ import {
   creationOptions,
   registrationProof,
   requestOptions,
+  passkeyRecoveryMaterial,
 } from '../auth/webauthn';
+import { rememberPasskeyRecovery } from '../auth/fast-sign-in';
 const props = defineProps<{ mode: 'manage' | 'enter' }>();
 const route = useRoute(),
   router = useRouter();
@@ -245,9 +247,15 @@ async function signInWithPasskey() {
     check();
     const asserted = await navigator.credentials.get({ publicKey: requestOptions(options) });
     check();
-    const session = await api.loginWithPasskey(assertionProof(asserted));
-    check();
-    signedIn(session.account, session.csrfToken);
+    const material = passkeyRecoveryMaterial(asserted);
+    try {
+      const session = await api.loginWithPasskey(assertionProof(asserted));
+      check();
+      rememberPasskeyRecovery(material);
+      signedIn(session.account, session.csrfToken);
+    } finally {
+      material?.material.fill(0);
+    }
   });
 }
 async function sendCode() {
@@ -369,8 +377,8 @@ onUnmounted(() => {
     <h2 v-if="mode === 'manage'">Sign-in methods</h2>
     <h3 v-else>Choose your sign-in method</h3>
     <p class="sign-in-scope">
-      A passkey, Telegram or email opens your account without unlocking your Daclify keys. Use a
-      method you’ve already paired.
+      Use a method you’ve already paired to sign in to this account. Methods enabled for full access
+      also unlock your signing and private-document keys.
     </p>
     <p v-if="mode === 'manage' && !vaultUnlocked" class="notice">
       Prove account control before adding or removing a method. Unlock your keys from the Keys tab,

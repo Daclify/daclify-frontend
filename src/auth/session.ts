@@ -1,5 +1,6 @@
 import { assertOperatorDao } from '../api/networks';
 import { ref } from 'vue';
+import { useWorkspace } from '../state/workspace';
 import { csrfStorageKey } from '../api/networks';
 import { PrivateKey } from '@wharfkit/antelope';
 import {
@@ -16,8 +17,17 @@ import {
   type Account,
   AccountControlMessageSchema,
   VaultAttachMessageSchema,
+  RecoveryContextSchema,
+  VaultSecretsSchema,
+  type RecoveryContext,
+  DeviceRecoveryRequestSchema,
+  type DeviceRecoveryRequest,
 } from '@daclify/core-protocol';
-import { instructionDigest, type instruction } from '@daclify/core-protocol/sdk';
+import {
+  instructionDigest,
+  verifyRecoveryIdentity,
+  type instruction,
+} from '@daclify/core-protocol/sdk';
 import { api, setAccountControlSigner } from '../api/client';
 import {
   unlockVault,
@@ -133,9 +143,92 @@ function touch() {
 export function acceptProviderSession(account: Account, csrfToken: string): Account {
   if (!/^[A-Za-z0-9_-]{32,128}$/.test(csrfToken)) throw new Error('CSRF_REQUIRED');
   sessionStorage.setItem(csrfStorageKey(), csrfToken);
-  if (secrets && PrivateKey.from(secrets.signingKey).toPublic().toString() !== account.signingKey)
+  if (
+    secrets &&
+    (PrivateKey.from(secrets.signingKey).toPublic().toString() !== account.signingKey ||
+      secrets.encryptionPrivateKey.x !== account.encryptionKey?.x ||
+      secrets.encryptionPrivateKey.y !== account.encryptionKey?.y)
+  )
     lockVault();
   return account;
+}
+export function recoveryContextGuard(account: Account): () => void {
+  const state = useWorkspace(),
+    started = generation,
+    scope = csrfStorageKey(),
+    location = globalThis.location?.href,
+    network = JSON.stringify([state.network?.chainId, state.network?.runtime]);
+  return () => {
+    if (
+      started !== generation ||
+      scope !== csrfStorageKey() ||
+      location !== globalThis.location?.href ||
+      state.account?.id !== account.id ||
+      state.account.signingKey !== account.signingKey ||
+      JSON.stringify(state.account.encryptionKey) !== JSON.stringify(account.encryptionKey) ||
+      network !== JSON.stringify([state.network?.chainId, state.network?.runtime])
+    )
+      throw new Error('WALLET_CONTEXT_CHANGED');
+  };
+}
+async function checkRecoveryAccount(account: Account): Promise<void> {
+  const state = (await import('../state/workspace')).useWorkspace();
+  if (
+    state.account?.id !== account.id ||
+    state.account.signingKey !== account.signingKey ||
+    JSON.stringify(state.account.encryptionKey) !== JSON.stringify(account.encryptionKey)
+  )
+    throw new Error('ACCOUNT_KEY_MISMATCH');
+}
+export async function withUnlockedVault<T>(
+  account: Account,
+  work: (keys: VaultSecrets) => Promise<T>,
+): Promise<T> {
+  const check = recoveryContextGuard(account);
+  check();
+  await checkRecoveryAccount(account);
+  check();
+  if (
+    !secrets ||
+    !canUseVaultKey(account.signingKey ?? undefined) ||
+    secrets.encryptionPrivateKey.x !== account.encryptionKey?.x ||
+    secrets.encryptionPrivateKey.y !== account.encryptionKey?.y
+  )
+    throw new Error('VAULT_LOCKED');
+  touch();
+  const result = await work(VaultSecretsSchema.parse(secrets));
+  check();
+  await checkRecoveryAccount(account);
+  check();
+  return result;
+}
+export async function installRecoveredVault(
+  account: Account,
+  input: unknown,
+  identity: RecoveryContext | DeviceRecoveryRequest,
+  check: () => void,
+): Promise<void> {
+  check();
+  await checkRecoveryAccount(account);
+  check();
+  const parsed = RecoveryContextSchema.safeParse(identity);
+  const context = parsed.success ? parsed.data : DeviceRecoveryRequestSchema.parse(identity);
+  if (
+    context.origin !== window.location.origin ||
+    context.accountId !== account.id ||
+    context.signingPublicKey !== account.signingKey ||
+    JSON.stringify(context.encryptionPublicKey) !== JSON.stringify(account.encryptionKey)
+  )
+    throw new Error('ACCOUNT_KEY_MISMATCH');
+  const opened = await verifyRecoveryIdentity(input, context),
+    signer = await import('./action-signer');
+  check();
+  await checkRecoveryAccount(account);
+  check();
+  secrets = opened;
+  signer.selectedSigner.value = 'vault';
+  vaultUnlocked.value = true;
+  touch();
 }
 export async function unlockAndLogin(password: string, current?: Account): Promise<Account> {
   const started = generation;

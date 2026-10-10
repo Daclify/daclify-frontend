@@ -2,7 +2,7 @@ import { shallowRef } from 'vue';
 import { SessionKit, type Session } from '@wharfkit/session';
 import { WebRenderer } from '@wharfkit/web-renderer';
 import { WalletPluginAnchor } from '@wharfkit/wallet-plugin-anchor';
-import { Action, Serializer, SignedTransaction } from '@wharfkit/antelope';
+import { Action, Serializer, SignedTransaction, Transaction } from '@wharfkit/antelope';
 import {
   NativeIdentitySchema,
   NativeProofSchema,
@@ -12,12 +12,15 @@ import {
   type RamQuote,
   AssetRefSchema,
   type AssetRef,
+  RecoveryContextSchema,
+  recoverySigningMessage,
 } from '@daclify/core-protocol';
 import {
   encodeAction,
   runtimeAbi,
   nativeRamActions,
   nativeTokenOpenAction,
+  recoveryMaterialFromSignature,
   type instruction,
 } from '@daclify/core-protocol/sdk';
 import { api } from '../api/client';
@@ -179,6 +182,66 @@ export async function nativeIntentProof(runtime: string, message: string): Promi
     packedTransaction: Serializer.encode({ object: result.transaction }).hexString,
     signatures: result.signatures.map((signature) => signature.toString()),
   });
+}
+export async function nativeRecoveryMaterial(input: unknown): Promise<Uint8Array> {
+  const context = RecoveryContextSchema.parse(input),
+    selected = nativeWallet.value,
+    state = useWorkspace();
+  if (!selected || !state.network) throw new Error('NATIVE_WALLET_MISSING');
+  const identity = nativeIdentity(),
+    runtime = state.network.runtime;
+  if (
+    context.mode !== 'wallet-protected' ||
+    context.credentialKey !== `native:${identity.chainId}:${identity.account}` ||
+    state.network.chainId !== identity.chainId ||
+    globalThis.location?.origin !== context.origin
+  )
+    throw new Error('WALLET_CONTEXT_CHANGED');
+  const accountId = state.account?.id,
+    location = globalThis.location?.href;
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(recoverySigningMessage(context)),
+  );
+  const intent = Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, '0'),
+  ).join('');
+  const transaction = Transaction.from({
+    expiration: '1970-01-01T00:00:01',
+    ref_block_num: 0,
+    ref_block_prefix: 0,
+    max_net_usage_words: 0,
+    max_cpu_usage_ms: 0,
+    delay_sec: 0,
+    context_free_actions: [],
+    transaction_extensions: [],
+    actions: [
+      Action.from({
+        account: runtime,
+        name: 'authproof',
+        authorization: [{ actor: identity.account, permission: identity.permission }],
+        data: encodeAction('authproof', { account: identity.account, intent }),
+      }),
+    ],
+  });
+  const result = await selected.transact(
+    { transaction },
+    { broadcast: false, allowModify: false, abis: [{ account: runtime, abi: runtimeAbi }] },
+  );
+  if (
+    nativeWallet.value !== selected ||
+    state.account?.id !== accountId ||
+    state.network.chainId !== identity.chainId ||
+    state.network.runtime !== runtime ||
+    globalThis.location?.href !== location ||
+    !result.signer.equals(selected.permissionLevel) ||
+    result.chain.id.toString() !== identity.chainId ||
+    !result.resolved?.transaction.equals(transaction)
+  )
+    throw new Error('WALLET_CONTEXT_CHANGED');
+  if (result.signatures.length !== 1 || !result.signatures[0])
+    throw new Error('RECOVERY_WALLET_UNSUPPORTED');
+  return recoveryMaterialFromSignature(result.signatures[0].toString());
 }
 export async function nativeGovernance(
   request: instruction,

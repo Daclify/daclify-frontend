@@ -169,7 +169,8 @@ async function useControl() {
     <p>
       Use an Anchor wallet to sign in with a paired account or recover its existing on-chain DAO
       access after a service failure. Recovery uses the current blockchain binding; it creates no
-      new DAO membership and does not restore document-decryption keys.
+      new DAO membership. Original document keys require an enabled full-access method, an encrypted
+      kit or approval from an unlocked device.
     </p>
     <p v-if="mode === 'manage'" class="field-help">
       Sign-in pairing and DAO wallet authority are separate. Remove or replace executive bindings in

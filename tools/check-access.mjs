@@ -4,11 +4,13 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createServer } from 'vite';
 import vue from '@vitejs/plugin-vue';
-import {ModuleStateSchema,Catalog} from '@daclify/modules';
+import { ModuleStateSchema, Catalog } from '@daclify/modules';
 import { DaoSummarySchema, UserMembershipSchema, TreasurySchema } from '@daclify/core-protocol';
 import { createRenderer, reactive, h, nextTick, compile, ssrContextKey } from 'vue';
 import { parse, compileScript } from 'vue/compiler-sfc';
 import { createPinia } from 'pinia';
+import { ABI, Serializer } from '@wharfkit/antelope';
+import { runtimeAbi } from '@daclify/core-protocol/sdk';
 const root = process.cwd();
 const server = await createServer({
   root,
@@ -242,8 +244,13 @@ const moduleData = ModuleStateSchema.parse({
   dao: reference('1'),
   modules: [
     {
-      deployment: { id: 'works', account: 'works',version:'0.4.0-alpha.1',codeHash:'ab'.repeat(32) },
-      manifest:Catalog.find(module=>module.id==='works'),
+      deployment: {
+        id: 'works',
+        account: 'works',
+        version: '0.4.0-alpha.1',
+        codeHash: 'ab'.repeat(32),
+      },
+      manifest: Catalog.find((module) => module.id === 'works'),
       enabled: true,
       compatible: true,
       codeVerified: true,
@@ -251,11 +258,25 @@ const moduleData = ModuleStateSchema.parse({
       grants: ['reserve', 'approve', 'cancel'],
     },
   ],
-  projects: [{ id: '1',dao_id:'1',creator:'1', contributor: '2', status: 1, document_id: '1', document_version: 1,milestones:['1'] }],
+  projects: [
+    {
+      id: '1',
+      dao_id: '1',
+      creator: '1',
+      contributor: '2',
+      status: 1,
+      document_id: '1',
+      document_version: 1,
+      milestones: ['1'],
+    },
+  ],
   milestones: [
     {
       id: '1',
-      project_id: '1',dao_id:'1',due:0,reviewer:'0',
+      project_id: '1',
+      dao_id: '1',
+      due: 0,
+      reviewer: '0',
       status: 2,
       quantity: '1.0000 TLOS',
       submission_doc: '1',
@@ -394,9 +415,17 @@ const finishBranding = [];
 let brandingWrites = 0;
 api.relay = () => {
   brandingWrites++;
-  return new Promise((resolve) => { finishBranding.push(resolve); });
+  return new Promise((resolve) => {
+    finishBranding.push(resolve);
+  });
 };
-api.content = async (id) => ({ dao: reference(id), members: [], documents: [], keyGrants: [], epochs: [] });
+api.content = async (id) => ({
+  dao: reference(id),
+  members: [],
+  documents: [],
+  keyGrants: [],
+  epochs: [],
+});
 const brandingProps = reactive({ dao: { ...dao('1'), description: '' }, member: member('1') });
 const branding = mount(await component('/src/components/DaoBrandingPanel.vue'), brandingProps);
 await flush();
@@ -409,28 +438,147 @@ await flush();
 for (const finish of finishBranding) finish({ transactionId: 'ab'.repeat(32) });
 await Promise.all([firstSave, duplicateSave]);
 await flush();
-const brandingButton = nodes(branding.container).find((node) => node.tag === 'button' && textOf(node).includes('Sign and update card'));
+const brandingButton = nodes(branding.container).find(
+  (node) => node.tag === 'button' && textOf(node).includes('Sign and update card'),
+);
 const brandingStillBusy = !!brandingButton.props.disabled;
 branding.app.unmount();
+const AdmissionPanel = await component('/src/components/AdmissionPanel.vue');
+api.moduleState = async (id) => ({
+  ...moduleData,
+  dao: reference(id),
+  modules: [],
+  joinApplications: [],
+});
+api.governance = async (id) => ({
+  dao: reference(id),
+  admission: { mode: 0, admin_override: false, revision: '1' },
+});
+const admitted = [];
+api.relay = async (request) => {
+  admitted.push(
+    Serializer.decode({ abi: ABI.from(runtimeAbi), type: 'addmember', data: request.data }),
+  );
+  return { transactionId: 'ab'.repeat(32) };
+};
+for (const [custody, privacy, allowed] of [
+  ['managed', 'public', true],
+  ['managed', 'encrypted-user-controlled', false],
+  ['user-controlled', 'encrypted-user-controlled', true],
+]) {
+  const panel = mount(
+    AdmissionPanel,
+    reactive({ dao: { ...dao('1'), privacy }, member: member('1') }),
+  );
+  await flush();
+  nodes(panel.container)
+    .find((node) => node.props?.id === 'join-identity')
+    .props['onUpdate:modelValue'](
+      JSON.stringify({
+        version: 1,
+        signingKey: created.signingPublicKey,
+        encryptionKey: created.encryptionPublicKey,
+        custody,
+      }),
+    );
+  const confirmation = nodes(panel.container).find(
+    (node) => node.tag === 'label' && textOf(node).includes('I confirmed these public keys'),
+  );
+  nodes(confirmation)
+    .find((node) => node.tag === 'input')
+    .props['onUpdate:modelValue'](true);
+  await flush();
+  const before = admitted.length,
+    form = nodes(panel.container).find(
+      (node) => node.tag === 'form' && textOf(node).includes('Applicant public join identity'),
+    );
+  await form.props.onSubmit({ preventDefault() {} });
+  await flush();
+  assert.equal(
+    admitted.length - before,
+    allowed ? 1 : 0,
+    'Admission must respect the DAO custody policy',
+  );
+  if (allowed)
+    assert.equal(
+      String(admitted.at(-1).custody),
+      custody === 'managed' ? '1' : '0',
+      'The signed action must disclose managed authority',
+    );
+  else
+    assert.ok(
+      textOf(panel.container).includes('user-controlled'),
+      'Strict rejection must explain its privacy requirement',
+    );
+  panel.app.unmount();
+}
+console.log(JSON.stringify({ managedPublicAdmission: true, managedStrictRejected: true }));
 session.lockVault();
 
 const TreasuryPanel = await component('/src/components/TreasuryPanel.vue');
-const treasuryDao = id => DaoSummarySchema.parse({ ...dao(id), owner: 'alice', description: '', members: 1, available: '0', reserved: '0', claims: '10000' });
-const treasuryMember = id => UserMembershipSchema.parse({ ...member(id), nativeAccount: 'alice', stake: '0', claim: '10000', custody: 'user-controlled' });
-const treasuryRows = id => TreasurySchema.parse({ dao: reference(id), obligations: [], evidence: [] });
-api.spendingReport = async () => { throw new Error('API_UNAVAILABLE'); };
+const treasuryDao = (id) =>
+  DaoSummarySchema.parse({
+    ...dao(id),
+    owner: 'alice',
+    description: '',
+    members: 1,
+    available: '0',
+    reserved: '0',
+    claims: '10000',
+  });
+const treasuryMember = (id) =>
+  UserMembershipSchema.parse({
+    ...member(id),
+    nativeAccount: 'alice',
+    stake: '0',
+    claim: '10000',
+    custody: 'user-controlled',
+  });
+const treasuryRows = (id) =>
+  TreasurySchema.parse({ dao: reference(id), obligations: [], evidence: [] });
+api.spendingReport = async () => {
+  throw new Error('API_UNAVAILABLE');
+};
 let releaseTreasury;
-api.treasury = id => id === '1' ? new Promise(resolve => { releaseTreasury = resolve; }) : Promise.resolve(treasuryRows(id));
+api.treasury = (id) =>
+  id === '1'
+    ? new Promise((resolve) => {
+        releaseTreasury = resolve;
+      })
+    : Promise.resolve(treasuryRows(id));
 const treasuryProps = reactive({ dao: treasuryDao('1'), member: treasuryMember('1') });
 const treasury = mount(TreasuryPanel, treasuryProps);
 await flush();
-const preparation = nodes(treasury.container).find(node => node.tag === 'button' && textOf(node).includes('Prepare receiving wallet'));
-assert.ok(preparation && !preparation.props.disabled, 'Receiving-wallet preparation must be available without an unlocked Daclify vault');
-assert.ok(textOf(treasury.container).includes('pay its RAM cost'), 'Recipient RAM ownership must be explained beside the wallet step');
+const preparation = nodes(treasury.container).find(
+  (node) => node.tag === 'button' && textOf(node).includes('Prepare receiving wallet'),
+);
+assert.ok(
+  preparation && !preparation.props.disabled,
+  'Receiving-wallet preparation must be available without an unlocked Daclify vault',
+);
+assert.ok(
+  textOf(treasury.container).includes('pay its RAM cost'),
+  'Recipient RAM ownership must be explained beside the wallet step',
+);
 treasuryProps.dao = treasuryDao('2');
 treasuryProps.member = treasuryMember('2');
 await flush();
-releaseTreasury(TreasurySchema.parse({ ...treasuryRows('1'), obligations: [{ id: '123456789', source: 'works', source_id: '1', recipient: '1', quantity: '1.0000 TLOS', due: 0, status: 1 }] }));
+releaseTreasury(
+  TreasurySchema.parse({
+    ...treasuryRows('1'),
+    obligations: [
+      {
+        id: '123456789',
+        source: 'works',
+        source_id: '1',
+        recipient: '1',
+        quantity: '1.0000 TLOS',
+        due: 0,
+        status: 1,
+      },
+    ],
+  }),
+);
 await flush();
 const staleTreasury = textOf(treasury.container).includes('123456789');
 treasury.app.unmount();
@@ -450,6 +598,18 @@ assert.equal(missingGrantEnabled, false, 'A missing installed action cannot enab
 
 assert.equal(uploads, 0, 'A pending file read must not upload after leaving its DAO');
 assert.equal(markers, 0, 'A pending file read must not save an upload under another account');
-assert.equal(brandingStillBusy, false, 'Refreshing branding during save must not permanently disable submission');
-assert.equal(brandingWrites, 1, 'Duplicate branding submissions must not create a second signed write');
-assert.equal(staleTreasury, false, 'An old DAO treasury response must not offer settlement in the new DAO');
+assert.equal(
+  brandingStillBusy,
+  false,
+  'Refreshing branding during save must not permanently disable submission',
+);
+assert.equal(
+  brandingWrites,
+  1,
+  'Duplicate branding submissions must not create a second signed write',
+);
+assert.equal(
+  staleTreasury,
+  false,
+  'An old DAO treasury response must not offer settlement in the new DAO',
+);

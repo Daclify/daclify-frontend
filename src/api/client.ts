@@ -65,6 +65,8 @@ import {
   EvmRelaySchema,
   CredentialHistorySchema,
   type EvmRelay,
+  RecoveryRoutes,
+  RecoveryGrantSchema,
 } from '@daclify/core-protocol';
 import type { instruction } from '@daclify/core-protocol/sdk';
 import {
@@ -92,6 +94,19 @@ export type SignInMethods = z.infer<typeof SignInMethodsSchema>;
 export type PasskeyRegisterOptions = z.infer<typeof PasskeyRegisterOptionsSchema>;
 export type PasskeyLoginOptions = z.infer<typeof PasskeyLoginOptionsSchema>;
 export type ServiceReceipt = z.infer<typeof ServiceReceiptSchema>;
+let recoveryGrant: { token: string; accountId: string; scope: string; expires: number } | undefined;
+export function takeRecoveryGrant(accountId: string): string | undefined {
+  const grant = recoveryGrant;
+  recoveryGrant = undefined;
+  if (
+    !grant ||
+    grant.accountId !== accountId ||
+    grant.scope !== resolveApiUrl('/') ||
+    grant.expires <= Date.now()
+  )
+    return undefined;
+  return grant.token;
+}
 let accountControlSigner:
   ((challenge: AccountControlChallenge) => Promise<AccountControlProof>) | undefined;
 export function setAccountControlSigner(
@@ -198,6 +213,18 @@ async function request<T>(
       window.location.origin,
       new URL(resolveApiUrl('/'), window.location.origin).origin,
     );
+  const login = SessionSchema.safeParse(result);
+  if (login.success) {
+    const token = RecoveryGrantSchema.safeParse(response.headers.get('x-daclify-recovery-grant'));
+    recoveryGrant = token.success
+      ? {
+          token: token.data,
+          accountId: login.data.account.id,
+          scope: resolveApiUrl('/'),
+          expires: Date.now() + 300000,
+        }
+      : undefined;
+  }
   return result;
 }
 export function verifiedModuleRelease(state: ModuleState): ModuleState {
@@ -213,6 +240,63 @@ export function verifiedModuleRelease(state: ModuleState): ModuleState {
   };
 }
 export const api = {
+  beginDeviceRecovery: (input: z.infer<typeof RecoveryRoutes.deviceRecoveryBegin.input>) =>
+    request(
+      RecoveryRoutes.deviceRecoveryBegin.path,
+      RecoveryRoutes.deviceRecoveryBegin.response,
+      RecoveryRoutes.deviceRecoveryBegin.input.parse(input),
+    ),
+  deviceRecoveryRequest: (id: string) =>
+    request(
+      '/v1/account/recovery/device/' + z.uuid().parse(id),
+      RecoveryRoutes.deviceRecoveryRequest.response,
+    ),
+  approveDeviceRecovery: (input: z.infer<typeof RecoveryRoutes.deviceRecoveryApprove.input>) =>
+    request(
+      RecoveryRoutes.deviceRecoveryApprove.path,
+      RecoveryRoutes.deviceRecoveryApprove.response,
+      RecoveryRoutes.deviceRecoveryApprove.input.parse(input),
+    ),
+  pollDeviceRecovery: (input: z.infer<typeof RecoveryRoutes.deviceRecoveryPoll.input>) =>
+    request(
+      RecoveryRoutes.deviceRecoveryPoll.path,
+      RecoveryRoutes.deviceRecoveryPoll.response,
+      RecoveryRoutes.deviceRecoveryPoll.input.parse(input),
+    ),
+  cancelDeviceRecovery: (input: z.infer<typeof RecoveryRoutes.deviceRecoveryCancel.input>) =>
+    request(
+      RecoveryRoutes.deviceRecoveryCancel.path,
+      RecoveryRoutes.deviceRecoveryCancel.response,
+      RecoveryRoutes.deviceRecoveryCancel.input.parse(input),
+    ),
+  recoveryMethods: () =>
+    request(RecoveryRoutes.recoveryMethods.path, RecoveryRoutes.recoveryMethods.response),
+  enableRecovery: (input: z.infer<typeof RecoveryRoutes.recoveryEnroll.input>) =>
+    request(
+      RecoveryRoutes.recoveryEnroll.path,
+      RecoveryRoutes.recoveryEnroll.response,
+      RecoveryRoutes.recoveryEnroll.input.parse(input),
+      45000,
+    ),
+  disableRecovery: (input: z.infer<typeof RecoveryRoutes.recoveryDisable.input>) =>
+    request(
+      RecoveryRoutes.recoveryDisable.path,
+      RecoveryRoutes.recoveryDisable.response,
+      RecoveryRoutes.recoveryDisable.input.parse(input),
+    ),
+  recoveryAssistedOptions: (input: z.infer<typeof RecoveryRoutes.recoveryAssistedOptions.input>) =>
+    request(
+      RecoveryRoutes.recoveryAssistedOptions.path,
+      RecoveryRoutes.recoveryAssistedOptions.response,
+      RecoveryRoutes.recoveryAssistedOptions.input.parse(input),
+    ),
+  claimRecovery: (input: z.infer<typeof RecoveryRoutes.recoveryClaim.input>) =>
+    request(
+      RecoveryRoutes.recoveryClaim.path,
+      RecoveryRoutes.recoveryClaim.response,
+      RecoveryRoutes.recoveryClaim.input.parse(input),
+      45000,
+    ),
   hubDirectory: async () => {
     const all = await request(
       DirectoryRoutes.hubDirectory.path,
@@ -916,11 +1000,31 @@ export const api = {
   logout: async () => {
     await request(ApiRoutes.logout.path, ApiRoutes.logout.response, {});
     sessionStorage.removeItem(csrfStorageKey());
+    recoveryGrant = undefined;
   },
 };
 export function friendlyError(error: unknown): string {
   if (error instanceof ApiFailure) {
     const messages: Record<string, string> = {
+      RECOVERY_UNAVAILABLE:
+        'Fast sign-in backups are not available on this service yet. You can still use another unlocked device or your encrypted kit.',
+      RECOVERY_METHOD_UNAVAILABLE:
+        'Full access through this method is not available yet. Choose another method or use an unlocked device.',
+      RECOVERY_ASSISTED_UNAVAILABLE:
+        'Daclify-assisted recovery is unavailable. Use another full-access method, an unlocked device or your encrypted kit.',
+      RECOVERY_BACKUP_UNAVAILABLE:
+        'Your encrypted backup could not be verified or retrieved. Your existing keys are unchanged. Try again or use another recovery method.',
+      RECOVERY_CUSTODY_UNAVAILABLE:
+        'The recovery key service is unavailable. Try again or use another recovery method.',
+      RECOVERY_GRANT_INVALID:
+        'This recovery request has expired or was already used. Sign in again through a full-access method.',
+      RECOVERY_HANDOFF_INVALID: 'The recovery setup request is no longer valid. Start setup again.',
+      RECOVERY_FALLBACK_REQUIRED:
+        'Keep another full-access method enabled, or confirm that you have saved your encrypted kit and its unlocking secret.',
+      RECOVERY_DEVICE_INVALID:
+        'This device request has expired, was cancelled or was already used. Create a new request.',
+      RECOVERY_DEVICE_MISMATCH:
+        'The device verification details changed. Cancel the request and start again.',
       ...ContractFailureMessages,
       NATIVE_EXECUTIVE_BINDING_REQUIRED:
         'Replace or remove your DAO wallet binding first. The final paired executive must replace the wallet atomically.',
@@ -1095,6 +1199,20 @@ export function friendlyError(error: unknown): string {
   }
   if (error instanceof Error) {
     const cryptoErrors: Record<string, string> = {
+      CUSTODY_POLICY: 'This DAO requires user-controlled keys.',
+      PASSKEY_PRF_UNAVAILABLE:
+        'This passkey or browser cannot unlock the encrypted vault. Use another full-access method, an unlocked device or your encrypted kit.',
+      PASSKEY_PRF_INVALID:
+        'The passkey did not return a valid private unlock result. Try another full-access method.',
+      RECOVERY_WALLET_UNSUPPORTED:
+        'This wallet did not reproduce the same private unlock signature. Full access was not enabled. Choose another protection option.',
+      RECOVERY_KEY_MISMATCH:
+        'The recovered keys do not match this account. Your existing vault is unchanged.',
+      RECOVERY_DEVICE_MISMATCH:
+        'The device verification details changed. Cancel this request and start again.',
+      RECOVERY_DEVICE_EXPIRED: 'The device approval request expired. Create a new request.',
+      RECOVERY_CONSENT_REQUIRED:
+        'Review and allow Daclify’s spare-key access before enabling assisted recovery.',
       WALLET_CONTEXT_CHANGED:
         'The account, wallet, network or page changed. Review the current action and sign again.',
       NATIVE_UNLINKED: 'Authorize this native wallet for the DAO member before signing.',

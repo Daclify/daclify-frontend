@@ -21,10 +21,13 @@ import {
   vaultUnlocked,
   acceptProviderSession,
 } from '../auth/session';
-import { JoinIdentitySchema, type Account } from '@daclify/core-protocol';
+import { JoinIdentitySchema, type Account, type RecoveryMethods } from '@daclify/core-protocol';
 import { accountDestination } from '../auth/destination';
 import ProfilePanel from '../components/ProfilePanel.vue';
 import SignInMethods from '../components/SignInMethods.vue';
+import FastSignInMethods from '../components/FastSignInMethods.vue';
+import DeviceApproval from '../components/DeviceApproval.vue';
+import { restoreFastSignIn } from '../auth/fast-sign-in';
 import LinkedAccounts from '../components/LinkedAccounts.vue';
 const props = defineProps<{
   embedded?: boolean;
@@ -51,6 +54,19 @@ const route = useRoute();
 const router = useRouter();
 const destination = computed(() => accountDestination(route.query.returnTo));
 const state = useWorkspace();
+const recoveryInfo = ref<RecoveryMethods>();
+watch(
+  () => state.account?.id,
+  async (id) => {
+    recoveryInfo.value = undefined;
+    if (!id) return;
+    try {
+      const response = await api.recoveryMethods();
+      if (state.account?.id === id) recoveryInfo.value = response;
+    } catch {}
+  },
+  { immediate: true },
+);
 watch(restoring, (active) => {
   void nextTick(() =>
     document
@@ -59,13 +75,13 @@ watch(restoring, (active) => {
   );
 });
 const joinIdentity = computed(() =>
-  state.account && state.account.signingKey !== null
+  state.account && state.account.signingKey !== null && recoveryInfo.value
     ? JSON.stringify(
         JoinIdentitySchema.parse({
           version: 1,
           signingKey: state.account.signingKey,
           encryptionKey: state.account.encryptionKey,
-          custody: state.account.custody,
+          custody: recoveryInfo.value.assistedEver ? 'managed' : state.account.custody,
         }),
         null,
         2,
@@ -134,6 +150,16 @@ watch(
   },
 );
 const saved = ref(savedVault());
+const accountKit = computed(() => {
+  const record = saved.value,
+    account = state.account;
+  if (!record || !account) return undefined;
+  if (account.signingKey === null) return record;
+  return record.signingPublicKey === account.signingKey &&
+    JSON.stringify(record.encryptionPublicKey) === JSON.stringify(account.encryptionKey)
+    ? record
+    : undefined;
+});
 const receipts = ref<ServiceReceipt[]>([]);
 const billingError = ref('');
 const billingNote = computed(() => {
@@ -299,6 +325,11 @@ async function onSignedIn(account: Account) {
   state.account = account;
   password.value = '';
   error.value = '';
+  try {
+    await restoreFastSignIn(account);
+  } catch (cause) {
+    error.value = friendlyError(cause);
+  }
   await state.refresh();
   if (destination.value) await router.push(destination.value);
 }
@@ -324,7 +355,9 @@ function backup() {
         signingPublicKey: created.value.signingPublicKey,
         encryptionPublicKey: created.value.encryptionPublicKey,
       }
-    : saved.value;
+    : state.account
+      ? accountKit.value
+      : saved.value;
   if (record) downloadBackup(record);
 }
 </script>
@@ -422,6 +455,11 @@ function backup() {
     </button>
   </section>
   <template v-else-if="state.account">
+    <p v-if="recoveryInfo?.assistedEver" class="notice" role="status">
+      This vault authorized Daclify-assisted recovery. Daclify may hold a spare unlocking key for
+      its signing and private-document keys. Your selected sign-in methods control when recovery is
+      available.
+    </p>
     <div class="account-tabs" role="tablist" @keydown="navigateTabs" aria-label="Account sections">
       <button
         v-for="item in accountTabs"
@@ -449,13 +487,19 @@ function backup() {
           {{
             state.account.signingKey === null
               ? 'Blockchain wallet access'
-              : state.account.custody === 'user-controlled'
-                ? 'User-controlled account'
-                : 'Managed account'
+              : recoveryInfo?.assistedEver
+                ? 'Account with assisted recovery'
+                : state.account.custody === 'user-controlled'
+                  ? 'User-controlled account'
+                  : 'Managed account'
           }}
         </h2>
         <span class="pill">{{
-          state.account.signingKey === null ? 'Wallet only' : state.account.custody
+          state.account.signingKey === null
+            ? 'Wallet only'
+            : recoveryInfo?.assistedEver
+              ? 'Assisted recovery authority'
+              : state.account.custody
         }}</span>
       </div>
       <p class="muted">Server login id</p>
@@ -481,13 +525,18 @@ function backup() {
         </p>
         <label for="public-join-identity">Public join identity JSON</label>
         <textarea id="public-join-identity" readonly rows="7" :value="joinIdentity"></textarea>
-        <button class="secondary" @click="copyJoinIdentity">Copy public join identity</button>
+        <button class="secondary" :disabled="!joinIdentity" @click="copyJoinIdentity">
+          Copy public join identity
+        </button>
+        <p v-if="!recoveryInfo" class="field-help">
+          Recovery authority must be checked before sharing a join identity.
+        </p>
         <p v-if="joinCopied" role="status">Public join identity copied.</p>
       </details>
       <RouterLink v-if="destination" class="button secondary" :to="destination"
         >Return to your DAO or setup</RouterLink
       >
-      <form v-if="!vaultUnlocked && saved" @submit.prevent="unlock">
+      <form v-if="!vaultUnlocked && accountKit" @submit.prevent="unlock">
         <label for="unlock">Vault password</label
         ><input
           id="unlock"
@@ -499,14 +548,16 @@ function backup() {
       </form>
       <div v-else-if="vaultUnlocked" class="button-row">
         <button class="secondary" @click="lockVault">Lock vault</button
-        ><button class="secondary" @click="backup">Download encrypted backup</button>
+        ><button v-if="accountKit" class="secondary" @click="backup">
+          Download encrypted backup
+        </button>
       </div>
-      <p v-if="!vaultUnlocked && !saved" class="muted">
-        This sign-in opened the server session. Restore the recovery kit on this device to unlock
-        your keys.
+      <p v-if="!vaultUnlocked && !accountKit" class="muted">
+        You are signed in. To open your private keys, sign in again through a paired method with
+        full access enabled, approve this device from an unlocked device, or use your encrypted kit.
       </p>
       <button
-        v-if="!vaultUnlocked && !saved"
+        v-if="!vaultUnlocked && !accountKit"
         type="button"
         class="secondary"
         @click="restoring = true"
@@ -534,6 +585,12 @@ function backup() {
         </form>
       </details>
       <button class="text-button danger" :disabled="busy" @click="logout">Sign out</button>
+      <DeviceApproval
+        :account="state.account"
+        :approve-id="
+          typeof route.query.deviceApproval === 'string' ? route.query.deviceApproval : undefined
+        "
+      />
       <p class="muted">
         Keys lock after ten minutes without a signing action. Signing keys are separate from
         document encryption keys.
@@ -546,6 +603,12 @@ function backup() {
       role="tabpanel"
       aria-labelledby="account-tab-sign-in"
     >
+      <FastSignInMethods
+        v-if="state.account"
+        :account="state.account"
+        @changed="recoveryInfo = $event"
+        @unlock-needed="openTab('keys')"
+      />
       <SignInMethods mode="manage" />
     </div>
     <div

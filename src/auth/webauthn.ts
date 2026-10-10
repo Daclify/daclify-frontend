@@ -1,4 +1,6 @@
 import type { PasskeyLoginOptions, PasskeyRegisterOptions } from '../api/client';
+import { z } from 'zod';
+import { recoveryPrfInput } from '@daclify/core-protocol/sdk';
 
 function bytesToBase64Url(bytes: Uint8Array): string {
   let binary = '';
@@ -28,6 +30,7 @@ export function creationOptions(
     timeout: options.timeout,
     attestation: options.attestation,
     authenticatorSelection: options.authenticatorSelection,
+    extensions: { prf: {} },
     excludeCredentials: options.excludeCredentials.map((item) => ({
       type: item.type,
       id: base64UrlToBytes(item.id),
@@ -41,12 +44,43 @@ export function requestOptions(options: PasskeyLoginOptions): PublicKeyCredentia
     timeout: options.timeout,
     rpId: options.rpId,
     userVerification: options.userVerification,
+    extensions: { prf: { eval: { first: recoveryPrfInput() } } },
   };
 }
 
-function credential(value: Credential | null): PublicKeyCredential {
+function credential(value: unknown): PublicKeyCredential {
   if (!(value instanceof PublicKeyCredential)) throw new Error('PASSKEY_INVALID');
   return value;
+}
+
+export function passkeyRecoveryMaterial(
+  value: unknown,
+): { credentialKey: string; material: Uint8Array } | null {
+  const selected = credential(value);
+  const extension: unknown = selected.getClientExtensionResults();
+  const parsed = z
+    .object({
+      prf: z
+        .object({
+          results: z
+            .object({
+              first: z.custom<ArrayBuffer | ArrayBufferView>(
+                (value) => value instanceof ArrayBuffer || ArrayBuffer.isView(value),
+              ),
+            })
+            .optional(),
+        })
+        .optional(),
+    })
+    .parse(extension);
+  const first = parsed.prf?.results?.first;
+  if (!first) return null;
+  if (first.byteLength !== 32) throw new Error('PASSKEY_PRF_INVALID');
+  const material =
+    first instanceof ArrayBuffer
+      ? new Uint8Array(first.slice(0))
+      : new Uint8Array(first.buffer, first.byteOffset, first.byteLength).slice();
+  return { credentialKey: 'passkey:' + selected.id, material };
 }
 
 export function registrationProof(value: Credential | null): {

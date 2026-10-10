@@ -1,9 +1,14 @@
 import { shallowRef } from 'vue';
-import { EvmAddressSchema } from '@daclify/core-protocol';
+import {
+  EvmAddressSchema,
+  RecoveryContextSchema,
+  recoverySigningMessage,
+} from '@daclify/core-protocol';
 import {
   canonicalEvmSignature,
   bindingTypedData,
   governanceTypedData,
+  recoveryMaterialFromSignature,
 } from '@daclify/core-protocol/sdk';
 import type { DaoRef } from '@daclify/core-protocol';
 import type { instruction, EvmBinding } from '@daclify/core-protocol/sdk';
@@ -156,6 +161,18 @@ async function signWallet(
 }
 export function signEvmMessage(message: string) {
   return signWallet('personal_sign', message);
+}
+export async function evmRecoveryMaterial(input: unknown): Promise<Uint8Array> {
+  const context = RecoveryContextSchema.parse(input),
+    wallet = evmWallet.value;
+  if (!wallet) throw new Error('EVM_WALLET_MISSING');
+  if (
+    context.mode !== 'wallet-protected' ||
+    context.credentialKey !== `evm:${wallet.chainId}:${wallet.address.toLowerCase()}`
+  )
+    throw new Error('WALLET_CONTEXT_CHANGED');
+  // This signature never becomes a login proof or a server payload.
+  return recoveryMaterialFromSignature(await signEvmMessage(recoverySigningMessage(context)));
 }
 export function signEvmGovernance(request: instruction, binding: EvmBinding) {
   return signWallet('eth_signTypedData_v4', JSON.stringify(governanceTypedData(request, binding)));

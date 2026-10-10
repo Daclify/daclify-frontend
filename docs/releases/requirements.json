@@ -141,6 +141,17 @@
     {
       "id": "SDK-ONLY-MODULE-COMPATIBILITY",
       "tests": ["tests/unit/module-release.test.ts"]
+    },
+    {
+      "id": "PASSWORDLESS-ORIGINAL-KEY-ACCESS",
+      "tests": [
+        "tests/unit/fast-sign-in.test.ts",
+        "tests/unit/passkey-recovery.test.ts",
+        "tests/unit/native-recovery-signing.test.ts",
+        "tests/unit/access-components.test.ts",
+        "tests/e2e/fast-sign-in.spec.ts",
+        "tests/e2e/device-recovery.spec.ts"
+      ]
     }
   ]
 }
