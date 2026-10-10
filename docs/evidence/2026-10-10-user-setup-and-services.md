@@ -47,3 +47,5 @@ The final browser evidence comprises the 60-case page selection plus updated com
 Two generated disposable private keys in a deliberately failing clipboard test's diagnostic snapshot were redacted locally; those artifacts are ignored and are not source or delivery files. The final diff contains no configured secrets.
 
 Final delivery retained old hashes and verified 113 staged files. The final scan covered 96 text artifacts against 13 configured secrets with zero matches. All eight public desktop/phone page scans passed again after the compact Services adjustment. Public index SHA-256 matches the final local index. Services details carry the repeated readiness explanation inside native disclosures; the live phone panel height is recorded in the final browser artifact.
+
+Frontend code is committed locally on `dev` as `9fa932f`; core setup/qualification is `63ef7c0`. Both push attempts failed for missing GitHub authentication. Follow-up evidence commits record that outcome. The deployed app contains the tested code; neither repo changed `main`. All three systemd services are active and worktrees are clean after these evidence commits.
