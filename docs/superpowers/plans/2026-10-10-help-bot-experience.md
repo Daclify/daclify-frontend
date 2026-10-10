@@ -23,3 +23,5 @@ Review focus: late responses after scope changes or clearing; typing a new draft
 Rulings: keep the existing Ask label and use Ctrl/Command + Enter so ordinary Enter remains a newline. Clear confirmation applies only to this browser's scoped history. Keep plain-text model output. Observe visual-viewport and frame resizing to constrain the window. Wait for browser resize events before asserting bounds. Also fix restoration and scrolling at the 100-message limit: the old length-only watcher missed both; a dedicated browser regression failed before that fix and passes afterward.
 
 Verification: lint, Vue/TypeScript, 168 unit tests, build, and 22 selected desktop/mobile browser cases pass. Screenshot review covers opening, replies, narrow screens and 200% text. Exact commands, earlier failures and limitations are recorded in `docs/evidence/2026-10-10-help-bot-experience.md`.
+
+Delivery: implementation committed on local `dev` as `b765ae9`. `git push origin dev` failed because HTTPS GitHub credentials are unavailable; the container also has no GitHub CLI. Publication remains pending authentication. Unrelated workspace changes were preserved.
