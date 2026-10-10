@@ -17,6 +17,7 @@ const methodLabels = {
   passkey: 'Passkey',
   email: 'Email',
   telegram: 'Telegram',
+  google: 'Google',
 } satisfies Record<RecoveryMethod['kind'], string>;
 const emit = defineEmits<{ changed: [methods: RecoveryMethods]; unlockNeeded: [] }>();
 const methods = ref<RecoveryMethods>(),

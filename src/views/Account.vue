@@ -925,7 +925,6 @@ function backup() {
 }
 @media (max-width: 740px) {
   .settings-heading {
-    position: relative;
     gap: 4px;
     margin-bottom: 20px;
   }
@@ -936,9 +935,9 @@ function backup() {
     font-size: 0.875rem;
   }
   .settings-heading .help-link {
-    position: absolute;
-    top: 0;
-    right: 0;
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
     font-size: 0.8125rem;
   }
   .access-grid {
