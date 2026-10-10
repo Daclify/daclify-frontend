@@ -2,9 +2,9 @@
 
 > Execute with `superpowers:executing-plans` inline. Workspace instructions prohibit delegation and authorize continuous implementation with review afterward.
 
-**Goal:** Show observed contract authorities as an interactive map with reversible cards and live RAM/CPU/NET.
+**Goal:** Show contract connections as a name-only interactive diagram that selects one Contract Account Details panel with live RAM/CPU/NET and a permission tree.
 
-**Architecture:** Replace only the Contracts panel with an owned explorer and map component. A small display model derives graph nodes/edges and resource labels from producer-owned platform and WharfKit types. The explorer owns selection/resource lifecycle; the map owns the responsive permission tree and its list alternative.
+**Architecture:** Replace only the Contracts panel with an owned explorer and map component. A small display model derives graph nodes/edges and resource labels from producer-owned platform and WharfKit types. The explorer owns selection/resource lifecycle; the diagram owns contract layout/lines; the map owns the responsive permission tree.
 
 **Tech Stack:** Existing Vue 3, strict TypeScript, WharfKit, Lucide, product tokens, Playwright and Axe; no new dependencies.
 
@@ -16,7 +16,7 @@
 - Preserve unrelated dirty auth/package files. Work inline on dev as requested; stage only task files.
 - Only public read RPC calls; verify chain ID, use no credentials and discard stale reads.
 - Keep 64-bit resource integers exact; label CPU in microseconds and NET/RAM in bytes.
-- Native buttons, visible focus, at least 44px targets, reduced motion, readable list alternative.
+- Native buttons, visible focus, at least 44px targets, reduced motion and readable nested rows.
 - No permission edits, signing, dependency additions or production deployment.
 
 ## Review Focus
@@ -25,7 +25,7 @@
 - Delegations, code authority, thresholds and unresolved external authorities must remain distinguishable.
 - Zero, unlimited, failed and large resource values must not become misleading percentages or imprecise numbers.
 - Refresh/deployment changes must not pair old resources with new contracts or reset useful selection.
-- Map nodes and card backs must remain reachable at 320px, with keyboard and 200% text.
+- Contract names and tree rows must remain reachable at 320px, with keyboard and 200% text.
 
 ### Task 1: Contract explorer
 
@@ -81,3 +81,25 @@ Follow-up baseline: `08bf404`. Task-only archive: `/data/daclify-runtime/permiss
 - Final verification: 194/194 units with a 15-second test budget; 48/48 browser cases with a 60-second test budget; no assertion weakening, skipped cases or crypto changes. Lint/formatting/Vue/type/testnet build pass. After a desktop action-chip width adjustment, two responsive/Axe cases and the build were rerun successfully. Final public read-back checks all 10 resources, 57 action links, zero collapsed/expanded Axe violations and 31 asset byte matches. Backup, timestamps and timeout history are in the evidence guide.
 
 - Git delivery: `d5121bc` pushed to origin/dev and remote ref verified. Staged only the tree files and its changelog paragraph; the concurrent password-free-devices changelog entry remains untouched and uncommitted by this task. This final ledger update is a separate docs commit.
+
+## Follow-up: contract diagram and unified account details
+
+The user specifies a name-only connection diagram selecting one Contract Account Details panel. Move resources beside its tree, remove Tree/List toggles and duplicate authority blocks. Continue inline within the established implementation scope.
+
+- [x] Add helper/browser regressions and observe RED for absent contract connection derivation and diagram/account-details regions.
+- [x] Derive cross-contract delegation and matching RPC action links; aggregate each directed kind/account pair. Ignore self/external links and shared keys as dependency edges.
+- [x] Replace reversible cards with native name buttons and responsive measured SVG arrows; preserve unconnected accounts and shared-authority highlights.
+- [x] Move selected RAM/CPU/NET into Contract Account Details; retain release hashes, RPC validation, stale-read cancellation, retries and useful connection navigation.
+- [x] Make the nested tree the only authority view; remove duplicate definitions and the empty inspector.
+- [x] Complete task-only full checks, desktop/mobile Status regressions, screenshot review and actual public API/RPC read-back.
+- [ ] Update evidence and commit/push only the correction's files.
+
+Baseline: `953d268`; task-only archive `/data/daclify-runtime/contract-accounts-check-yzkqs_of`. Preserve concurrent passwordless/auth/package/vendor work and exclude it from build/commit. Initial helper tests fail because contractConnections is absent; the browser fails because Contract connections is absent. Ten focused desktop browser checks pass after implementation. A helper fixture copied a self-code authority under a different account, thereby creating a real cross-contract delegation; correct the no-link fixture to include only shared-key authorities. An unused type import was removed after Vue/type checking. No producer or RPC boundary changes.
+
+Task-only qualification passes 196/196 units, 50/50 desktop/mobile Status/guide cases, lint, changed-file formatting and Vue/type/testnet build. Detected the independently deployed 0.12 frontend before publication; a separate current-version integration snapshot preserves that account work and passes 207/207 units and the build. Qualify its Status and existing account/device browser flows before publication. The UI commit will still exclude unrelated auth/package/vendor changes.
+
+Final 0.12 integration qualification: 207/207 units and 56/56 desktop/mobile browser cases pass; build/type checks pass. Public read-back confirms ten names, five reported action connections, fifty-seven matched runtime chips, correct account switching and zero desktop/expanded/mobile Axe violations. All thirty loaded assets match the installed build. Original 0.12 deployment backed up at `/data/daclify-runtime/contract-accounts-before-20261010-175408`; kept old assets and replaced the index atomically with a concurrent-change guard. Inspected actual diagram/details screenshots. No production/backend/native-authority operation. Inline review found no outstanding important UI issue.
+
+Final review adds explicit release-disclosure open-state assertions to the failed-refresh/recovery case; desktop/mobile rerun passes 2/2. No tested UI code changed after the full qualification or public read-back.
+
+The independent account work was committed as `f015f75` on the shared dev branch during final delivery. This UI commit follows it and changes only the thirteen listed UI/test/guide/changelog files. Both the original baseline and integrated 0.12 build were verified as recorded above.

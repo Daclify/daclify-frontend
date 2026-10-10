@@ -167,6 +167,51 @@ export function authorityConnections(
   return connections;
 }
 
+export interface ContractConnection {
+  from: string;
+  to: string;
+  kind: 'delegation' | 'action';
+  descriptions: string[];
+}
+
+export function contractConnections(
+  contracts: ContractReading[],
+  readings: Readonly<Record<string, Pick<API.v1.AccountObject, 'permissions'>>> = {},
+): ContractConnection[] {
+  const accounts = new Set(contracts.map((contract) => contract.account));
+  const connections = new Map<string, ContractConnection>();
+  const add = (from: string, to: string, kind: ContractConnection['kind'], description: string) => {
+    if (from === to || !accounts.has(to)) return;
+    const id = kind + ':' + from + ':' + to;
+    const existing = connections.get(id);
+    if (existing) existing.descriptions.push(description);
+    else connections.set(id, { from, to, kind, descriptions: [description] });
+  };
+  for (const contract of contracts)
+    for (const permission of contract.permissions) {
+      const authority = contract.account + '@' + permission.name;
+      for (const account of permission.accounts)
+        add(
+          contract.account,
+          account.actor,
+          'delegation',
+          authority +
+            ' → ' +
+            account.actor +
+            '@' +
+            account.permission +
+            ' · weight ' +
+            account.weight,
+        );
+      for (const link of permissionActionLinks(
+        permission,
+        readings[contract.account]?.permissions,
+      ) ?? [])
+        add(contract.account, link.split('::')[0] ?? '', 'action', authority + ' → ' + link);
+    }
+  return [...connections.values()];
+}
+
 export function resourceReading(
   used: bigint | undefined,
   max: bigint | undefined,

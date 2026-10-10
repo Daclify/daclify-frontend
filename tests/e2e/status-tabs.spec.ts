@@ -197,8 +197,10 @@ test('organises status into accessible tabs and keeps migrations out of the UI',
   await expect(
     page.getByRole('heading', { name: 'Contracts and authorities', exact: true }),
   ).toBeVisible();
-  await page.getByText('Public permission authorities', { exact: true }).click();
-  await expect(page.getByText('alice@active · weight 1', { exact: true })).toBeVisible();
+  await page.getByText('Release details', { exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: 'Delegated permission alice@active', exact: true }),
+  ).toBeVisible();
   await tabs.getByRole('tab', { name: 'Fees', exact: true }).click();
   await expect(page.getByText('Contact for pricing', { exact: true })).toBeVisible();
   await expect(
@@ -256,7 +258,8 @@ test('keeps the selected diagnostics and disclosures through a failed refresh an
 }) => {
   await page.goto('/status');
   await page.getByRole('tab', { name: 'Contracts', exact: true }).click();
-  await page.getByText('Public permission authorities', { exact: true }).click();
+  const releaseDetails = page.getByText('Release details', { exact: true }).locator('..');
+  await page.getByText('Release details', { exact: true }).click();
   let release = () => {};
   await page.route('**/v1/platform/status', async (route) => {
     await new Promise<void>((resolve) => {
@@ -268,11 +271,15 @@ test('keeps the selected diagnostics and disclosures through a failed refresh an
   await page.keyboard.press('Enter');
   try {
     await expect(page.getByRole('button', { name: 'Checking…', exact: true })).toBeDisabled();
-    await expect(page.getByText('alice@active · weight 1', { exact: true })).toBeVisible();
+    await expect(releaseDetails).toHaveAttribute('open', '');
+    await expect(
+      page.getByRole('button', { name: 'Delegated permission alice@active', exact: true }),
+    ).toBeVisible();
   } finally {
     release();
   }
   await expect(page.locator('#main')).toContainText('Previous readings');
+  await expect(releaseDetails).toHaveAttribute('open', '');
   await expect(page.getByRole('tab', { name: 'Contracts', exact: true })).toHaveAttribute(
     'aria-selected',
     'true',
@@ -289,7 +296,10 @@ test('keeps the selected diagnostics and disclosures through a failed refresh an
   await page.getByRole('button', { name: 'Refresh status', exact: true }).click();
   await expect(page.locator('#main time')).toHaveAttribute('datetime', '2026-10-10T13:00:00.000Z');
   await expect(page.locator('#main')).not.toContainText('Previous readings');
-  await expect(page.getByText('alice@active · weight 1', { exact: true })).toBeVisible();
+  await expect(releaseDetails).toHaveAttribute('open', '');
+  await expect(
+    page.getByRole('button', { name: 'Delegated permission alice@active', exact: true }),
+  ).toBeVisible();
 });
 
 test('shows platform readings while assistant metadata is still loading', async ({ page }) => {
@@ -512,7 +522,7 @@ test('a same-chain runtime change clears old readings and rejects its delayed re
   );
   await page.goto('/status');
   await page.getByRole('tab', { name: 'Contracts', exact: true }).click();
-  await page.getByText('Public permission authorities', { exact: true }).click();
+  await page.getByText('Release details', { exact: true }).click();
   let release = () => {};
   await page.route('**/v1/platform/status', async (route) => {
     if (new URL(route.request().url()).hostname === 'testnet.example')
@@ -530,7 +540,9 @@ test('a same-chain runtime change clears old readings and rejects its delayed re
       'datetime',
       '2026-10-10T15:00:00.000Z',
     );
-    await expect(page.getByText('alice@active · weight 1', { exact: true })).toHaveCount(0);
+    await expect(
+      page.getByRole('button', { name: 'Delegated permission alice@active', exact: true }),
+    ).toHaveCount(0);
   } finally {
     release();
   }

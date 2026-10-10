@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { API, PrivateKey } from '@wharfkit/antelope';
 import {
   authorityConnections,
+  contractConnections,
   permissionActionLinks,
   permissionGraph,
   resourceReading,
@@ -143,6 +144,79 @@ describe('observed permission relationships', () => {
       },
     ]);
     expect(authorityConnections([contract, works], contract, wait)).toEqual([]);
+  });
+});
+describe('contract account connections', () => {
+  const works: ContractReading = {
+    ...contract,
+    account: 'works',
+    moduleId: 'works',
+    permissions: [
+      {
+        name: 'active',
+        parent: 'owner',
+        threshold: 1,
+        keys: [],
+        waits: [],
+        accounts: [
+          { actor: 'core.we', permission: 'execctx', weight: 2 },
+          { actor: 'works', permission: 'eosio.code', weight: 1 },
+          { actor: 'outside', permission: 'active', weight: 1 },
+        ],
+      },
+    ],
+  };
+  const reading = (threshold = 1) => ({
+    permissions: [
+      API.v1.AccountPermission.from({
+        perm_name: 'execctx',
+        parent: 'active',
+        required_auth: {
+          threshold,
+          keys: [],
+          accounts: [{ permission: { actor: 'core.we', permission: 'eosio.code' }, weight: 1 }],
+          waits: [],
+        },
+        linked_actions: [
+          { account: 'works', action: 'pay' },
+          { account: 'works', action: 'claim' },
+          { account: 'core.we', action: 'self' },
+          { account: 'outside', action: 'pay' },
+        ],
+      }),
+    ],
+  });
+  it('shows directed cross-contract delegations and aggregates matching action links without self/external/shared-key edges', () => {
+    expect(contractConnections([contract, works], { 'core.we': reading() })).toEqual([
+      {
+        from: 'core.we',
+        to: 'works',
+        kind: 'action',
+        descriptions: ['core.we@execctx → works::pay', 'core.we@execctx → works::claim'],
+      },
+      {
+        from: 'works',
+        to: 'core.we',
+        kind: 'delegation',
+        descriptions: ['works@active → core.we@execctx · weight 2'],
+      },
+    ]);
+  });
+  it('does not turn changed or unreported RPC authorities into contract links', () => {
+    expect(
+      contractConnections([contract, works], { 'core.we': reading(2) }).filter(
+        (edge) => edge.kind === 'action',
+      ),
+    ).toEqual([]);
+    expect(
+      contractConnections([
+        contract,
+        {
+          ...works,
+          permissions: contract.permissions.filter((permission) => permission.keys.length),
+        },
+      ]),
+    ).toEqual([]);
   });
 });
 describe('reported permission action links', () => {

@@ -112,3 +112,51 @@ Ignored frontend artifacts: `.artifacts/permission-tree-public-tree.png`, `.arti
 Inline review checked actual-parent grouping, cycle/orphan retention, per-permission signer weights and thresholds, matching-only RPC links, public resource/cancellation boundaries, native keyboard disclosures, full-key wrapping and preserved card/inspector navigation. No outstanding important finding. Concurrent auth/package/vendor/docs work, including its separate changelog entry, is preserved and excluded from this change's commit/build.
 
 Follow-up implementation `d5121bc` is committed and pushed to `origin/dev`; the remote ref was verified. Only the tree files and its changelog section were included. The final ledger update follows separately without changing tested/deployed code.
+
+## Contract diagram and unified account details correction
+
+Baseline: `953d268`. The user explicitly replaces the card selector with a diagram containing contract names only and one selected **Contract Account Details** panel. That panel now holds RAM/CPU/NET, the nested tree and release hashes. Removed reversible card faces, Tree/List controls, the blank Follow the authority inspector and duplicate Public permission authorities disclosure. Contributor definitions remain in the tree; selecting one exposes only useful matching connections and delegated-definition navigation.
+
+A small canonical display helper derives directed cross-contract permission delegations and action links that pass the existing full-authority/parent RPC match. It aggregates multiple actions per directed account pair, ignores self-links/external accounts and never turns shared keys into dependency edges. Shared keys instead highlight the relevant diagram names. The renderer uses native account buttons, reported-connection layers and measured SVG arrows, with ResizeObserver for responsive geometry. Existing RPC chain/account validation, credential omission, stale-read guards, precision, failure labels and retry are preserved.
+
+Initial RED: two model cases failed because contractConnections was absent; the browser failed because Contract connections was absent. During GREEN, one unit fixture incorrectly copied a self-code authority into another account, creating a legitimate cross-contract delegation; the shared-key-only fixture was corrected. Vue/type checking identified an unused imported type, which was removed.
+
+Task-only archive: `/data/daclify-runtime/contract-accounts-check-yzkqs_of`, installed from the unchanged committed 0.11.0-alpha.2 lockfile. All implementation/regression bytes match the archive. Results: 14/14 model cases, 196/196 full units, 5/5 lint policy cases, changed-file formatting, Vue/type checking and testnet build pass. The focused desktop browser run passes 10/10; the complete desktop/mobile Status and permission-guide run passes 50/50. Units use `--maxWorkers=4 --testTimeout=15000`; browser cases use `--timeout=60000`, consistent with the VM-load evidence above. Assertions, cryptography and configuration timeouts remain unchanged. Existing Docs chunk-size warning remains.
+
+Before publishing, detected that another session updated the public frontend to 0.12.0-alpha.1 at 17:38:59 UTC. Do not replace it with the older task-only archive. A separate integration snapshot `/data/daclify-runtime/contract-accounts-integration-k48p6shz` captures the current 0.12 frontend plus this UI correction for compatibility/build/browser verification. The UI commit excludes the unrelated account/auth/package/vendor files. Integration verification: 207/207 full units pass with the same 15-second test budget; Vue/type checking and the 0.12 testnet build pass. Browser qualification covers the existing account/device flows as well as Status. Actual public read-back follows after the complete desktop/mobile run.
+
+### Final correction qualification and read-back
+
+| Check | Actual result |
+| --- | --- |
+| Task-only baseline units / Status+guide browsers | 196/196 units; 50/50 desktop/mobile browsers |
+| Current 0.12 integration units | 207/207 pass, same 15-second budget |
+| Current 0.12 integration browsers | 56/56 pass: Status/guide plus existing email/device recovery cases on both projects |
+| Integration Vue/type/testnet build | Pass; existing documentation chunk-size warning remains |
+| Public HTTPS, actual API/RPC | 10 contract names; 5 aggregated action-link arrows; no cross-account delegations reported in this snapshot; 57 matched runtime action chips |
+| Public account selection | Keyboard selection switches resources/tree to daclifyworks; selection and mobile 200% text checks pass |
+| Public Axe | Zero desktop, expanded-action and mobile violations |
+| Public build identity | All 30 loaded assets match installed files byte-for-byte |
+
+Public API snapshot: `2026-10-10T17:54:11.526Z`, API version `0.12.0-alpha.1`; read-back completed `2026-10-10T17:54:20.979Z` (UTC). No response interception, signing or account mutation was used in the public Status check. Existing account/device regressions use synthetic fixtures and do not qualify live wallet/provider cryptography.
+
+The final browser command in `/data/daclify-runtime/contract-accounts-integration-k48p6shz`:
+
+```sh
+LD_LIBRARY_PATH=/data/daclify-runtime/browser-libs/usr/lib/x86_64-linux-gnu \
+DACLIFY_TEST_UI_PORT=5468 npx playwright test \
+tests/e2e/status-map.spec.ts tests/e2e/status-tabs.spec.ts \
+tests/e2e/contract-permissions.spec.ts tests/e2e/fast-sign-in.spec.ts \
+tests/e2e/device-recovery.spec.ts --timeout=60000 \
+--output=.artifacts/contract-accounts-integration
+```
+
+Installed only the checked integration build, preserving the current 0.12 account feature instead of downgrading it. Copied assets first, kept prior hashed files and atomically replaced the index after checking that another session had not changed it. Verified every staged static file against the installed bytes. Backup: `/data/daclify-runtime/contract-accounts-before-20261010-175408`. No backend/service restart, production deployment or native-authority change occurred.
+
+Inspected actual desktop diagram/details and mobile diagram screenshots. Ignored frontend artifacts: `.artifacts/contract-accounts-public-diagram.png`, `.artifacts/contract-accounts-public-details.png`, `.artifacts/contract-accounts-public-works.png`, mobile diagram/details captures and `.artifacts/contract-accounts-public-report.json`.
+
+Inline review checked the user's final layout, directed/aggregated links, unconnected accounts, shared-key highlights, resource placement/precision/failure/cancellation, no duplicate authority definitions, delegated navigation, responsive measured geometry and keyboard focus. Strengthened the existing failed-refresh regression to explicitly check the Release details open state during pending, failed and recovered reads. Physical screen readers, Safari/Firefox and Telegram webviews remain untested. No outstanding important UI finding; concurrent auth/package/vendor/docs changes remain outside this UI commit.
+
+After strengthening disclosure retention assertions, reran that regression on desktop/mobile: 2/2 pass. Changed test formatting passes; tested/deployed UI bytes are unchanged.
+
+The independent account work was committed as `f015f75` on the shared dev branch during final delivery. This UI commit follows it and changes only the thirteen listed UI/test/guide/changelog files. Both the original baseline and integrated 0.12 build were verified as recorded above.

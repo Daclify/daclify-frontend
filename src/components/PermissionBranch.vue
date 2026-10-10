@@ -14,7 +14,6 @@ const props = defineProps<{
   graph: ReturnType<typeof permissionGraph>;
   account?: API.v1.AccountObject | undefined;
   highlighted: Set<string>;
-  flat?: boolean;
   child?: boolean;
 }>();
 const focused = defineModel<string>({ required: true });
@@ -49,7 +48,7 @@ function contributorName(node: PermissionNode) {
 </script>
 
 <template>
-  <li class="authority-branch" :data-edge-kind="child && !flat ? 'hierarchy' : undefined">
+  <li class="authority-branch" :data-edge-kind="child ? 'hierarchy' : undefined">
     <article
       class="permission-row"
       :aria-label="'Permission ' + permission.name"
@@ -115,7 +114,7 @@ function contributorName(node: PermissionNode) {
       </div>
     </article>
     <ul
-      v-if="!flat && branch.children.length"
+      v-if="branch.children.length"
       class="permission-children"
       :aria-label="'Children of ' + permission.name"
     >

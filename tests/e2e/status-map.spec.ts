@@ -151,7 +151,12 @@ function account(name: string) {
         waits: permission.waits.map(({ seconds, weight }) => ({ wait_sec: seconds, weight })),
       },
       ...(permission.name === 'execctx'
-        ? { linked_actions: [{ account: 'eosio', action: 'claimrewards' }] }
+        ? {
+            linked_actions: [
+              { account: 'eosio', action: 'claimrewards' },
+              { account: 'works', action: 'claim' },
+            ],
+          }
         : {}),
     })),
   };
@@ -187,6 +192,39 @@ async function openContracts(page: import('@playwright/test').Page) {
   await page.goto('/status');
   await page.getByRole('tab', { name: 'Contracts', exact: true }).click();
 }
+
+test('a contract-name diagram switches a single account detail panel containing resources and the tree', async ({
+  page,
+}) => {
+  await openContracts(page);
+  const diagram = page.getByRole('region', { name: 'Contract connections', exact: true });
+  await expect(diagram.getByRole('button')).toHaveText(['core.we', 'works']);
+  const details = page.getByRole('region', { name: 'Contract Account Details', exact: true });
+  await expect(details.getByRole('heading', { name: 'core.we', exact: true })).toBeVisible();
+  await expect(
+    details.getByRole('meter', { name: 'core.we CPU usage', exact: true }),
+  ).toBeVisible();
+  await expect(details.getByRole('region', { name: 'Permission map', exact: true })).toBeVisible();
+  await expect(diagram.locator('[data-connection-kind="delegation"]')).toHaveCount(1);
+  await expect(diagram.locator('[data-connection-kind="action"]')).toHaveCount(1);
+  await expect(diagram.getByRole('button', { name: 'core.we', exact: true })).toHaveAttribute(
+    'aria-description',
+    /core.we@execctx → works::claim/,
+  );
+  await expect(page.getByRole('button', { name: 'List view', exact: true })).toHaveCount(0);
+  await expect(page.getByText('Follow the authority', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Public permission authorities', { exact: true })).toHaveCount(0);
+  await diagram.getByRole('button', { name: 'works', exact: true }).focus();
+  await page.keyboard.press('Enter');
+  await expect(details.getByRole('heading', { name: 'works', exact: true })).toBeVisible();
+  await expect(details).toContainText('Unlimited');
+  await expect(details.getByRole('button', { name: 'works@active', exact: true })).toBeVisible();
+  await expect(diagram.getByRole('button', { name: 'works', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(details.getByRole('button', { name: 'core.we@active', exact: true })).toHaveCount(0);
+});
 
 test('permission tree groups inline signers under owner, active and custom children with reported action links', async ({
   page,
@@ -257,24 +295,20 @@ test('many reported action links remain compact and expand with the keyboard', a
   await expect(child.getByText('eosio::claiml', { exact: true })).toBeVisible();
 });
 
-test('card faces focus the map and expose hierarchy, shared keys and real delegation', async ({
+test('tree selection highlights shared signers and contract connections without repeating authority definitions', async ({
   page,
 }) => {
   await openContracts(page);
   const explorer = page.getByRole('region', { name: 'Contract explorer', exact: true });
   await expect(explorer).toBeVisible();
-  const card = explorer.getByRole('article', { name: 'Contract core.we', exact: true });
-  await expect(card).toContainText('RAM');
-  await expect(card).toContainText('CPU');
-  await expect(card).toContainText('NET');
-  await card.getByRole('button', { name: 'Inspect core.we', exact: true }).click();
-  await expect(card).toContainText('3 permissions');
   const map = explorer.getByRole('region', { name: 'Permission map', exact: true });
   await map.getByRole('button', { name: 'core.we@active', exact: true }).click();
   const inspector = explorer.getByRole('region', { name: 'Selected authority', exact: true });
-  await expect(inspector).toContainText('Parent: owner');
-  await expect(inspector).toContainText('Threshold: 2');
-  await expect(inspector).toContainText('Weight 1');
+  await expect(map.getByRole('button', { name: 'core.we@active', exact: true })).toHaveAttribute(
+    'title',
+    'Threshold 2 · parent owner',
+  );
+  await expect(inspector).toContainText('No additional matching delegation');
   await expect(map.locator('[data-edge-kind="hierarchy"]')).toHaveCount(2);
   await expect(map.locator('[data-edge-kind="key"]')).toHaveCount(3);
   await map
@@ -286,13 +320,15 @@ test('card faces focus the map and expose hierarchy, shared keys and real delega
   await expect(inspector).toContainText('works@owner');
   await expect(inspector).toContainText('Shared key');
   await expect(
-    explorer.getByRole('article', { name: 'Contract works', exact: true }),
+    explorer
+      .getByRole('region', { name: 'Contract connections', exact: true })
+      .getByRole('button', { name: 'works', exact: true }),
   ).toHaveAttribute('data-related', 'true');
   await map.getByRole('button', { name: 'core.we@execctx', exact: true }).click();
-  await expect(inspector).toContainText('Code authority');
+  await expect(
+    map.getByRole('button', { name: 'Code authority core.we@eosio.code', exact: true }),
+  ).toBeVisible();
   await expect(inspector).toContainText('works@active');
-  await card.getByRole('button', { name: 'Show resources for core.we', exact: true }).click();
-  await expect(card).toContainText('CPU');
 });
 
 test('resources preserve large integers and distinguish zero capacity, unlimited and failed reads', async ({
@@ -300,20 +336,27 @@ test('resources preserve large integers and distinguish zero capacity, unlimited
 }) => {
   await openContracts(page);
   const explorer = page.getByRole('region', { name: 'Contract explorer', exact: true });
-  const core = explorer.getByRole('article', { name: 'Contract core.we', exact: true });
+  const core = explorer.getByRole('region', { name: 'Contract Account Details', exact: true });
   await expect(core).toContainText('9,007,199,254,740,993 µs');
   await expect(core).toContainText('No capacity');
   await expect(core.getByRole('meter', { name: 'core.we CPU usage', exact: true })).toHaveAttribute(
     'aria-valuenow',
     '50',
   );
-  const works = explorer.getByRole('article', { name: 'Contract works', exact: true });
   expect(
     (await core.getByRole('meter', { name: 'core.we CPU usage', exact: true }).boundingBox())
       ?.width,
   ).toBeGreaterThan(100);
-  await expect(works).toContainText('Unlimited');
-  await expect(works).toContainText('Hash mismatch');
+  await explorer
+    .getByRole('region', { name: 'Contract connections', exact: true })
+    .getByRole('button', { name: 'works', exact: true })
+    .click();
+  await expect(core).toContainText('Unlimited');
+  await expect(core).toContainText('Hash mismatch');
+  await explorer
+    .getByRole('region', { name: 'Contract connections', exact: true })
+    .getByRole('button', { name: 'core.we', exact: true })
+    .click();
   await page.route('**/v1/chain/get_account', (route) =>
     route.fulfill({ status: 503, json: { message: 'offline' } }),
   );
@@ -336,7 +379,7 @@ test('a wrong-chain RPC cannot provide resource figures', async ({ page }) => {
   const explorer = page.getByRole('region', { name: 'Contract explorer', exact: true });
   await expect(explorer).toContainText('Resource chain mismatch');
   await expect(
-    explorer.getByRole('article', { name: 'Contract core.we', exact: true }),
+    explorer.getByRole('region', { name: 'Contract Account Details', exact: true }),
   ).not.toContainText('9,007,199');
 });
 
@@ -349,7 +392,7 @@ test('an account response for a different name cannot supply resource figures', 
   await openContracts(page);
   const explorer = page.getByRole('region', { name: 'Contract explorer', exact: true });
   await expect(explorer).toContainText('Resource readings unavailable for core.we, works');
-  const card = explorer.getByRole('article', { name: 'Contract core.we', exact: true });
+  const card = explorer.getByRole('region', { name: 'Contract Account Details', exact: true });
   await expect(card).toContainText('1,024 bytes');
   await expect(card).toContainText('status snapshot');
   await expect(card).not.toContainText('9,007,199');
@@ -395,8 +438,14 @@ test('a delegated permission is distinguishable from its definition and can be f
   const inspector = explorer.getByRole('region', { name: 'Selected authority', exact: true });
   await expect(inspector).toContainText('core.we@owner');
   await inspector.getByRole('button', { name: 'Inspect core.we@active', exact: true }).click();
-  await expect(inspector).toContainText('Parent: owner');
-  await expect(inspector).toContainText('Threshold: 2');
+  await expect(map.getByRole('button', { name: 'core.we@active', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(map.getByRole('button', { name: 'core.we@active', exact: true })).toHaveAttribute(
+    'title',
+    'Threshold 2 · parent owner',
+  );
 });
 
 test('refresh discards delayed resource reads and retains the selected contract and disclosure', async ({
@@ -405,11 +454,12 @@ test('refresh discards delayed resource reads and retains the selected contract 
   await openContracts(page);
   const explorer = page.getByRole('region', { name: 'Contract explorer', exact: true });
   await expect(explorer).toContainText('Resource readings checked');
+  const details = explorer.getByRole('region', { name: 'Contract Account Details', exact: true });
   await explorer
-    .getByRole('article', { name: 'Contract works', exact: true })
-    .getByRole('button', { name: 'Inspect works', exact: true })
+    .getByRole('region', { name: 'Contract connections', exact: true })
+    .getByRole('button', { name: 'works', exact: true })
     .click();
-  await explorer.getByText('Public permission authorities', { exact: true }).click();
+  await explorer.getByText('Release details', { exact: true }).click();
   let release = () => {},
     started = () => {},
     delivered = () => {};
@@ -453,41 +503,35 @@ test('refresh discards delayed resource reads and retains the selected contract 
   );
   try {
     await page.getByRole('button', { name: 'Refresh status', exact: true }).click();
+    await expect(details.getByRole('heading', { name: 'works', exact: true })).toBeVisible();
     await expect(
-      explorer.getByRole('article', { name: 'Contract works', exact: true }),
-    ).toContainText('2 permissions');
-    await expect(explorer.getByText('alice@active · weight 1', { exact: true })).toBeVisible();
-    await explorer
-      .getByRole('article', { name: 'Contract works', exact: true })
-      .getByRole('button', { name: 'Show resources for works', exact: true })
-      .click();
+      details.getByRole('button', { name: 'Delegated permission alice@active', exact: true }),
+    ).toBeVisible();
     await expect(
-      explorer.getByRole('article', { name: 'Contract works', exact: true }),
-    ).toContainText('7 µs');
+      details
+        .locator('details')
+        .filter({ has: page.getByText('Release details', { exact: true }) }),
+    ).toHaveAttribute('open', '');
+    await expect(details).toContainText('7 µs');
   } finally {
     release();
   }
   await completed;
-  await expect(
-    explorer.getByRole('article', { name: 'Contract works', exact: true }),
-  ).not.toContainText('9,007,199');
+  await expect(details).not.toContainText('9,007,199');
 });
 
-test('map and list support keyboard, mobile, enlarged text and accessible card backs', async ({
+test('the diagram and tree support keyboard, mobile, enlarged text and accessible details', async ({
   page,
 }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await openContracts(page);
   const explorer = page.getByRole('region', { name: 'Contract explorer', exact: true });
   await expect(explorer).toContainText('Resource readings checked');
-  await explorer
-    .getByRole('region', { name: 'Permission map', exact: true })
-    .getByRole('button', { name: 'core.we@owner', exact: true })
-    .focus();
+  const map = explorer.getByRole('region', { name: 'Permission map', exact: true });
+  const owner = map.getByRole('button', { name: 'core.we@owner', exact: true });
+  await owner.focus();
   await page.keyboard.press('Enter');
-  await expect(
-    explorer.getByRole('region', { name: 'Selected authority', exact: true }),
-  ).toContainText('Threshold: 2');
+  await expect(owner).toHaveAttribute('aria-pressed', 'true');
   expect(
     (
       await new AxeBuilder({ page })
@@ -495,28 +539,24 @@ test('map and list support keyboard, mobile, enlarged text and accessible card b
         .analyze()
     ).violations,
   ).toEqual([]);
+  const diagram = explorer.getByRole('region', { name: 'Contract connections', exact: true });
   for (const width of [320, 390, 768, 1440]) {
     await page.setViewportSize({ width, height: 1000 });
-    await explorer.getByRole('button', { name: 'Tree view', exact: true }).click();
+    await expect(diagram.getByRole('button', { name: 'works', exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true,
     );
     await page.screenshot({
-      path: test.info().outputPath(`contract-map-${width}.png`),
+      path: test.info().outputPath(`contract-accounts-${width}.png`),
       fullPage: true,
     });
-    await explorer.getByRole('button', { name: 'List view', exact: true }).click();
-    await expect(
-      explorer.getByRole('region', { name: 'Permission list', exact: true }),
-    ).toBeVisible();
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
-      true,
-    );
   }
-  await explorer
-    .getByRole('article', { name: 'Contract core.we', exact: true })
-    .getByRole('button', { name: 'Inspect core.we', exact: true })
-    .click();
+  await diagram.getByRole('button', { name: 'works', exact: true }).focus();
+  await page.keyboard.press('Enter');
+  await expect(explorer.getByRole('heading', { name: 'works', exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Selected authority', exact: true })).toHaveCount(
+    0,
+  );
   expect(
     (
       await new AxeBuilder({ page })
@@ -524,20 +564,16 @@ test('map and list support keyboard, mobile, enlarged text and accessible card b
         .analyze()
     ).violations,
   ).toEqual([]);
+  await diagram.getByRole('button', { name: 'core.we', exact: true }).click();
   await page.evaluate(() => {
     document.documentElement.style.fontSize = '200%';
   });
   await page.setViewportSize({ width: 390, height: 844 });
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await explorer.getByRole('button', { name: 'Tree view', exact: true }).click();
   await expect(
-    explorer
-      .getByRole('region', { name: 'Permission map', exact: true })
-      .getByRole('button', { name: `Public key ${publicKey}`, exact: true })
-      .first(),
+    map.getByRole('button', { name: `Public key ${publicKey}`, exact: true }).first(),
   ).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await expect(
-    explorer.getByRole('button', { name: 'Show resources for core.we', exact: true }),
+    explorer.getByRole('meter', { name: 'core.we CPU usage', exact: true }),
   ).toBeVisible();
 });

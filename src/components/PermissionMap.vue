@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
-import { Clock, Code, GitBranch, KeyRound, List, Network } from '@lucide/vue';
+import { computed } from 'vue';
+import { Clock, Code, GitBranch, KeyRound } from '@lucide/vue';
 import type { API } from '@wharfkit/antelope';
 import type { ContractReading, permissionGraph } from '../content/contract-map';
 import PermissionBranch from './PermissionBranch.vue';
@@ -11,7 +11,6 @@ const props = defineProps<{
   account?: API.v1.AccountObject | undefined;
 }>();
 const focused = defineModel<string>({ required: true });
-const view = ref<'map' | 'list'>('map');
 const node = computed(() => props.graph.nodes.find((node) => node.id === focused.value));
 const highlighted = computed(
   () =>
@@ -26,39 +25,11 @@ const highlighted = computed(
         : [],
     ),
 );
-const flatBranches = computed(() =>
-  props.graph.nodes.flatMap((node) =>
-    node.authority ? [{ permission: node.authority, children: [] }] : [],
-  ),
-);
 </script>
 
 <template>
   <div class="map-panel">
-    <div class="map-heading">
-      <div>
-        <p class="eyebrow">PERMISSION TREE</p>
-        <h3>{{ selected.account }}</h3>
-      </div>
-      <div class="view-switch" role="group" aria-label="Authority view">
-        <button
-          type="button"
-          :aria-pressed="view === 'map'"
-          aria-label="Tree view"
-          @click="view = 'map'"
-        >
-          <Network :size="16" aria-hidden="true" /> Tree
-        </button>
-        <button
-          type="button"
-          :aria-pressed="view === 'list'"
-          aria-label="List view"
-          @click="view = 'list'"
-        >
-          <List :size="16" aria-hidden="true" /> List
-        </button>
-      </div>
-    </div>
+    <div class="map-heading"><h4>Permission tree</h4></div>
     <p class="map-explanation">
       <strong>Owner is the root; active is its child.</strong> Each row has its own threshold and
       contributors. A parent can satisfy a child’s minimum permission; a child does not gain its
@@ -70,20 +41,15 @@ const flatBranches = computed(() =>
         Clear selection
       </button>
     </div>
-    <div
-      class="permission-viewport"
-      role="region"
-      :aria-label="view === 'map' ? 'Permission map' : 'Permission list'"
-    >
+    <div class="permission-viewport" role="region" aria-label="Permission map">
       <ul class="permission-roots" :aria-label="selected.account + ' permissions'">
         <PermissionBranch
-          v-for="branch in view === 'map' ? graph.roots : flatBranches"
+          v-for="branch in graph.roots"
           :key="branch.permission.name"
           :branch="branch"
           :graph="graph"
           :account="account"
           :highlighted="highlighted"
-          :flat="view === 'list'"
           v-model="focused"
         />
       </ul>
@@ -116,33 +82,9 @@ const flatBranches = computed(() =>
   flex-wrap: wrap;
   padding: 20px 20px 0;
 }
-.map-heading .eyebrow {
-  font-size: 0.6875rem;
-  margin: 0 0 6px;
-}
-.map-heading h3 {
-  font-size: 1.125rem;
+.map-heading h4 {
+  font-size: 0.875rem;
   margin: 0;
-}
-.view-switch {
-  display: flex;
-  padding: 3px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  gap: 3px;
-}
-.view-switch button {
-  padding: 8px 12px;
-  min-height: 44px;
-  background: transparent;
-  color: var(--text-secondary);
-  border: 0;
-  box-shadow: none;
-  font-size: 0.8125rem;
-}
-.view-switch button[aria-pressed='true'] {
-  background: var(--surface-raised);
-  color: var(--accent-amber);
 }
 .map-explanation {
   padding: 0 20px;
