@@ -1,6 +1,6 @@
 # Frontend documentation
 
-Current development application: **0.10.0-alpha.4**, consuming core **0.10.0-alpha.1** and modules **0.9.0-alpha.8** SDK/help packages. Development uses `dev`. See the [repository README](../README.md) for routes, local development, account recovery and test phases, and the [Netlify dev guide](netlify-dev.md) for the separate testnet site.
+Current development application: **0.10.0-alpha.5**, consuming core **0.10.0-alpha.1** and modules **0.9.0-alpha.8** SDK/help packages. Development uses `dev`. See the [repository README](../README.md) for routes, local development, account recovery and test phases, and the [Netlify dev guide](netlify-dev.md) for the separate testnet site.
 
 ## Help inside the application
 
@@ -12,14 +12,20 @@ The [Hub experience](evidence/2026-10-10-hub-experience.md) groups its browsing 
 
 The [DAO workspace experience](evidence/2026-10-10-dao-workspace-experience.md) separates everyday work from setup. Overview offers real balances and installed tools, with readable access/privacy states and retry when tool discovery fails. Signing & wallets preserves authorization and decryption boundaries. Settings has Identity, Governance and Services; direct Governance bookmarks use `/dao/:id/settings?settings=governance`. Members, documents, treasury, module and executive controls reuse existing action panels. Read-only exploration never grants administrative or voting rights.
 
-`/docs` is a guide index with expandable lists rather than the full handbook on one page. Six groups
-organize Getting started, Members & governance, Modules & treasury, Costs &
-storage, Privacy & recovery, and Operators & reference. The contents menu uses
-keyboard-accessible expandable sections. Direct links open the selected guide's
-group; full-text search opens matching groups and omits empty ones. Collection
-filters distinguish platform/account guidance from module guidance. Future
-unassigned topics remain visible under More guides. Grouping is a frontend
-presentation choice; guide content and types remain producer-owned.
+`/docs` is a guide index with six expandable collections: Getting started,
+Members & governance, Modules & treasury, Costs & storage, Privacy & recovery,
+and Operators & reference. The overview uses collection cards without a duplicate
+sidebar. Future unassigned topics remain visible under More guides. Grouping is a
+frontend presentation choice; content/types remain producer-owned.
+
+The [handbook experience](evidence/2026-10-10-handbook-experience.md) gives reading
+pages a title, breadcrumb, readable paragraph width and previous/next guides within
+their group. Search and mobile contents are native disclosures. Full-text search
+shows canonical paragraph previews in the main area; URL `q` and `collection`
+preserve results on reload/back. Navigation retains DAO context. Reset focuses
+search; selecting a guide focuses its title. Failed deployment checks offer retry,
+and different-DAO/interface or late responses cannot supply a matching result.
+Version warnings remain before instructions; generated references load on demand.
 
 `/docs/:topic` renders producer-owned core/module bundles, searchable by topic and content. The intended hosted handbook is [app.daclify.com/docs](https://app.daclify.com/docs); the host must be deployed and configured separately. Contextual DAO links retain their DAO reference, and the handbook checks connected service/interface/module versions and code status. An unconnected guide or a displayed API package version is not deployed-contract verification.
 

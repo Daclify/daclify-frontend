@@ -1,15 +1,37 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import { NetworkSchema } from '@daclify/core-protocol';
+import { NetworkSchema, VERSION } from '@daclify/core-protocol';
+
+const network = NetworkSchema.parse({
+  chainId: 'ab'.repeat(32),
+  rpcUrl: 'https://rpc.example',
+  runtime: 'daclifycore',
+  hub: null,
+  environment: 'testnet',
+  interfaceVersion: 1,
+  coreVersion: VERSION,
+  capabilities: [],
+});
+test.beforeEach(async ({ page }) => {
+  await page.route('**/v1/**', (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === '/v1/network') return route.fulfill({ json: network });
+    if (path === '/v1/daos') return route.fulfill({ json: { daos: [], next: null } });
+    if (path === '/v1/me')
+      return route.fulfill({ status: 401, json: { code: 'AUTH_REQUIRED', message: 'Sign in.' } });
+    return route.fulfill({
+      status: 503,
+      json: { code: 'SERVICE_UNAVAILABLE', message: 'Synthetic fixture unavailable.' },
+    });
+  });
+});
 
 test('searches producer guides and opens generated references accessibly', async ({ page }) => {
   await page.goto('/docs');
   await expect(page.getByRole('heading', { name: 'Costs & storage', exact: true })).toBeVisible();
   await page.getByLabel('Search guides').fill('native stake');
   await expect(
-    page
-      .locator('.docs-content')
-      .getByRole('link', { name: 'Weights with an explicit snapshot', exact: true }),
+    page.locator('.docs-content').getByRole('link', { name: /^Weights with an explicit snapshot/ }),
   ).toBeVisible();
   await expect(
     page.getByRole('heading', { name: 'What encryption protects', exact: true }),
@@ -54,27 +76,12 @@ test('groups guides, supports keyboard folding and keeps the current guide open'
     name: 'Documentation topics',
     includeHidden: true,
   });
-  const gettingStarted = navigation.locator('details').filter({ hasText: 'Getting started' });
   const operators = navigation.locator('details').filter({ hasText: 'Operators & reference' });
-  await expect(navigation.locator('details')).toHaveCount(6);
-  await expect(gettingStarted).toHaveAttribute('open', '');
-  await expect(operators).not.toHaveAttribute('open', '');
-  if (testInfo.project.name === 'mobile-chromium') {
-    await expect(navigation).toBeHidden();
-  } else {
-    await operators.locator('summary').focus();
-    await page.keyboard.press('Enter');
-    await expect(operators).toHaveAttribute('open', '');
-    await page.keyboard.press('Enter');
-    await expect(operators).not.toHaveAttribute('open', '');
-  }
+  await expect(navigation).toHaveCount(0);
   await expect(page.locator('.docs-content').getByRole('heading', { level: 2 })).toHaveCount(6);
   await page.getByLabel('Search guides').fill('execctx');
-  await expect(operators).toHaveAttribute('open', '');
   await expect(
-    page
-      .locator('.docs-content')
-      .getByRole('link', { name: 'Smart contracts and permissions', exact: true }),
+    page.locator('.docs-content').getByRole('link', { name: /^Smart contracts and permissions/ }),
   ).toBeVisible();
   await page.getByLabel('Search guides').fill('');
   const collection = page.locator('.guide-collection').filter({ hasText: 'Operators & reference' });
@@ -86,6 +93,11 @@ test('groups guides, supports keyboard folding and keeps the current guide open'
     .getByRole('link', { name: 'Smart contracts and permissions', exact: true })
     .click();
   await expect(operators).toHaveAttribute('open', '');
+  if (testInfo.project.name === 'mobile-chromium') {
+    await expect(navigation).toBeHidden();
+    await page.locator('.docs-sidebar > summary').focus();
+    await page.keyboard.press('Enter');
+  }
   await expect(navigation).toBeVisible();
   await expect(
     navigation.getByRole('link', { name: 'Smart contracts and permissions', exact: true }),
@@ -97,6 +109,8 @@ test('groups guides, supports keyboard folding and keeps the current guide open'
   await page.goto('/docs/privacy?dao=1');
   const privacy = navigation.locator('details').filter({ hasText: 'Privacy & recovery' });
   await expect(privacy).toHaveAttribute('open', '');
+  if (testInfo.project.name === 'mobile-chromium')
+    await page.locator('.docs-sidebar > summary').click();
   await expect(
     navigation.getByRole('link', { name: 'Recover keys and blockchain access', exact: true }),
   ).toHaveAttribute('href', '/docs/recovery?dao=1');
@@ -110,12 +124,9 @@ test('groups guides, supports keyboard folding and keeps the current guide open'
 });
 
 test('displays a connected core version mismatch', async ({ page }) => {
-  await page.route('**/v1/network', async (route) => {
-    const response = await route.fetch();
-    const input: unknown = await response.json();
-    const network = NetworkSchema.parse(input);
-    await route.fulfill({ json: { ...network, coreVersion: '0.2.0' } });
-  });
+  await page.route('**/v1/network', (route) =>
+    route.fulfill({ json: { ...network, coreVersion: '0.2.0' } }),
+  );
   await page.goto('/docs/privacy');
   await expect(
     page.getByRole('alert').filter({ hasText: 'Documentation version mismatch' }),

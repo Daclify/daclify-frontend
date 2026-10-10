@@ -38,7 +38,12 @@
     },
     {
       "id": "GROUPED-DOCUMENTATION",
-      "tests": ["tests/unit/documentation.test.ts", "tests/e2e/documentation.spec.ts"]
+      "tests": [
+        "tests/unit/documentation.test.ts",
+        "tests/e2e/documentation.spec.ts",
+        "tests/e2e/handbook-experience.spec.ts",
+        "tests/e2e/docs-assistant.spec.ts"
+      ]
     },
     {
       "id": "INSTALLABLE-PWA",

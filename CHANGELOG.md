@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.0-alpha.5 development — handbook discovery and reading
+
+Use the existing six guide collections as the overview without a duplicate sidebar. Show full-text search results with canonical paragraph previews; keep search/collection state in the URL so back/reload restores it. Preserve DAO and other route context. Provide clear empty/reset and unknown-guide recovery states.
+
+Give reading pages a title-first article, breadcrumb, readable text measure and previous/next guides within their group. Collapse search and contents for mobile reading; adapt columns to available space and enlarged text. Retain deployment/version warnings before instructions, reviewed sources, the permission diagram, license links and lazy generated references. Coordinate route focus and keyboard disclosures.
+
+Validate module-response DAO/interface identity, reject stale responses and offer deployment-check retry. Use the existing manifest-only pagination pattern rather than loading unrelated module history. No producer content, API/schema, contracts, credentials or dependencies changed. Extend canonical synthetic browser regressions and make the earlier handbook suite self-contained.
+
 ## 0.10.0-alpha.4 development — account entry
 
 Separate returning sign-in, new user-controlled accounts and recovery in a responsive layout with creation/recovery shortcuts. Offer saved vault unlock first and reveal one paired sign-in form at a time. Keep password generation/copy, explicit visibility control, backup acknowledgment, original-kit recovery, full return destinations and authenticated account tabs. Place unavailable managed signup in an expandable explanation.
