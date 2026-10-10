@@ -11,16 +11,22 @@ import {
 } from '@daclify/core-protocol';
 import {
   encodeAction,
-  handoverOwnerActions,
+  nativeHandoverActions,
+  nativeOwnershipAuthorities,
+  nativeOwnershipAccount,
+  assertNativeOwnershipRuntime,
+  NativeOwnershipPolicyVersion,
+  NativeServiceActions,
   nativeOwnershipSetupActions,
   makeInstruction,
   RuntimeActionSchemas,
+  RuntimeTableSchemas,
 } from '@daclify/core-protocol/sdk';
 import { executiveStatus } from '../auth/executives';
 import { relayInstruction } from '../auth/session';
 import { canSignMember } from '../auth/action-signer';
 import { useWorkspace } from '../state/workspace';
-import { friendlyError } from '../api/client';
+import { api, friendlyError } from '../api/client';
 const props = defineProps<{
   dao: DaoSummary;
   member: UserMembership | undefined;
@@ -37,12 +43,61 @@ const members = ref('1'),
   voter = ref(''),
   allowed = ref(true),
   contracts = ref(''),
-  serviceKey = ref('');
+  serviceKey = ref(''),
+  creator = ref(''),
+  inlineContracts = ref('');
 const view = computed(() =>
   executiveStatus(props.state, props.member?.memberId, Math.floor(Date.now() / 1000)),
 );
 const canSign = computed(() => props.member?.active && canSignMember(props.member) && !busy.value);
 const native = computed(() => props.state?.nativeGovernance);
+const ownershipSupported = computed(
+  () =>
+    workspace.network?.capabilities.includes('creator-owner-executive-active') &&
+    (!native.value || native.value.ownership?.policy_version === NativeOwnershipPolicyVersion),
+);
+const quorum = computed(() =>
+  Math.ceil(
+    (view.value.effectiveSigners.length * (props.state?.executivePolicy?.quorum_bps ?? 10000)) /
+      10000,
+  ),
+);
+const authorityPlan = computed(() => {
+  const cfg = native.value;
+  if (!cfg?.ownership || !ownershipSupported.value || quorum.value < 1) return [];
+  return nativeOwnershipAuthorities(
+    props.dao.reference.contract,
+    { contracts: cfg.contracts, ...cfg.ownership },
+    view.value.effectiveSigners,
+    quorum.value,
+  );
+});
+async function verifiedClient() {
+  const network = workspace.network;
+  if (!ownershipSupported.value) throw new Error('NATIVE_POLICY_MIGRATION_REQUIRED');
+  if (
+    !network ||
+    network.chainId !== props.dao.reference.chainId ||
+    network.runtime !== props.dao.reference.contract
+  )
+    throw new Error('NETWORK_MISMATCH');
+  const client = new APIClient({
+    url: network.rpcUrl,
+    fetch: (input, init) =>
+      fetch(input, { ...init, redirect: 'error', signal: AbortSignal.timeout(10000) }),
+  });
+  const [info, release] = await Promise.all([
+    client.v1.chain.get_info(),
+    client.v1.chain.get_raw_abi(network.runtime),
+  ]);
+  if (
+    info.chain_id.toString() !== network.chainId ||
+    release.account_name.toString() !== network.runtime
+  )
+    throw new Error('NETWORK_MISMATCH');
+  assertNativeOwnershipRuntime(release);
+  return { client, info, release };
+}
 watch(
   () => props.state,
   (state) => {
@@ -112,7 +167,7 @@ function setVoter() {
     error.value = friendlyError(cause);
   }
 }
-function download(actions: unknown[]) {
+function download(actions: unknown[], review: unknown = undefined) {
   const url = URL.createObjectURL(
     new Blob(
       [
@@ -121,6 +176,7 @@ function download(actions: unknown[]) {
             chainId: props.dao.reference.chainId,
             runtime: props.dao.reference.contract,
             unsigned: true,
+            review,
             actions,
           },
           null,
@@ -138,7 +194,7 @@ function download(actions: unknown[]) {
   notice.value =
     'Unsigned transaction downloaded. Verify its chain, accounts and full action list before owner/quorum signing.';
 }
-function appoint() {
+async function appoint() {
   try {
     const data = RuntimeActionSchemas.appoint.parse({
       dao_id: props.dao.reference.daoId,
@@ -147,6 +203,7 @@ function appoint() {
       quorum_bps: percent.value * 100,
     });
     if (native.value) {
+      await verifiedClient();
       download([
         {
           account: props.dao.reference.contract,
@@ -154,7 +211,7 @@ function appoint() {
           authorization: [
             {
               actor: props.dao.reference.contract,
-              permission: native.value.handed_over ? 'govern' : 'owner',
+              permission: native.value.handed_over ? 'active' : 'owner',
             },
           ],
           data,
@@ -174,8 +231,11 @@ function appoint() {
     error.value = friendlyError(cause);
   }
 }
-function prepareNativeSetup() {
+async function prepareNativeSetup() {
+  busy.value = true;
+  error.value = '';
   try {
+    const { client, info, release } = await verifiedClient();
     const accounts = contracts.value
       .split(',')
       .map((s) => s.trim())
@@ -185,68 +245,107 @@ function prepareNativeSetup() {
       dao_id: props.dao.reference.daoId,
       contracts: accounts,
       service_key: SigningPublicKeySchema.parse(serviceKey.value),
+      creator: NativeAccountSchema.parse(creator.value.trim()),
+      inline_code: inlineContracts.value
+        .split(',')
+        .map((account) => account.trim())
+        .filter(Boolean),
     });
+    const snapshots = await Promise.all(
+      [props.dao.reference.contract, data.creator, ...data.contracts].map(async (account) =>
+        nativeOwnershipAccount(
+          await client.call({ path: '/v1/chain/get_account', params: { account_name: account } }),
+        ),
+      ),
+    );
     download(
       nativeOwnershipSetupActions(props.dao.reference.contract, data).map((action) => {
         const value: unknown = JSON.parse(JSON.stringify(action));
         return value;
       }),
+      {
+        observedBlock: info.head_block_num.toString(),
+        runtimeCodeHash: release.code_hash.toString(),
+        runtimeRawAbiHash: release.abi_hash.toString(),
+        creator: data.creator,
+        inlineCode: data.inline_code,
+        serviceActions: NativeServiceActions,
+        accounts: snapshots,
+        upgradePolicy: { bootstrapRuntime: 'owner', handedOverRuntime: 'active', managed: 'owner' },
+      },
     );
   } catch (cause) {
     error.value = friendlyError(cause);
+  } finally {
+    busy.value = false;
   }
 }
 async function prepareHandover() {
   busy.value = true;
   error.value = '';
   try {
-    const cfg = native.value,
-      network = workspace.network;
+    const { client, info, release } = await verifiedClient();
+    const rows = await client.v1.chain.get_table_rows({
+      code: props.dao.reference.contract,
+      scope: props.dao.reference.contract,
+      table: 'nativegov',
+      limit: 1,
+    });
+    const cfg = RuntimeTableSchemas.nativegov.parse(rows.rows[0]);
     if (
-      !cfg ||
       cfg.handed_over ||
-      !network ||
-      network.chainId !== props.dao.reference.chainId ||
-      network.runtime !== props.dao.reference.contract
+      cfg.dao_id !== props.dao.reference.daoId ||
+      cfg.ownership?.creator !== native.value?.ownership?.creator
     )
-      throw new Error('NETWORK_MISMATCH');
-    const client = new APIClient({ url: network.rpcUrl });
-    const info = await client.v1.chain.get_info();
-    if (info.chain_id.toString() !== props.dao.reference.chainId)
-      throw new Error('NETWORK_MISMATCH');
+      throw new Error('NATIVE_HANDOVER_CHANGED');
+    const current = await api.governance(props.dao.reference.daoId);
+    const fresh = executiveStatus(
+      current,
+      props.member?.memberId,
+      Math.floor(info.head_block_time.toDate().getTime() / 1000),
+    );
+    const threshold = Math.ceil(
+      (fresh.effectiveSigners.length * (current.executivePolicy?.quorum_bps ?? 10000)) / 10000,
+    );
     const accounts = await Promise.all(
-      [props.dao.reference.contract, ...cfg.contracts].map((account) =>
-        client.v1.chain.get_account(account),
+      [props.dao.reference.contract, ...cfg.contracts].map(async (account) =>
+        nativeOwnershipAccount(
+          await client.call({ path: '/v1/chain/get_account', params: { account_name: account } }),
+        ),
       ),
     );
-    const stages = handoverOwnerActions(props.dao.reference.contract, accounts);
-    download([
-      ...stages.map((action) => {
+    const data = RuntimeActionSchemas.handover.parse({
+      dao_id: props.dao.reference.daoId,
+      expected_signers: fresh.effectiveSigners,
+      expected_threshold: threshold,
+      expected_revision: current.executivePolicy?.revision,
+      expected_creator: cfg.ownership?.creator,
+      expected_policy_version: cfg.ownership?.policy_version,
+    });
+    download(
+      nativeHandoverActions(props.dao.reference.contract, cfg, data, accounts).map((action) => {
         const value: unknown = JSON.parse(JSON.stringify(action));
         return value;
       }),
       {
-        account: props.dao.reference.contract,
-        name: 'handover',
-        authorization: accounts.map((account) => ({
-          actor: account.account_name.toString(),
-          permission: 'owner',
-        })),
-        data: RuntimeActionSchemas.handover.parse({
-          dao_id: props.dao.reference.daoId,
-          expected_signers: view.value.effectiveSigners,
-          expected_threshold: Math.max(
-            1,
-            Math.ceil(
-              (view.value.effectiveSigners.length *
-                (props.state?.executivePolicy?.quorum_bps ?? 10000)) /
-                10000,
-            ),
-          ),
-          expected_revision: props.state?.executivePolicy?.revision,
-        }),
+        observedBlock: info.head_block_num.toString(),
+        runtimeCodeHash: release.code_hash.toString(),
+        runtimeRawAbiHash: release.abi_hash.toString(),
+        before: accounts,
+        after: nativeOwnershipAuthorities(
+          props.dao.reference.contract,
+          {
+            contracts: cfg.contracts,
+            creator: data.expected_creator,
+            inline_code: cfg.ownership?.inline_code ?? [],
+          },
+          fresh.effectiveSigners,
+          threshold,
+        ),
+        serviceActions: NativeServiceActions,
+        policyVersion: data.expected_policy_version,
       },
-    ]);
+    );
   } catch (cause) {
     error.value = friendlyError(cause);
   } finally {
@@ -285,6 +384,44 @@ function refresh() {
         This DAO governs its own data. Shared DAOs do not manage the platform’s native account
         permissions.
       </p>
+      <p v-if="!ownershipSupported" class="notice">
+        This runtime needs a reviewed ownership-policy upgrade before native ownership transactions
+        can be prepared.
+      </p>
+      <div v-if="native?.ownership" class="ownership-review">
+        <h3>
+          {{ native.handed_over ? 'Native ownership policy' : 'Proposed native ownership policy' }}
+        </h3>
+        <p>
+          Configured creator recovery: <strong>{{ native.ownership.creator }}@active</strong>.
+          Handover delegates runtime owner to this account.
+        </p>
+        <p>
+          Effective executive quorum:
+          <strong>{{ quorum }} of {{ view.effectiveSigners.length }}</strong> eligible executives;
+          authority refresh applies this quorum and the same code weight to active.
+          {{ view.effectiveSigners.join(', ') }}
+        </p>
+        <p>
+          After handover, runtime upgrades use active quorum. Creator owner can recover active.
+          Managed contract upgrades use owner, delegated to runtime active.
+        </p>
+        <ul>
+          <li v-for="account in native.contracts" :key="account">
+            {{ account }} ·
+            {{
+              native.ownership.inline_code.includes(account)
+                ? 'Own code enabled for inline actions'
+                : 'Runtime active delegation only'
+            }}
+          </li>
+        </ul>
+        <p>Service scope after handover: {{ NativeServiceActions.join(', ') }}.</p>
+        <p v-if="authorityPlan.length">
+          A download includes current authority snapshots and the proposed owner/active tree for
+          review.
+        </p>
+      </div>
       <p v-if="state.executivePolicy">
         Inactivity timeout:
         {{
@@ -369,7 +506,7 @@ function refresh() {
           max="100"
           required
         />
-        <button :disabled="busy || (!native && !canSign)">
+        <button :disabled="busy || (native ? !ownershipSupported : !canSign)">
           {{ native ? 'Prepare native appointment transaction' : 'Sign executive appointment' }}
         </button>
         <p v-if="native" class="field-help">
@@ -398,11 +535,18 @@ function refresh() {
           administrator session grants no native owner authority.
         </p>
         <form @submit.prevent="prepareNativeSetup">
+          <label for="executive-creator">Creator recovery account</label
+          ><input id="executive-creator" v-model="creator" required /><label for="executive-inline"
+            >Managed accounts that send inline actions, separated by commas</label
+          ><input id="executive-inline" v-model="inlineContracts" />
+          <p class="field-help">
+            Enable own code for modules and Names. Hub needs only runtime delegation.
+          </p>
           <label for="executive-contracts">Managed contract accounts, separated by commas</label
           ><input id="executive-contracts" v-model="contracts" /><label for="executive-service-key"
             >Hosting service signing public key</label
           ><input id="executive-service-key" v-model="serviceKey" required /><button
-            :disabled="busy"
+            :disabled="busy || !ownershipSupported"
           >
             Prepare owner configuration
           </button>
@@ -411,7 +555,7 @@ function refresh() {
       <button
         v-if="native && !native.handed_over"
         type="button"
-        :disabled="busy || view.pairedCount === 0"
+        :disabled="busy || !ownershipSupported || view.pairedCount === 0"
         @click="prepareHandover"
       >
         Prepare atomic owner handover

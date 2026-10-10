@@ -14,10 +14,21 @@ import {
   VERSION,
 } from '@daclify/core-protocol';
 import { ModuleCodeHashes } from '@daclify/modules/sdk';
-import { RuntimeActionSchemas } from '@daclify/core-protocol/sdk';
+import {
+  RuntimeActionSchemas,
+  RuntimeCodeHash,
+  RuntimeRawAbiHash,
+  CoreContextActions,
+} from '@daclify/core-protocol/sdk';
 import { Catalog, ModulePermissions, ModuleStateSchema } from '@daclify/modules';
 
-async function serve(page: Page, handedOver = true, ordinary = false) {
+async function serve(
+  page: Page,
+  handedOver = true,
+  ordinary = false,
+  releaseMatches = true,
+  legacy = false,
+) {
   // HTTP fixtures check UI access and copy; native tests check the actual authority changes.
   const key = PrivateKey.generate('K1').toPublic().toString();
   const chainId = 'ab'.repeat(32);
@@ -104,6 +115,9 @@ async function serve(page: Page, handedOver = true, ordinary = false) {
       handed_over: handedOver,
       signers: handedOver ? ['alice'] : [],
       threshold: handedOver ? 1 : 0,
+      ownership: legacy
+        ? undefined
+        : { policy_version: 2, creator: 'recovery', inline_code: ['decide'] },
       admin_members: handedOver ? ['1'] : [],
     },
   });
@@ -145,10 +159,101 @@ async function serve(page: Page, handedOver = true, ordinary = false) {
     environment: 'local',
     interfaceVersion: 1,
     coreVersion: VERSION,
-    capabilities: ['governance-policy', 'executive-authority'],
+    capabilities: ['governance-policy', 'executive-authority', 'creator-owner-executive-active'],
   });
   await page.route('**/v1/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
+    if (path.startsWith('/v1/chain/')) {
+      const chainBody = path.endsWith('get_info')
+        ? {
+            chain_id: chainId,
+            server_version: '00000000',
+            head_block_num: 1,
+            last_irreversible_block_num: 1,
+            last_irreversible_block_id: '11'.repeat(32),
+            head_block_id: '11'.repeat(32),
+            head_block_time: new Date().toISOString().replace('Z', ''),
+            head_block_producer: 'eosio',
+            virtual_block_cpu_limit: 200000,
+            virtual_block_net_limit: 1048576,
+            block_cpu_limit: 200000,
+            block_net_limit: 1048576,
+          }
+        : path.endsWith('get_raw_abi')
+          ? {
+              account_name: 'daclifycore',
+              code_hash: releaseMatches ? RuntimeCodeHash : '00'.repeat(32),
+              abi_hash: RuntimeRawAbiHash,
+              abi: '',
+            }
+          : path.endsWith('get_table_rows')
+            ? { rows: [governance.nativeGovernance], more: false }
+            : path.endsWith('get_account')
+              ? (() => {
+                  const data: unknown = route.request().postDataJSON();
+                  const name =
+                    typeof data === 'object' &&
+                    data !== null &&
+                    'account_name' in data &&
+                    typeof data.account_name === 'string'
+                      ? data.account_name
+                      : '';
+                  return {
+                    account_name: name,
+                    head_block_num: 1,
+                    head_block_time: '2026-10-10T00:00:00.000',
+                    privileged: false,
+                    last_code_update: '2026-10-10T00:00:00.000',
+                    created: '2026-10-10T00:00:00.000',
+                    ram_quota: 0,
+                    net_weight: 0,
+                    cpu_weight: 0,
+                    ram_usage: 0,
+                    net_limit: { used: 0, available: 0, max: 0 },
+                    cpu_limit: { used: 0, available: 0, max: 0 },
+                    eosio_any_linked_actions: [],
+                    permissions: [
+                      ...['owner', 'active'].map((permission) => ({
+                        perm_name: permission,
+                        parent: permission === 'owner' ? '' : 'owner',
+                        linked_actions: [],
+                        required_auth: {
+                          threshold: 1,
+                          keys: [{ key, weight: 1 }],
+                          waits: [],
+                          accounts: [],
+                        },
+                      })),
+                      ...(name === 'daclifycore'
+                        ? [
+                            {
+                              perm_name: 'execctx',
+                              parent: 'active',
+                              linked_actions: CoreContextActions.map((action) => ({
+                                account: name,
+                                action,
+                              })),
+                              required_auth: {
+                                threshold: 1,
+                                keys: [],
+                                waits: [],
+                                accounts: [
+                                  {
+                                    permission: { actor: name, permission: 'eosio.code' },
+                                    weight: 1,
+                                  },
+                                ],
+                              },
+                            },
+                          ]
+                        : []),
+                    ],
+                  };
+                })()
+              : undefined;
+      await route.fulfill({ status: chainBody ? 200 : 404, json: chainBody ?? {} });
+      return;
+    }
     const body =
       path === '/v1/network'
         ? network
@@ -199,7 +304,7 @@ test('protects the last paired controller and prepares an unsigned quorum appoin
       {
         account: 'daclifycore',
         name: 'appoint',
-        authorization: [{ actor: 'daclifycore', permission: 'govern' }],
+        authorization: [{ actor: 'daclifycore', permission: 'active' }],
         data: RuntimeActionSchemas.appoint.parse({
           dao_id: '1',
           member_ids: ['1'],
@@ -238,4 +343,62 @@ test('makes executive elections explicit and keeps signing disabled while the va
   await expect(page.getByLabel('Representative title')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Sign and schedule election' })).toBeDisabled();
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+});
+
+test('shows creator and inline roles and downloads a complete atomic handover with fresh snapshots', async ({
+  page,
+}) => {
+  await serve(page, false);
+  await page.goto('/dao/1/settings?settings=governance');
+  await expect(
+    page.getByRole('heading', { name: 'Proposed native ownership policy' }),
+  ).toBeVisible();
+  await expect(page.getByText('recovery@active', { exact: true })).toBeVisible();
+  await expect(page.getByText(/Own code enabled for inline actions/)).toBeVisible();
+  const downloaded = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Prepare atomic owner handover' }).click();
+  const path = await (await downloaded).path();
+  if (!path) throw new Error('Fixture handover missing');
+  const payload: unknown = JSON.parse(await readFile(path, 'utf8'));
+  expect(payload).toMatchObject({
+    unsigned: true,
+    review: {
+      policyVersion: 2,
+      runtimeCodeHash: RuntimeCodeHash,
+      runtimeRawAbiHash: RuntimeRawAbiHash,
+      before: [{ account_name: 'daclifycore' }, { account_name: 'decide' }],
+      after: [
+        { account: 'daclifycore', upgradePermission: 'active' },
+        { account: 'decide', upgradePermission: 'owner' },
+      ],
+    },
+    actions: [
+      { name: 'updateauth' },
+      { name: 'updateauth' },
+      {
+        name: 'handover',
+        authorization: [
+          { actor: 'daclifycore', permission: 'owner' },
+          { actor: 'decide', permission: 'owner' },
+        ],
+      },
+    ],
+  });
+});
+test('blocks an unsupported legacy ownership policy', async ({ page }) => {
+  await serve(page, false, false, true, true);
+  await page.goto('/dao/1/settings?settings=governance');
+  await expect(page.getByText(/needs a reviewed ownership-policy upgrade/)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Prepare atomic owner handover' })).toBeDisabled();
+  await expect(
+    page.getByRole('button', { name: 'Prepare native appointment transaction' }),
+  ).toBeDisabled();
+});
+test('rejects a mismatched deployed runtime before downloading native authority changes', async ({
+  page,
+}) => {
+  await serve(page, true, false, false);
+  await page.goto('/dao/1/settings?settings=governance');
+  await page.getByRole('button', { name: 'Prepare native appointment transaction' }).click();
+  await expect(page.getByRole('alert')).toContainText(/reviewed ownership release/);
 });

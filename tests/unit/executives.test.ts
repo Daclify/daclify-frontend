@@ -52,6 +52,7 @@ function state(paired = 1) {
       handed_over: true,
       signers: paired === 2 ? ['alice', 'bob'] : ['alice'],
       threshold: paired,
+      ownership: { policy_version: 2, creator: 'recovery', inline_code: [] },
       admin_members: Array.from({ length: paired }, (_, i) => String(i + 1)),
     },
   });

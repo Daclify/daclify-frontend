@@ -1124,6 +1124,20 @@ export function friendlyError(error: unknown): string {
         'Complete archive coverage could not be verified. Use a smaller selection or contact the operator.',
       ARCHIVE_SOURCE_INVALID:
         'The archive source did not pass eligibility or integrity checks. No records were changed.',
+      NATIVE_CONTEXT_REVIEW_REQUIRED:
+        'Restore the code-only execution context and complete core action links before handover.',
+      NATIVE_POLICY_MIGRATION_REQUIRED:
+        'This runtime needs a reviewed ownership-policy upgrade before native ownership transactions can be prepared.',
+      NATIVE_OWNERSHIP_RUNTIME_REQUIRED:
+        'The deployed runtime does not match the reviewed ownership release. Upgrade and verify its code and ABI first.',
+      NATIVE_HANDOVER_CHANGED:
+        'Ownership policy or executive state changed. Refresh and prepare a new handover proposal.',
+      NATIVE_AUTHORITY_REVIEW_REQUIRED:
+        'Current authorities or links need operator review before handover.',
+      PERMISSION_LINKS_UNAVAILABLE:
+        'The RPC did not provide complete permission links. Use a compatible RPC before preparing ownership changes.',
+      PERMISSION_ANY_LINK_REVIEW_REQUIRED:
+        'Unrestricted action links need operator review before ownership changes.',
       CUSTODY_POLICY: 'This DAO requires user-controlled keys.',
       RESULT_LIMIT:
         'This deployment exceeds the current read limit. Configure an indexed read service.',
@@ -1198,6 +1212,20 @@ export function friendlyError(error: unknown): string {
   }
   if (error instanceof Error) {
     const cryptoErrors: Record<string, string> = {
+      NATIVE_CONTEXT_REVIEW_REQUIRED:
+        'Restore the code-only execution context and complete core action links before handover.',
+      NATIVE_POLICY_MIGRATION_REQUIRED:
+        'This runtime needs a reviewed ownership-policy upgrade before native ownership transactions can be prepared.',
+      NATIVE_OWNERSHIP_RUNTIME_REQUIRED:
+        'The deployed runtime does not match the reviewed ownership release. Upgrade and verify its code and ABI first.',
+      NATIVE_HANDOVER_CHANGED:
+        'Ownership policy or executive state changed. Refresh and prepare a new handover proposal.',
+      NATIVE_AUTHORITY_REVIEW_REQUIRED:
+        'Current authorities or links need operator review before handover.',
+      PERMISSION_LINKS_UNAVAILABLE:
+        'The RPC did not provide complete permission links. Use a compatible RPC before preparing ownership changes.',
+      PERMISSION_ANY_LINK_REVIEW_REQUIRED:
+        'Unrestricted action links need operator review before ownership changes.',
       CUSTODY_POLICY: 'This DAO requires user-controlled keys.',
       PASSKEY_PRF_UNAVAILABLE:
         'This passkey or browser cannot unlock the encrypted vault. Use another full-access method, an unlocked device or your encrypted kit.',
