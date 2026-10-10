@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.13.0-alpha.2 development
+
+Consume matching core/module SDK and help artifacts for the restricted Names oracle permission and updated Names code verification. Existing contract account details display the new on-chain permission and action links.
+
 ## 0.12.0-alpha.2 development — reviewed contract compatibility
 
 Consume core SDK 0.12.0-alpha.2 and module SDK 0.9.0-alpha.16, with exact compatibility for reviewed core 0.12.0-alpha.1 and 0.12.0-alpha.2 across all five installed module manifests. Preserve code-hash and compatibility guards. The new core artifact pins the reviewed wallet-consent fix; rollout requires matching runtime/API artifacts. No deployment or native authority change is performed.

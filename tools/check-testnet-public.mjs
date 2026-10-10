@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { chromium, expect } from '@playwright/test';
+import { NameQuoteSchema } from '@daclify/core-protocol';
 
 const origin = 'https://testnet.app.daclify.com';
 const apiOrigin = 'https://testnet.api.daclify.com';
@@ -52,6 +53,19 @@ try {
       await expect(
         details.getByRole('heading', { name: 'daclifyhubv1', exact: true }),
       ).toBeVisible();
+
+      await page.getByRole('button', { name: 'daclifynames', exact: true }).click();
+      await expect(
+        details.getByRole('heading', { name: 'daclifynames', exact: true }),
+      ).toBeVisible();
+      const oracle = details.getByRole('article', { name: 'Permission oracle', exact: true });
+      await expect(oracle).toBeVisible();
+      for (const scope of ['Parent: active', 'observeprice', 'observefee']) {
+        await expect(oracle).toContainText(scope);
+      }
+      const quote = await context.request.get(apiOrigin + '/v1/names/quote?name=permprobe123');
+      assert.equal(quote.status(), 200, 'Names quotes must have a fresh observation');
+      assert.equal(NameQuoteSchema.parse(await quote.json()).accountName, 'permprobe123');
 
       await page.goto(origin + '/daclify');
       await expect(page).toHaveURL(origin + '/dao/1');
