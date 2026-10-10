@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.0-alpha.3 development — DAO workspace and configuration
+
+Group daily DAO navigation separately from setup. Replace generic Decide/Works advertising with actual installed tools, paused/deployment-review labels and scoped retry. Show readable role/privacy context, real member/treasury statistics, governance credits and personal claim/stake destinations. Keep inactive memberships matched by complete DAO reference so existing exit links remain available. Put the unchanged signer/wallet controls in a native keyboard-accessible disclosure.
+
+Organize Settings into bookmarkable Identity, Governance and Services sections. Keep public identity editing restricted to active administrators with a matching signer; validate rename metadata against the producer schema, preserve branding/preset setup and prevent duplicate submission/stale feedback. Explain hosting, resources and DAO merchant payments separately. Reuse the existing consent-checkbox style for public image uploads. Unknown workspace sections offer recovery links. No API, contract, fees, custody, provider or dependency changes; SDK versions remain pinned.
+
+Extend desktop/mobile browser coverage for access, full-reference isolation, tool failure/retry, paused/unverified tools, late responses after navigation, signed metadata preservation, direct settings links, keyboard disclosures, responsive/enlarged text and accessibility. Update existing governance/executive journeys and documentation.
+
 ## 0.10.0-alpha.2 development — community Hub
 
 Make the Hub a focused community browser: compact network/count context, grouped search/purpose/sort controls, smaller branded covers with purpose-icon fallbacks, readable card metadata and explicit empty/sign-in states. Include independent registrations in result counts and normalize search across both sources. Preserve URL queries/hashes, full-reference membership matching, verified raster image loading, operator consent and deployment checks.

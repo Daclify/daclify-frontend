@@ -93,7 +93,7 @@ test.beforeEach(async ({ page }) => {
 test('discloses actual guardian authority without giving a visitor administration', async ({
   page,
 }) => {
-  await page.goto('/dao/1/settings');
+  await page.goto('/dao/1/settings?settings=governance');
   await expect(page.getByRole('heading', { name: 'Governance and participants' })).toBeVisible();
   await expect(page.getByText('guardian', { exact: true })).toBeVisible();
   await page.getByText('Prepare a native guardian action', { exact: true }).click();

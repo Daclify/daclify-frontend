@@ -1,6 +1,17 @@
 {
   "requirements": [
     {
+      "id": "DAO-WORKSPACE-AND-CONFIGURATION",
+      "tests": [
+        "tests/e2e/dao-workspace-experience.spec.ts",
+        "tests/e2e/people-workspace.spec.ts",
+        "tests/e2e/dao-presets.spec.ts",
+        "tests/e2e/executives.spec.ts",
+        "tests/e2e/files.spec.ts",
+        "tests/unit/access-components.test.ts"
+      ]
+    },
+    {
       "id": "HUB-COMMUNITY-DISCOVERY",
       "tests": [
         "tests/unit/dao-directory.test.ts",

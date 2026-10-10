@@ -257,7 +257,7 @@ async function save() {
           :disabled="busy || !!pending"
           @change="chooseFile"
         />
-        <label class="check-row"
+        <label class="checkbox"
           ><input v-model="publicConsent" type="checkbox" :disabled="busy" /> I understand this
           image is public and unencrypted, including for a private DAO.</label
         >

@@ -176,7 +176,7 @@ test('protects the last paired controller and prepares an unsigned quorum appoin
   page,
 }, info) => {
   await serve(page);
-  await page.goto('/dao/1/settings');
+  await page.goto('/dao/1/settings?settings=governance');
   await expect(page.getByRole('heading', { name: 'Executives and voting rights' })).toBeVisible();
   const votingToggle = await page
     .getByRole('checkbox', { name: 'Allow this member to vote' })
@@ -218,7 +218,7 @@ test('explains bootstrap owner consent and keeps ordinary paired members outside
   page,
 }) => {
   await serve(page, false, true);
-  await page.goto('/dao/1/settings');
+  await page.goto('/dao/1/settings?settings=governance');
   await expect(page.getByText(/Bootstrap owner still controls the contracts/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Confirm executive activity' })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Appoint executives' })).toHaveCount(0);

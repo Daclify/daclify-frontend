@@ -6,7 +6,7 @@ The screen consumes the packed protocol from [daclify-backend-core](https://gith
 
 Development uses **`dev`**, with matching core/modules checkouts on `dev`. Feature branches start from `dev` and return there; `main` is updated only on an explicit release request. Follow the [Netlify dev deployment guide](docs/netlify-dev.md) for local builds, the testnet custom domain and backend settings.
 
-Current development version: **0.10.0-alpha.2**, consuming core protocol **0.10.0-alpha.1** and module SDK/help **0.9.0-alpha.8**, with unchanged module contracts **0.9.0-alpha.5**. Shared creation is free for 10 active-member slots, with administrator-approved graduated monthly capacity above that. Independent contract/server and own-portal choices say Contact for pricing. Optional DAO Connect merchant payments and hosting are separate. Review [upgrade 0.8](../daclify-backend-core/docs/operations/upgrade-0.8.md) and [payment operations](../daclify-backend-core/docs/operations/connected-payments.md). Development checks do not establish live provider/client qualification.
+Current development version: **0.10.0-alpha.3**, consuming core protocol **0.10.0-alpha.1** and module SDK/help **0.9.0-alpha.8**, with unchanged module contracts **0.9.0-alpha.5**. Shared creation is free for 10 active-member slots, with administrator-approved graduated monthly capacity above that. Independent contract/server and own-portal choices say Contact for pricing. Optional DAO Connect merchant payments and hosting are separate. Review [upgrade 0.8](../daclify-backend-core/docs/operations/upgrade-0.8.md) and [payment operations](../daclify-backend-core/docs/operations/connected-payments.md). Development checks do not establish live provider/client qualification.
 
 The resource-billing-archives development branch includes exact native/card RAM consent, separate prepaid storage, whole-file retention priorities, verified Archive backups/approvals/manual batches, merged anchored history, public logo/cover upload and hosted-reference recovery after SQL loss. Uploading an image and signing its public card update are distinct. Recovery verifies ownership and bytes and restores no Stripe or social-login records. Recorded RAM allocations are visible; enforcement is in native qualification; Resources reports physical obligation and legacy-claim completion holds. Destructive retention and production pruning are disabled until migration, full restoration and provider/release qualification pass. Run `npm run test:e2e:resources` only against its owned local fixture.
 
@@ -32,6 +32,22 @@ DAO creation now offers community, NGO / grants, gaming guild, team / cooperativ
 | `/status`                          | Safe configuration, capabilities and technical platform details            |
 
 The visual system and its checks are described in [docs/ui/ciq-alignment.md](docs/ui/ciq-alignment.md).
+
+DAO workspaces group everyday destinations separately from DAO setup. The overview
+shows actual treasury/member data, your governance credits and claim/stake links,
+and tools installed or enabled for that DAO. Paused tools remain accessible for
+existing work; a failed tool lookup offers Retry without hiding Documents, Members
+or Treasury. Membership alone does not establish voting eligibility.
+
+Signing & wallets is expandable and opens when an active member needs a signer.
+Signing and private-document decryption remain separate. Settings opens Identity;
+Governance and Services use bookmarkable `?settings=governance` and
+`?settings=services` links. Identity changes require an active administrator and
+a matching signer. Rename retains setup/branding metadata. Services separates
+hosted member capacity, storage/resources and DAO merchant payments. Visitors can
+read configuration without acquiring permissions; inactive members retain their
+Treasury exit links. Network and full DAO reference are expandable below the workspace.
+See [workspace evidence](docs/evidence/2026-10-10-dao-workspace-experience.md).
 
 The brand opens the welcome page. Guests can explore DAOs before signing in;
 signed-in users get a shortcut to My DAO. Old root Hub bookmarks containing
