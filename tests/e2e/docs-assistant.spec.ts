@@ -52,7 +52,7 @@ test('handbook assistant shows a source and renders model text safely', async ({
   await expect(
     assistant.getByText('I can help with Daclify, Telos and DAOs.', { exact: true }),
   ).toBeVisible();
-  await expect(assistant.getByRole('link')).toHaveCount(1);
+  await expect(assistant.getByRole('link', { name: /^Open / })).toHaveCount(1);
   await page.getByRole('button', { name: 'Minimize help' }).click();
   await expect(assistant).toBeHidden();
   if (await menu.isVisible()) await menu.click();
@@ -67,7 +67,8 @@ test('handbook assistant shows a source and renders model text safely', async ({
     page.getByText('I can help with Daclify, Telos and DAOs.', { exact: true }),
   ).toBeVisible();
   await page.getByRole('button', { name: 'Clear conversation', exact: true }).click();
-  await expect(assistant.getByRole('link')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Confirm clear', exact: true }).click();
+  await expect(assistant.getByRole('link', { name: /^Open / })).toHaveCount(0);
 });
 
 test('handbook assistant distinguishes missing config from a failed status request', async ({
