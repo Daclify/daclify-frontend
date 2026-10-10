@@ -107,12 +107,12 @@ const nameFee = computed(() => {
   }
   const first =
     fees.firstPartyBps === 10000
-      ? 'A Daclify name keeps the full charge.'
-      : `A Daclify name pays the platform ${feeLabel(fees.firstPartyBps)}.`;
+      ? 'For a Daclify name, the charge covers resources and the remainder goes to Daclify.'
+      : `For a Daclify name, resources are covered first; the platform rate on the remainder is ${feeLabel(fees.firstPartyBps)}.`;
   const governor = fees.daoId
     ? `DAO ${fees.daoId} admins change these rates with govfees.`
     : 'The runtime account can change these rates until a governing DAO is linked.';
-  return `${first} A connected name pays the platform ${feeLabel(fees.thirdPartyBps)} and its price rises ${feeLabel(fees.bumpBps)} after each sale. A basic TLOS price adds ${feeLabel(fees.quotePremiumBps)} to the dollar conversion. ${governor}`;
+  return `${first} For a connected name, the sale covers actual resources plus a ${feeLabel(fees.thirdPartyBps)} fee on the full price; the seller gets the rest. Its price rises ${feeLabel(fees.bumpBps)} after each sale. A basic TLOS price adds ${feeLabel(fees.quotePremiumBps)} to the dollar conversion. ${governor}`;
 });
 const basicTier = computed(() => service.value?.tiers.find((tier) => tier.kind === 'basic'));
 const notice = computed(() => {
@@ -420,7 +420,14 @@ async function pay() {
             Premium names use native TLOS checkout. A short name still needs its seller’s closed
             native auction claim.
           </p>
-          <p>Platform fee {{ feeLabel(quote.platformBps) }} · seller {{ quote.seller }}</p>
+          <p v-if="quote.party === 'third-party'" class="field-help">
+            Your total includes account resources. The seller receives the sale price minus actual
+            RAM, CPU and NET costs and a {{ feeLabel(quote.platformBps) }} fee on the full price.
+          </p>
+          <p v-else class="field-help">
+            Account resources are paid first; the remainder goes to Daclify.
+          </p>
+          <p>Seller {{ quote.seller }}</p>
           <ul class="resource-row">
             <li class="pill">{{ quote.cpuStake }} CPU</li>
             <li class="pill">{{ quote.netStake }} NET</li>

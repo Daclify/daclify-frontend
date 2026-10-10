@@ -199,6 +199,9 @@ test('suggests valid ideas, shows DAO seller boundaries and exports narrowly sco
     page.getByRole('button', { name: 'Remove suffix listing', exact: true }),
   ).toBeVisible();
   await expect(page.getByRole('button', { name: 'Edit listing', exact: true })).toBeVisible();
+  await expect(page.getByRole('checkbox', { name: /I accept the platform/ })).toHaveAccessibleName(
+    /5% fee on the full sale price/,
+  );
   const downloaded = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export owner-review setup' }).click();
   await expect((await downloaded).suggestedFilename()).toBe(
