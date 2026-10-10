@@ -25,3 +25,5 @@ Rulings: keep the existing Ask label and use Ctrl/Command + Enter so ordinary En
 Verification: lint, Vue/TypeScript, 168 unit tests, build, and 22 selected desktop/mobile browser cases pass. Screenshot review covers opening, replies, narrow screens and 200% text. Exact commands, earlier failures and limitations are recorded in `docs/evidence/2026-10-10-help-bot-experience.md`.
 
 Delivery: implementation committed on local `dev` as `b765ae9`. `git push origin dev` failed because HTTPS GitHub credentials are unavailable; the container also has no GitHub CLI. Publication remains pending authentication. Unrelated workspace changes were preserved.
+
+Live delivery: user authorized publishing the Help changes. Rebuilt the configured testnet frontend and verified matching public assets, real Daxi Telos answer/source navigation, desktop/mobile presentation, accessibility and focus. Live at `https://testnet.app.daclify.com`; public checker exits 0. See the appended delivery evidence. GitHub push remains independent and pending credentials.

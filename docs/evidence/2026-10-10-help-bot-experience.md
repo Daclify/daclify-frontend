@@ -29,3 +29,13 @@ Never include secrets or private content. Daxi cannot see your vault or live DAO
 ## Limits
 
 Browser HTTP fixtures exercise real frontend components; they do not qualify a model provider or Telegram delivery. Physical phone keyboards, Safari and real screen-reader clients were not exercised. No backend, chain, custody, permissions, dependency or production-release work is included.
+
+## Authorized live testnet delivery — 2026-10-10
+
+After the user requested applying the changes live, ran `/data/daclify-runtime/bin/daclify-rebuild frontend`: Vue/TypeScript and the testnet-mode build pass, exit 0. Caddy serves the built files directly; no API/environment change or restart was required. Public HTML and entry JavaScript were compared byte-for-byte with the build at `https://testnet.app.daclify.com`. Entry: `/assets/index-QJyHmB4i.js`, SHA-256 `47ed25909403e9a8226345cb56a3e266a693309c8edc8c2e1a958c6ed64a632c`.
+
+Ran `LD_LIBRARY_PATH=/data/daclify-runtime/browser-libs/usr/lib/x86_64-linux-gnu node /data/daclify-runtime/help-live-check.mts` against actual public HTTPS, without intercepting requests: **passed, exit 0**. Verified the Testnet lock, opening/focus, selectable questions without sending, the real `/v1/docs/ask` HTTP 200 Telos answer, `/docs/telos` navigation, minimizing/reopening and Escape focus restoration. Desktop and emulated Pixel 7 Help scans have no Axe violations; both contexts report zero page errors. Reviewed live answer/mobile screenshots. Logs, checker and screenshots are in `/data/daclify-runtime/help-live-*`.
+
+The check waits for the app's initial network connection before choosing a question: initial network hydration changes the existing scoped history and resets the draft. The first harness attempts were corrected to use explicit browser contexts for Axe and to wait for that connection. No application code changed during this delivery.
+
+The live provider answer is verified for this question, not general provider reliability or Telegram delivery. Mobile checks remain browser emulation. GitHub publication remains separately pending credentials; it is not required by this server's direct static-file delivery. No mainnet release or chain transaction was performed.
