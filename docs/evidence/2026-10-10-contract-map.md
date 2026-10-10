@@ -160,3 +160,5 @@ Inline review checked the user's final layout, directed/aggregated links, unconn
 After strengthening disclosure retention assertions, reran that regression on desktop/mobile: 2/2 pass. Changed test formatting passes; tested/deployed UI bytes are unchanged.
 
 The independent account work was committed as `f015f75` on the shared dev branch during final delivery. This UI commit follows it and changes only the thirteen listed UI/test/guide/changelog files. Both the original baseline and integrated 0.12 build were verified as recorded above.
+
+Git delivery: implementation `3032ed2` is committed and pushed to `origin/dev`; remote SHA `3032ed2180e3974db4d6db4bf81a477e43a6f198` was verified. The final documentation ledger follows separately. Application source matches the qualified 0.12 integration snapshot and the public entry page matches the installed checked build.

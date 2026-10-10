@@ -92,7 +92,7 @@ The user specifies a name-only connection diagram selecting one Contract Account
 - [x] Move selected RAM/CPU/NET into Contract Account Details; retain release hashes, RPC validation, stale-read cancellation, retries and useful connection navigation.
 - [x] Make the nested tree the only authority view; remove duplicate definitions and the empty inspector.
 - [x] Complete task-only full checks, desktop/mobile Status regressions, screenshot review and actual public API/RPC read-back.
-- [ ] Update evidence and commit/push only the correction's files.
+- [x] Update evidence and commit/push only the correction's files.
 
 Baseline: `953d268`; task-only archive `/data/daclify-runtime/contract-accounts-check-yzkqs_of`. Preserve concurrent passwordless/auth/package/vendor work and exclude it from build/commit. Initial helper tests fail because contractConnections is absent; the browser fails because Contract connections is absent. Ten focused desktop browser checks pass after implementation. A helper fixture copied a self-code authority under a different account, thereby creating a real cross-contract delegation; correct the no-link fixture to include only shared-key authorities. An unused type import was removed after Vue/type checking. No producer or RPC boundary changes.
 
@@ -103,3 +103,5 @@ Final 0.12 integration qualification: 207/207 units and 56/56 desktop/mobile bro
 Final review adds explicit release-disclosure open-state assertions to the failed-refresh/recovery case; desktop/mobile rerun passes 2/2. No tested UI code changed after the full qualification or public read-back.
 
 The independent account work was committed as `f015f75` on the shared dev branch during final delivery. This UI commit follows it and changes only the thirteen listed UI/test/guide/changelog files. Both the original baseline and integrated 0.12 build were verified as recorded above.
+
+Git delivery: implementation `3032ed2` is pushed to origin/dev and the remote ref was verified. Only this correction's thirteen files were staged; the independently committed account work remains intact. This final ledger update changes documentation only.
