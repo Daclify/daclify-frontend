@@ -25,4 +25,4 @@ Files: Account.vue, SignInMethods.vue, LinkedAccounts.vue, NativeWalletPanel.vue
 - [x] Add a browser regression for four task-oriented tabs, collapsed public identity, all five provider controls, keyboard navigation, accessibility and narrow viewports. Run it against the current UI and record its expected failure; save baseline screenshots.
 - [x] Reorganize access and device actions; consolidate EVM with other sign-in methods; use compact native disclosures and responsive profile fields. Update changed accessible labels in callers and existing tests.
 - [x] Run the new regression, existing account entry/provider/wallet/paired recovery/device tests and inspect desktop/mobile screenshots. Fix issues and review the diff inline.
-- [ ] Run lint, typecheck, units, production build; update user guidance and evidence, commit only owned files and push dev. Deliver the checked frontend build to testnet under existing authorization.
+- [x] Run lint, typecheck, units, production build; update user guidance and evidence, commit only owned files and push dev. Deliver the checked frontend build to testnet under existing authorization.
