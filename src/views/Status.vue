@@ -4,6 +4,7 @@ import type { PlatformStatus } from '@daclify/core-protocol';
 import { ArrowRight, Bot, Database, Globe, RefreshCw, Server, TrendingUp } from '@lucide/vue';
 import { api, friendlyError } from '../api/client';
 import { useWorkspace } from '../state/workspace';
+import ServiceDirectory from '../components/ServiceDirectory.vue';
 const workspace = useWorkspace();
 const status = ref<PlatformStatus>();
 const assistant = ref<Awaited<ReturnType<typeof api.docsAgent>>>();
@@ -585,35 +586,7 @@ onUnmounted(() => {
           {{ configuredServices }} of {{ status.services.length }} services configured, including
           Daxi. Configuration is separate from a successful live check.
         </p>
-        <div class="status-service-grid">
-          <article
-            class="status-service"
-            v-for="service in status.services.filter(
-              (item) => !['docs', 'telegram-docs'].includes(item.id),
-            )"
-            :key="service.id"
-          >
-            <span class="pill">{{ service.configured ? 'Configured' : 'Not configured' }}</span>
-            <h3>{{ service.name }}</h3>
-            <p>{{ service.detail }}</p>
-            <p class="field-help">
-              {{
-                service.qualification === 'local-fixture'
-                  ? 'Local fixture only · live availability unverified'
-                  : 'Live availability unverified'
-              }}
-            </p>
-          </article>
-        </div>
-        <p
-          v-if="!status.services.some((service) => !['docs', 'telegram-docs'].includes(service.id))"
-          class="field-help"
-        >
-          No other integrations reported by this server.
-        </p>
-        <button type="button" class="text-button" @click="showTab('ai')">
-          Daxi configuration <ArrowRight aria-hidden="true" />
-        </button>
+        <ServiceDirectory :services="status.services" @help="showTab('ai')" />
       </section>
       <section class="panel">
         <h2>Service limits</h2>
@@ -870,27 +843,7 @@ onUnmounted(() => {
   color: var(--text-muted);
   font-weight: 450;
 }
-.status-service-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  margin: 20px 0;
-}
-.status-service {
-  padding: 20px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--surface-soft);
-  overflow-wrap: anywhere;
-}
-.status-service h3 {
-  font-size: 1rem;
-  line-height: 1.5;
-  margin: 12px 0 8px;
-}
-.status-service p:last-child {
-  margin-bottom: 0;
-}
+
 .panel-heading h2 {
   display: flex;
   align-items: center;
@@ -932,9 +885,6 @@ onUnmounted(() => {
     padding: 8px;
     border-radius: var(--radius-sm);
   }
-  .status-service-grid {
-    grid-template-columns: 1fr;
-  }
   .check-card {
     padding: 16px;
   }
@@ -953,9 +903,6 @@ onUnmounted(() => {
 }
 @container (max-width: 40rem) {
   .status-overview,
-  .status-service-grid {
-    grid-template-columns: 1fr;
-  }
   .status-checks {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

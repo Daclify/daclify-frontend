@@ -12,6 +12,7 @@ const route = useRoute(),
   error = ref(''),
   busy = ref(false),
   memberNative = ref(''),
+  memberActive = ref(false),
   exists = ref(false),
   editing = ref(false),
   profileRevision = ref(0);
@@ -19,7 +20,11 @@ const failedImages = ref({ avatar: false, background: false });
 const selfRoute = computed(() => route.path === '/users/me');
 const identity = computed(() =>
   selfRoute.value
-    ? state.memberships[0]
+    ? state.memberships.find(
+        (member) =>
+          member.dao.chainId === state.network?.chainId &&
+          member.dao.contract === state.network.runtime,
+      )
     : state.memberships.find(
         (member) =>
           member.dao.daoId === route.params.daoId &&
@@ -90,6 +95,7 @@ watch(
       if (!row) return;
       exists.value = true;
       memberNative.value = row.native_account;
+      memberActive.value = row.active;
       if (own.value) {
         const stored = await api.memberProfile(d, m);
         if (disposed || request !== generation) return;
@@ -99,7 +105,13 @@ watch(
       } else {
         const page = await api.people({ daoId: d, memberId: m });
         if (disposed || request !== generation) return;
-        profile.value = page.profiles.find((person) => person.memberId === m)?.profile;
+        profile.value = page.profiles.find(
+          (person) =>
+            person.memberId === m &&
+            person.dao.daoId === d &&
+            person.dao.chainId === state.network?.chainId &&
+            person.dao.contract === state.network.runtime,
+        )?.profile;
       }
     } catch (cause) {
       if (request === generation) error.value = friendlyError(cause);
@@ -134,12 +146,19 @@ function saved() {
 </script>
 <template>
   <RouterLink class="help-link" to="/users"><ArrowLeft aria-hidden="true" />All users</RouterLink>
-  <p v-if="error" class="alert" role="alert">{{ error }}</p>
+  <div v-if="error" class="alert" role="alert">
+    <h1>Profile temporarily unavailable</h1>
+    <p>Could not read this profile. {{ error }}</p>
+    <button type="button" class="secondary" @click="profileRevision++">Retry profile</button>
+  </div>
   <p v-if="busy" role="status">Loading profile…</p>
   <Account v-else-if="selfRoute && !state.account" />
-  <template v-else-if="exists || own">
-    <section class="profile-hero">
-      <div class="profile-cover">
+  <template v-else-if="!error && (exists || own)">
+    <section
+      class="profile-hero"
+      :class="{ 'profile-without-cover': !profile?.background || failedImages.background }"
+    >
+      <div v-if="profile?.background && !failedImages.background" class="profile-cover">
         <img
           v-if="profile?.background && !failedImages.background"
           :src="`https://ipfs.io/ipfs/${profile.background}`"
@@ -168,6 +187,7 @@ function saved() {
           type="button"
           class="secondary"
           :aria-expanded="editing"
+          aria-controls="profile-account-settings"
           @click="editing = !editing"
         >
           <UserRoundPen aria-hidden="true" />{{
@@ -192,15 +212,22 @@ function saved() {
           :href="link.url"
           target="_blank"
           rel="noopener noreferrer"
-          ><Globe aria-hidden="true" />{{ link.key }}</a
+          ><Globe aria-hidden="true" />{{ link.key
+          }}<span class="sr-only"> (opens in a new tab)</span></a
         ><span v-if="profile?.telegram"><AtSign aria-hidden="true" />{{ profile.telegram }}</span>
       </div>
       <p v-if="profile?.email" class="muted">Public contact: {{ profile.email }}</p>
     </section>
-    <section v-if="dao" class="panel">
-      <h2>DAO context</h2>
-      <RouterLink :to="`/dao/${dao.reference.daoId}/members`"
+    <section v-if="daoId && memberId" class="panel profile-membership">
+      <div class="panel-heading">
+        <h2>Community membership</h2>
+        <span class="pill">{{ memberActive ? 'Active member' : 'Inactive member' }}</span>
+      </div>
+      <RouterLink :to="`/dao/${dao.reference.daoId}/members`" v-if="dao"
         >{{ dao.title }} · member {{ memberId }}</RouterLink
+      >
+      <RouterLink v-else :to="`/dao/${daoId}/members`"
+        >DAO {{ daoId }} · member {{ memberId }}</RouterLink
       >
       <p v-if="memberNative">
         On-chain governance account: <span class="mono">{{ memberNative }}</span>
@@ -209,17 +236,47 @@ function saved() {
         This is a public member record. Private sign-in pairings are not displayed.
       </p>
     </section>
-    <Account
-      v-if="own && editing"
-      embedded
-      :profile-dao-id="daoId"
-      :profile-member-id="memberId"
-      @profile-updated="saved"
-    />
+    <div v-if="own" v-show="editing" id="profile-account-settings">
+      <Account
+        v-if="own && editing"
+        embedded
+        :profile-dao-id="daoId"
+        :profile-member-id="memberId"
+        @profile-updated="saved"
+      />
+    </div>
   </template>
-  <section v-else class="empty-state">
+  <section v-else-if="!error" class="empty-state">
     <h1>User unavailable</h1>
     <p>Check this member's DAO or browse published profiles.</p>
     <RouterLink to="/users">Browse users</RouterLink>
   </section>
 </template>
+<style scoped>
+.profile-without-cover {
+  padding-top: 1.5rem;
+}
+.profile-without-cover .profile-identity {
+  margin-top: 0;
+  align-items: center;
+}
+.profile-without-cover .eyebrow {
+  margin-top: 0;
+}
+.profile-membership {
+  margin-top: 1.5rem;
+}
+.profile-identity > div {
+  min-width: 0;
+}
+.profile-identity h1,
+.profile-facts a {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 40rem) {
+  .profile-identity button {
+    margin-left: 0;
+    width: 100%;
+  }
+}
+</style>

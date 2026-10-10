@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import { PrivateKey } from '@wharfkit/antelope';
 import { generateKeyPairSync } from 'node:crypto';
 import { AccountSchema, DaoSummarySchema, NetworkSchema, VERSION } from '@daclify/core-protocol';
+import AxeBuilder from '@axe-core/playwright';
 const publicKey = generateKeyPairSync('ec', { namedCurve: 'prime256v1' }).publicKey.export({
   format: 'jwk',
 });
@@ -122,6 +123,25 @@ test('shows purpose presets and makes participant mode a separate choice', async
     ),
   ).toBeVisible();
   await expect(page.getByRole('button', { name: 'Review free DAO setup' })).toBeDisabled();
+});
+test('DAO setup retains form edits while retrying failed readiness and summarises the choices', async ({
+  page,
+}) => {
+  await page.goto('/create');
+  await page.getByLabel('DAO name', { exact: true }).fill('Ocean Commons');
+  await expect(page.getByRole('alert')).toContainText('Could not check shared creation');
+  await page.getByRole('button', { name: 'Retry availability', exact: true }).click();
+  await expect(page.getByLabel('DAO name', { exact: true })).toHaveValue('Ocean Commons');
+  const summary = page.getByRole('complementary', { name: 'Your DAO setup' });
+  await expect(summary).toContainText('Ocean Commons');
+  await expect(summary).toContainText('Public content');
+  await page
+    .getByLabel('Privacy policy', { exact: true })
+    .selectOption('encrypted-user-controlled');
+  await expect(summary).toContainText('User-controlled keys required');
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: test.info().outputPath('dao-setup.png'), fullPage: true });
 });
 test('filters discovery by purpose without treating it as a permission', async ({ page }) => {
   await page.goto('/hub');

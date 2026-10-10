@@ -1,6 +1,6 @@
 # Frontend documentation
 
-Current development application: **0.10.0-alpha.5**, consuming core **0.10.0-alpha.1** and modules **0.9.0-alpha.8** SDK/help packages. Development uses `dev`. See the [repository README](../README.md) for routes, local development, account recovery and test phases, and the [Netlify dev guide](netlify-dev.md) for the separate testnet site.
+Current development application: **0.10.0-alpha.7**, consuming core **0.10.0-alpha.1** and modules **0.9.0-alpha.8** SDK/help packages. Development uses `dev`. See the [repository README](../README.md) for routes, local development, account recovery and test phases, and the [Netlify dev guide](netlify-dev.md) for the separate testnet site.
 
 ## Help inside the application
 
@@ -34,6 +34,8 @@ The recovery explanation is `/docs/recovery`; accounts, providers, documents, tr
 Edit product text in the owning backend repo's `docs/guides/topics.json`, regenerate its docs, rebuild the public development packages and reinstall consumers through core's sibling bootstrap. Do not hard-code a second copy of guides or API schemas here. Keep stable topic IDs so existing UI links continue to work. Core's [documentation index](https://github.com/Daclify/daclify-backend-core/blob/main/docs/README.md) explains generation and versioning.
 
 ## Presentation and recovery
+
+The [user setup and services review](evidence/2026-10-10-user-setup-and-services.md) covers Users, member profiles, Names, Create DAO and Status Services. Search describes its loaded scope and can reset; failed member reads retry without implying absence. Names puts search, quote, key backup and payment in order, and discards stale or mismatched quotes. DAO setup has a live summary and explains deployment prerequisites. Services groups all reported integrations by purpose with filters, guide links and optional operator details. Configuration never implies a successful provider transaction.
 
 The [account entry experience](evidence/2026-10-10-account-entry-experience.md) groups returning sign-in, user-controlled creation and recovery. Saved keys take precedence. Provider forms open on selection, email codes have retry/change-address steps and failed configuration lookup is distinct from an unavailable provider. Account-flow controls coordinate pending requests; Telegram embeds mount only when needed and clean up on exit. Mobile shortcuts retain the intended return destination. Provider sessions leave user-controlled keys locked; recovery still needs the original encrypted kit and separate credential. Managed signup remains unavailable until its backend is configured.
 

@@ -119,6 +119,57 @@ test.beforeEach(async ({ page }) => {
     });
   });
 });
+test('groups services by purpose and resets a filter with no matches', async ({ page }) => {
+  await page.route('**/v1/platform/status', (route) =>
+    route.fulfill({
+      json: {
+        ...status,
+        services: [
+          ...status.services,
+          {
+            id: 'google',
+            name: 'Google sign-in',
+            configured: false,
+            qualification: 'not-qualified',
+            detail: 'No Google settings.',
+          },
+          {
+            id: 'storage',
+            name: 'Pinata / hosted storage',
+            configured: true,
+            qualification: 'not-qualified',
+            detail: 'Pinata availability is unverified.',
+          },
+        ],
+      },
+    }),
+  );
+  await page.goto('/status');
+  await page.getByRole('tab', { name: 'Services', exact: true }).click();
+  const directory = page.locator('#status-panel-services');
+  await expect(
+    directory.getByRole('heading', { name: 'Sign-in and accounts', exact: true }),
+  ).toBeVisible();
+  await expect(
+    directory.getByRole('heading', { name: 'Files and storage', exact: true }),
+  ).toBeVisible();
+  await directory.getByLabel('Service readiness', { exact: true }).selectOption('missing');
+  await expect(
+    directory.getByRole('heading', { name: 'Pinata / hosted storage', exact: true }),
+  ).toHaveCount(0);
+  await directory
+    .getByRole('searchbox', { name: 'Search services', exact: true })
+    .fill('nothing matches');
+  await expect(
+    directory.getByText('No services match these filters.', { exact: true }),
+  ).toBeVisible();
+  await directory.getByRole('button', { name: 'Clear service filters', exact: true }).click();
+  await expect(
+    directory.getByRole('heading', { name: 'Pinata / hosted storage', exact: true }),
+  ).toBeVisible();
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  await page.screenshot({ path: test.info().outputPath('service-directory.png'), fullPage: true });
+});
 
 test('organises status into accessible tabs and keeps migrations out of the UI', async ({
   page,

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { PrivateKey } from '@wharfkit/antelope';
 import { api, friendlyError } from '../api/client';
@@ -7,7 +7,7 @@ import { useWorkspace } from '../state/workspace';
 import NamesManager from '../components/NamesManager.vue';
 import { connectNative, nativeIdentity, nativeNamesTransaction } from '../auth/telos-zero';
 import { namePurchaseActions, NamesCodeHash } from '@daclify/core-protocol/sdk';
-import { AtSign, Sparkles, ArrowRight } from '@lucide/vue';
+import { AtSign, ArrowRight } from '@lucide/vue';
 const mode = ref<'browse' | 'manage'>('browse');
 const idea = ref('');
 const suggestions = computed(() => {
@@ -30,12 +30,21 @@ const suggestions = computed(() => {
 function chooseName(name: string) {
   mode.value = 'browse';
   accountName.value = name;
+  void nextTick(() => document.getElementById('name-input')?.focus());
 }
+let serviceSequence = 0;
+const serviceBusy = ref(false);
 async function reloadService() {
+  const id = ++serviceSequence;
+  serviceBusy.value = true;
+  loadError.value = '';
   try {
-    service.value = await api.names();
+    const result = await api.names();
+    if (id === serviceSequence) service.value = result;
   } catch (cause) {
-    loadError.value = friendlyError(cause);
+    if (id === serviceSequence) loadError.value = friendlyError(cause);
+  } finally {
+    if (id === serviceSequence) serviceBusy.value = false;
   }
 }
 
@@ -56,6 +65,7 @@ const keys = ref<{
 }>();
 const savedKeys = ref(false);
 const copied = ref('');
+const copyError = ref('');
 const paying = ref(false);
 const payError = ref('');
 let requestId = 0;
@@ -114,20 +124,32 @@ const notice = computed(() => {
   return '';
 });
 
-onMounted(async () => {
-  try {
-    service.value = await api.names();
-  } catch (error) {
-    loadError.value = friendlyError(error);
-  }
-});
+onMounted(reloadService);
+watch(
+  () => state.network && [state.network.chainId, state.network.runtime].join('/'),
+  (_value, previous) => {
+    if (previous === undefined) return;
+    requestId++;
+    if (quoteTimer) clearTimeout(quoteTimer);
+    quoting.value = false;
+    quote.value = undefined;
+    keys.value = undefined;
+    savedKeys.value = false;
+    service.value = undefined;
+    void reloadService();
+  },
+);
 
 onBeforeUnmount(() => {
   if (quoteTimer) clearTimeout(quoteTimer);
   requestId++;
+  serviceSequence++;
 });
 
 watch(accountName, (value) => {
+  requestId++;
+  quoting.value = false;
+  payError.value = '';
   if (quoteTimer) clearTimeout(quoteTimer);
   const name = value.trim();
   quote.value = undefined;
@@ -144,11 +166,15 @@ async function checkPrice() {
   quote.value = undefined;
   quoteError.value = '';
   nameIssueText.value = nameIssue(name);
-  if (!name || nameIssueText.value) return;
+  if (!name || nameIssueText.value) {
+    quoting.value = false;
+    return;
+  }
   quoting.value = true;
   try {
     const result = await api.nameQuote(name);
     if (id !== requestId) return;
+    if (result.accountName !== name) throw new Error('CHAIN_RESPONSE_INVALID');
     quote.value = result;
   } catch (error) {
     if (id !== requestId) return;
@@ -159,6 +185,7 @@ async function checkPrice() {
 }
 
 function generateKeys() {
+  copyError.value = '';
   const owner = PrivateKey.generate('K1');
   const active = PrivateKey.generate('K1');
   keys.value = {
@@ -172,15 +199,21 @@ function generateKeys() {
 }
 
 async function copyText(label: string, value: string) {
+  const pair = keys.value;
   try {
     await navigator.clipboard.writeText(value);
+    if (pair !== keys.value) return;
     copied.value = label;
+    copyError.value = '';
   } catch {
+    if (pair !== keys.value) return;
     copied.value = '';
+    copyError.value = 'Copy was blocked. Select the key and copy it manually before continuing.';
   }
 }
 
 async function payTlos() {
+  if (paying.value) return;
   const current = quote.value,
     pair = keys.value,
     config = service.value,
@@ -190,7 +223,15 @@ async function payTlos() {
       state.account?.id,
       accountName.value,
     ]);
-  if (!current || !pair || !savedKeys.value || !config?.contract || !config.tokenContract) return;
+  if (
+    !current ||
+    current.accountName !== accountName.value.trim() ||
+    !pair ||
+    !savedKeys.value ||
+    !config?.contract ||
+    !config.tokenContract
+  )
+    return;
   paying.value = true;
   payError.value = '';
   try {
@@ -255,6 +296,7 @@ async function payTlos() {
 }
 
 async function pay() {
+  if (paying.value || !savedKeys.value) return;
   const current = quote.value;
   const pair = keys.value;
   if (!current || !pair || current.accountName !== accountName.value.trim()) return;
@@ -279,12 +321,17 @@ async function pay() {
   <section class="page">
     <p class="eyebrow">Telos accounts</p>
     <h1>Names</h1>
-    <p class="lede">
+    <p class="lead">
       Find your community’s next name. Buy a new Telos account or offer names under a native account
       you control.
     </p>
     <p v-if="notice" class="alert" role="status">{{ notice }}</p>
-    <p v-if="loadError" class="alert" role="alert">{{ loadError }}</p>
+    <div v-if="loadError" class="alert" role="alert">
+      <p>Could not read the name service. {{ loadError }}</p>
+      <button type="button" class="secondary" :disabled="serviceBusy" @click="reloadService">
+        Retry name service
+      </button>
+    </div>
     <div class="workspace-tabs" role="group" aria-label="Names views">
       <button type="button" :aria-pressed="mode === 'browse'" @click="mode = 'browse'">
         Find a name</button
@@ -298,47 +345,23 @@ async function pay() {
       @updated="reloadService"
     />
     <div v-else class="panel names-browser">
-      <p v-if="!service">Reading the chain…</p>
-      <p v-else-if="!service.configured">{{ service.reason }}</p>
-      <template v-else>
-        <div class="names-discovery">
-          <div>
-            <p class="eyebrow"><Sparkles aria-hidden="true" />A NAME FOR YOUR NEXT CHAPTER</p>
-            <h2>Make it yours</h2>
-            <p>
-              Native account names work across Telos. You can use them with Daclify, but you do not
-              need one to join a DAO.
-            </p>
-            <label for="name-idea">Start with an idea</label
-            ><input
-              id="name-idea"
-              v-model="idea"
-              maxlength="40"
-              placeholder="Your name, project or community"
-            />
-            <div class="name-suggestions">
-              <button
-                v-for="name in suggestions"
-                :key="name"
-                type="button"
-                class="secondary"
-                @click="chooseName(name)"
-              >
-                <AtSign aria-hidden="true" />{{ name }}
-              </button>
-            </div>
-            <p class="field-help">
-              Suggestions are ideas; availability and prices are checked on-chain.
-            </p>
-          </div>
-          <div class="names-art" aria-hidden="true"><AtSign /><span>your.name</span></div>
-        </div>
+      <p v-if="serviceBusy && !service" role="status">Reading the chain…</p>
+      <p v-else-if="service && !service.configured">
+        {{ service.reason }} <RouterLink to="/status">Check service status</RouterLink>
+      </p>
+      <template v-else-if="service?.configured">
+        <p class="eyebrow">1 · Find your name</p>
         <h2>Check a name</h2>
+        <p>Native names work across Telos. You do not need one to join a DAO.</p>
         <form class="name-check" @submit.prevent="checkPrice">
           <label>
             Telos account name
             <input
+              id="name-input"
               v-model="accountName"
+              :aria-invalid="!!nameIssueText"
+              aria-describedby="name-syntax"
+              :disabled="paying"
               name="account-name"
               autocomplete="off"
               autocapitalize="none"
@@ -348,6 +371,9 @@ async function pay() {
           </label>
           <button class="secondary" type="submit" :disabled="quoting">Check price</button>
         </form>
+        <p id="name-syntax" class="field-help">
+          Up to 12 characters: a–z, 1–5 and dots. Availability and prices come from the chain.
+        </p>
         <p class="name-status" role="status">
           <template v-if="nameIssueText">{{ nameIssueText }}</template>
           <template v-else-if="quoting">Checking this name on chain…</template>
@@ -357,9 +383,21 @@ async function pay() {
         </p>
         <p v-if="quoteError" class="alert" role="alert">{{ quoteError }}</p>
         <article v-if="quote" class="quote-card">
+          <h2 class="mono">{{ quote.accountName }}</h2>
           <p class="eyebrow">{{ quote.kind === 'basic' ? 'Basic' : 'Premium' }}</p>
           <p class="name-price">{{ quote.price }}</p>
-          <p v-if="quote.usdCents > 0">{{ usd(quote.usdCents) }} by card</p>
+          <p v-if="quote.usdCents > 0">
+            {{ usd(quote.usdCents) }}
+            {{
+              service.cardPayments && quote.kind === 'basic' && quote.party === 'first-party'
+                ? 'by card'
+                : 'reference price'
+            }}
+          </p>
+          <p v-if="!service.cardPayments" class="field-help">
+            Card checkout is not enabled on this deployment. Use the native wallet option after
+            saving your keys.
+          </p>
           <p v-if="quote.party === 'third-party'" class="notice">
             Third-party names currently use TLOS. Card checkout awaits seller payment routing.
           </p>
@@ -379,73 +417,6 @@ async function pay() {
             <template v-if="quote.nextPrice">The next sale costs {{ quote.nextPrice }}.</template>
           </p>
         </article>
-        <div class="two-column">
-          <article v-if="basicTier" class="offer-group">
-            <h2>Basic name</h2>
-            <p class="name-price">
-              {{ basicTier.usdCents > 0 ? usd(basicTier.usdCents) : basicTier.price }}
-            </p>
-            <p v-if="basicTier.tlosQuote">
-              {{ basicTier.tlosQuote }} in TLOS, including a
-              {{ feeLabel(service.quotePremiumBps ?? 0) }} premium.
-              <template v-if="service.oracleObservedAt">
-                Rate observed {{ observed(service.oracleObservedAt) }}.
-              </template>
-            </p>
-            <p v-else-if="basicTier.usdCents > 0">
-              The TLOS conversion for this dollar price is not on this chain yet. The stored tier
-              price is {{ basicTier.price }}.
-            </p>
-            <ul class="resource-row">
-              <li class="pill">{{ basicTier.cpuStake }} CPU</li>
-              <li class="pill">{{ basicTier.netStake }} NET</li>
-              <li class="pill">{{ ramLabel(basicTier.ramBytes) }} of RAM</li>
-            </ul>
-            <p>A basic name is 12 characters and has no dot.</p>
-          </article>
-          <article class="offer-group">
-            <h2>Premium name</h2>
-            <p>
-              Connect a Telos account you already own and set its price in TLOS or dollars. A new
-              account that ends with that name, such as alice.dao, pays the current price. The price
-              then rises {{ feeLabel(service.bumpBps ?? 0) }}. A dotted name cannot be sold until
-              that suffix is connected.
-            </p>
-            <p v-if="service.suffixes.length === 0">No suffix is connected yet.</p>
-            <ul v-else class="market-list">
-              <li v-for="suffix in service.suffixes" :key="suffix.suffix">
-                <strong class="mono">.{{ suffix.suffix }}</strong>
-                <span>{{ suffix.seller }}</span>
-                <span>{{ suffix.price }}</span>
-                <span v-if="suffix.usdCents > 0">{{ usd(suffix.usdCents) }}</span>
-                <span>{{ suffix.sales }} sales</span>
-              </li>
-            </ul>
-          </article>
-        </div>
-        <h2>Listed names</h2>
-        <p v-if="service.listings.length === 0">Nobody has listed one exact name yet.</p>
-        <ul v-else class="market-list names-grid">
-          <li class="name-offer" v-for="listing in service.listings" :key="listing.accountName">
-            <strong class="mono">{{ listing.accountName }}</strong>
-            <span>{{ listing.seller }}</span>
-            <span>{{ listing.price }}</span>
-            <span v-if="listing.usdCents > 0">{{ usd(listing.usdCents) }}</span>
-            <span>{{ listing.sold ? 'Sold' : 'For sale' }}</span
-            ><button
-              v-if="!listing.sold"
-              type="button"
-              class="secondary"
-              @click="chooseName(listing.accountName)"
-            >
-              Check this name <ArrowRight aria-hidden="true" />
-            </button>
-          </li>
-        </ul>
-        <p class="field-help">{{ nameFee }}</p>
-        <p v-if="service.cardPayments === false">
-          Card payments are not configured on this service.
-        </p>
         <div
           v-if="
             quote &&
@@ -457,7 +428,10 @@ async function pay() {
           "
           class="key-once"
         >
-          <button type="button" class="secondary" @click="generateKeys">
+          <p class="eyebrow">2 · Save your keys</p>
+          <h2>Secure your new account</h2>
+          <p>Generate owner and active keys, save both privately, then choose how to pay.</p>
+          <button type="button" class="secondary" :disabled="paying" @click="generateKeys">
             Generate account keys
           </button>
           <template v-if="keys">
@@ -482,10 +456,12 @@ async function pay() {
             >
               {{ copied === 'active' ? 'Copied' : 'Copy active key' }}
             </button>
+            <p v-if="copyError" class="alert" role="alert">{{ copyError }}</p>
             <label class="check-line">
               <input v-model="savedKeys" type="checkbox" />
               I have saved both private keys
             </label>
+            <p class="eyebrow">3 · Choose payment</p>
             <button
               v-if="service.contract && service.tokenContract && quote.price !== '0.0000 TLOS'"
               type="button"
@@ -523,6 +499,98 @@ async function pay() {
             <p v-if="payError" class="alert" role="alert">{{ payError }}</p>
           </template>
         </div>
+        <details class="name-inspiration">
+          <summary>Need name ideas?</summary>
+          <label for="name-idea">Start with an idea</label
+          ><input
+            id="name-idea"
+            v-model="idea"
+            maxlength="40"
+            placeholder="Your name, project or community"
+          />
+          <div class="name-suggestions">
+            <button
+              v-for="name in suggestions"
+              :key="name"
+              type="button"
+              class="secondary"
+              @click="chooseName(name)"
+            >
+              <AtSign aria-hidden="true" />{{ name }}
+            </button>
+          </div>
+          <p class="field-help">Suggestions are ideas; use Check price to verify availability.</p>
+        </details>
+        <details class="name-catalogue">
+          <summary>Browse prices and listed names</summary>
+          <div class="two-column">
+            <article v-if="basicTier" class="offer-group">
+              <h2>Basic name</h2>
+              <p class="name-price">
+                {{ basicTier.usdCents > 0 ? usd(basicTier.usdCents) : basicTier.price }}
+              </p>
+              <p v-if="basicTier.tlosQuote">
+                {{ basicTier.tlosQuote }} in TLOS, including a
+                {{ feeLabel(service.quotePremiumBps ?? 0) }} premium.
+                <template v-if="service.oracleObservedAt">
+                  Rate observed {{ observed(service.oracleObservedAt) }}.
+                </template>
+              </p>
+              <p v-else-if="basicTier.usdCents > 0">
+                The TLOS conversion for this dollar price is not on this chain yet. The stored tier
+                price is {{ basicTier.price }}.
+              </p>
+              <ul class="resource-row">
+                <li class="pill">{{ basicTier.cpuStake }} CPU</li>
+                <li class="pill">{{ basicTier.netStake }} NET</li>
+                <li class="pill">{{ ramLabel(basicTier.ramBytes) }} of RAM</li>
+              </ul>
+              <p>A basic name is 12 characters and has no dot.</p>
+            </article>
+            <article class="offer-group">
+              <h2>Premium name</h2>
+              <p>
+                Connect a Telos account you already own and set its price in TLOS or dollars. A new
+                account that ends with that name, such as alice.dao, pays the current price. The
+                price then rises {{ feeLabel(service.bumpBps ?? 0) }}. A dotted name cannot be sold
+                until that suffix is connected.
+              </p>
+              <p v-if="service.suffixes.length === 0">No suffix is connected yet.</p>
+              <ul v-else class="market-list">
+                <li v-for="suffix in service.suffixes" :key="suffix.suffix">
+                  <strong class="mono">.{{ suffix.suffix }}</strong>
+                  <span>{{ suffix.seller }}</span>
+                  <span>{{ suffix.price }}</span>
+                  <span v-if="suffix.usdCents > 0">{{ usd(suffix.usdCents) }}</span>
+                  <span>{{ suffix.sales }} sales</span>
+                </li>
+              </ul>
+            </article>
+          </div>
+          <h2>Listed names</h2>
+          <p v-if="service.listings.length === 0">Nobody has listed one exact name yet.</p>
+          <ul v-else class="market-list names-grid">
+            <li class="name-offer" v-for="listing in service.listings" :key="listing.accountName">
+              <strong class="mono">{{ listing.accountName }}</strong>
+              <span>{{ listing.seller }}</span>
+              <span>{{ listing.price }}</span>
+              <span v-if="listing.usdCents > 0">{{ usd(listing.usdCents) }}</span>
+              <span>{{ listing.sold ? 'Sold' : 'For sale' }}</span
+              ><button
+                v-if="!listing.sold"
+                type="button"
+                class="secondary"
+                @click="chooseName(listing.accountName)"
+              >
+                Check this name <ArrowRight aria-hidden="true" />
+              </button>
+            </li>
+          </ul>
+          <p class="field-help">{{ nameFee }}</p>
+          <p v-if="service.cardPayments === false">
+            Card payments are not configured on this service.
+          </p>
+        </details>
       </template>
       <p class="field-help">
         Want to offer names? Open
@@ -532,3 +600,34 @@ async function pay() {
     </div>
   </section>
 </template>
+
+<style scoped>
+.name-inspiration,
+.name-catalogue {
+  margin-top: 1.5rem;
+  border-top: 1px solid var(--border-default);
+  padding-top: 1rem;
+}
+.name-inspiration summary,
+.name-catalogue summary {
+  min-height: 44px;
+}
+.name-check {
+  margin-top: 1rem;
+}
+.quote-card {
+  margin-top: 1rem;
+}
+.quote-card h2 {
+  overflow-wrap: anywhere;
+}
+.key-once {
+  padding: 1.25rem;
+  border: 1px solid var(--border-default);
+  border-radius: 1rem;
+  margin-top: 1rem;
+}
+.name-suggestions button {
+  min-height: 44px;
+}
+</style>

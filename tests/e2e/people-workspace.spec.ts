@@ -201,6 +201,74 @@ test.beforeEach(async ({ page }) => {
     });
   });
 });
+test('directory search can clear a no-match result and filters the own card too', async ({
+  page,
+}) => {
+  await page.goto('/users');
+  await expect(page.locator('.person-card')).toHaveCount(2);
+  await page.getByRole('searchbox', { name: 'Search users' }).fill('no such community member');
+  await expect(page.locator('.person-card')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Clear filters', exact: true }).click();
+  await expect(page.locator('.person-card')).toHaveCount(2);
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+});
+test('failed profile lookup can retry without claiming the member is missing', async ({ page }) => {
+  let reads = 0;
+  await page.route('**/v1/daos/1/content?*', (route) => {
+    reads++;
+    return reads === 1
+      ? route.fulfill({
+          status: 503,
+          json: { code: 'SERVICE_UNAVAILABLE', message: 'Unavailable' },
+        })
+      : route.fulfill({ json: content });
+  });
+  await page.goto('/users/1/1');
+  await expect(page.getByRole('alert')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'User unavailable' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Retry profile', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Alice Adams', exact: true })).toBeVisible();
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  await page.screenshot({ path: test.info().outputPath('member-profile.png'), fullPage: true });
+});
+test('foreign DAO public profiles cannot supply a member detail', async ({ page }) => {
+  await page.route('**/v1/people?*', (route) =>
+    route.fulfill({
+      json: {
+        profiles: [{ ...profiles.profiles[0], dao: { ...reference, daoId: '77' } }],
+        next: null,
+      },
+    }),
+  );
+  await page.goto('/users/1/1');
+  await expect(page.getByRole('heading', { name: 'alice', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Alice Adams', exact: true })).toHaveCount(0);
+});
+test('Users excludes memberships and cards from a foreign deployment', async ({ page }) => {
+  const foreign = { ...reference, chainId: 'cd'.repeat(32) };
+  await page.route('**/v1/me/memberships', (route) =>
+    route.fulfill({ json: { memberships: [{ ...member, dao: foreign }] } }),
+  );
+  await page.route('**/v1/people/members?*', (route) =>
+    route.fulfill({
+      json: {
+        members: [
+          {
+            dao: foreign,
+            id: '1',
+            native_account: 'alice',
+            active: true,
+            profile: profiles.profiles[0]?.profile,
+          },
+        ],
+        next: null,
+      },
+    }),
+  );
+  await page.goto('/users');
+  await expect(page.locator('.person-card')).toHaveCount(1);
+  await expect(page.getByRole('heading', { name: 'Your profile', exact: true })).toBeVisible();
+});
 test('signed-out Users shows existing members before they publish profiles', async ({ page }) => {
   await page.route('**/v1/people?*', (route) =>
     route.fulfill({ json: { profiles: [], next: null } }),
@@ -301,7 +369,9 @@ test('sidebar and hub open the same DAO; members have shared public profiles and
   await page.getByRole('button', { name: 'List view', exact: true }).click();
   await expect(page.locator('.people-list')).toBeVisible();
   await page.getByRole('link', { name: /Alice Adams/ }).click();
-  await expect(page.getByRole('heading', { name: 'Alice Adams', exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Alice Adams', level: 1, exact: true }),
+  ).toBeVisible();
   await expect(page.getByRole('button', { name: 'Edit profile & account' })).toHaveCount(0);
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   await page.screenshot({ path: test.info().outputPath('member-profile.png'), fullPage: true });

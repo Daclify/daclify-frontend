@@ -15,6 +15,8 @@ const props = defineProps<{
   }>;
   members?: boolean;
   loading?: boolean;
+  failed?: boolean;
+  hasMore?: boolean;
   emptyText?: string;
 }>();
 function savedView() {
@@ -39,18 +41,17 @@ const visible = computed(() =>
   props.people
     .filter(
       (person) =>
-        (person.own ||
-          [
-            person.label,
-            person.profile?.fullName,
-            person.profile?.name,
-            person.profile?.location,
-            person.profile?.motto,
-            ...(person.badges ?? []),
-          ]
-            .join(' ')
-            .toLowerCase()
-            .includes(search.value.trim().toLowerCase())) &&
+        [
+          person.label,
+          person.profile?.fullName,
+          person.profile?.name,
+          person.profile?.location,
+          person.profile?.motto,
+          ...(person.badges ?? []),
+        ]
+          .join(' ')
+          .toLowerCase()
+          .includes(search.value.trim().toLowerCase()) &&
         (filter.value === 'all' || (filter.value === 'active' ? person.active : !person.active)),
     )
     .sort((a, b) => Number(!!b.own) - Number(!!a.own)),
@@ -62,7 +63,7 @@ const visible = computed(() =>
       ><Search aria-hidden="true" /><span class="sr-only">Search users</span
       ><input
         v-model="search"
-        placeholder="Search names, roles or locations…"
+        placeholder="Search names, communities or locations…"
         type="search" /></label
     ><label v-if="members"
       ><span class="sr-only">Member status</span
@@ -90,6 +91,23 @@ const visible = computed(() =>
       </button>
     </div>
   </div>
+  <div class="people-results">
+    <p class="field-help" role="status">
+      {{ visible.length }} of {{ people.length }} {{ members ? 'members' : 'users' }} shown
+      <span v-if="hasMore"> · search covers loaded users; load more to expand it</span>
+    </p>
+    <button
+      v-if="search || filter !== 'all'"
+      class="text-button"
+      type="button"
+      @click="
+        search = '';
+        filter = 'all';
+      "
+    >
+      Clear filters
+    </button>
+  </div>
   <div class="people-grid" :class="{ 'people-list': view === 'list' }">
     <PersonCard
       v-for="person in visible"
@@ -102,7 +120,7 @@ const visible = computed(() =>
       :heading="members ? 'h3' : 'h2'"
     />
   </div>
-  <p v-if="!visible.length && !loading" class="empty-state">
+  <p v-if="!visible.length && !loading && !failed" class="empty-state">
     {{
       people.length
         ? 'No users match this view.'
@@ -110,3 +128,19 @@ const visible = computed(() =>
     }}
   </p>
 </template>
+<style scoped>
+.people-results {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: -0.5rem 0 1rem;
+}
+.people-results p {
+  margin: 0;
+}
+.people-results button {
+  min-height: 44px;
+}
+</style>
