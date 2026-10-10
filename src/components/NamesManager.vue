@@ -357,8 +357,9 @@ async function removeListing(value: string, suffix: boolean) {
           </p>
           <label class="check-line"
             ><input v-model="consent" type="checkbox" />I accept the platform’s
-            {{ (service.thirdPartyBps ?? 0) / 100 }}% fee and {{ (service.bumpBps ?? 0) / 100 }}%
-            price increase after each suffix sale.</label
+            {{ (service.thirdPartyBps ?? 0) / 100 }}% fee on the full sale price, deduction of
+            actual RAM, CPU and NET costs, and {{ (service.bumpBps ?? 0) / 100 }}% price increase
+            after each suffix sale. I receive the remaining sale proceeds.</label
           ><button :disabled="busy || !consent || !seller || !contract">
             {{ mode === 'dao' ? 'Export for DAO approval' : 'Sign and publish listing' }}
           </button>
