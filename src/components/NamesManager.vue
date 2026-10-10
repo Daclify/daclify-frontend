@@ -387,7 +387,9 @@ async function removeListing(value: string, suffix: boolean) {
             @click="exportSetup"
           >
             <Download aria-hidden="true" />Export owner-review setup</button
-          ><RouterLink to="/docs/marketplace">Read the seller guide ↗</RouterLink>
+          ><RouterLink class="seller-guide" to="/docs/marketplace"
+            >Read the seller guide ↗</RouterLink
+          >
         </section>
         <section class="panel">
           <h3>Know what you are listing</h3>
@@ -409,7 +411,7 @@ async function removeListing(value: string, suffix: boolean) {
       <div class="names-grid">
         <article v-for="item in owned" :key="item.suffix" class="name-offer">
           <h3>.{{ item.suffix }}</h3>
-          <p>{{ item.price }} · {{ item.sales }} sales</p>
+          <p>Seller reference: {{ item.price }} · {{ item.sales }} sales</p>
           <button class="secondary" type="button" @click="edit(item)">Update suffix price</button>
           <button
             type="button"
@@ -422,7 +424,7 @@ async function removeListing(value: string, suffix: boolean) {
         </article>
         <article v-for="item in exact" :key="item.accountName" class="name-offer">
           <h3>{{ item.accountName }}</h3>
-          <p>{{ item.price }} · {{ item.sold ? 'Sold' : 'Listed' }}</p>
+          <p>Seller reference: {{ item.price }} · {{ item.sold ? 'Sold' : 'Listed' }}</p>
           <div v-if="!item.sold" class="button-row">
             <button type="button" class="secondary" @click="editExact(item)">Edit listing</button
             ><button

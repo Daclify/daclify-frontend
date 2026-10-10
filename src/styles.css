@@ -2372,6 +2372,11 @@ nav a,
   width: 18px;
   height: 18px;
 }
+.names-management .seller-guide {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
 @media (max-width: 700px) {
   .names-discovery {
     grid-template-columns: 1fr;

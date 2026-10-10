@@ -219,6 +219,8 @@ test('suggests valid ideas, shows DAO seller boundaries and exports narrowly sco
 test('prevents below-floor suffix and exact-name exports and shows the normal account minimum', async ({
   page,
 }) => {
+  if (test.info().project.name === 'mobile-chromium')
+    await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/names');
   await page
     .getByRole('group', { name: 'Names views' })
@@ -248,4 +250,13 @@ test('prevents below-floor suffix and exact-name exports and shows the normal ac
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export for DAO approval', exact: true }).click();
   expect((await download).suggestedFilename()).toBe('daclify-name-listing.json');
+  const guide = await page.getByRole('link', { name: 'Read the seller guide ↗' }).boundingBox();
+  expect(guide?.height).toBeGreaterThanOrEqual(24);
+  expect(
+    (
+      await new AxeBuilder({ page })
+        .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
+        .analyze()
+    ).violations,
+  ).toEqual([]);
 });

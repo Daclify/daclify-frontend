@@ -578,12 +578,16 @@ async function pay() {
                 price then rises {{ feeLabel(service.bumpBps ?? 0) }}. A dotted name cannot be sold
                 until that suffix is connected.
               </p>
+              <p class="field-help">
+                Suffix accounts cost at least the current basic-account price. The prices below are
+                seller references; check a name for its current payable price.
+              </p>
               <p v-if="service.suffixes.length === 0">No suffix is connected yet.</p>
               <ul v-else class="market-list">
                 <li v-for="suffix in service.suffixes" :key="suffix.suffix">
                   <strong class="mono">.{{ suffix.suffix }}</strong>
                   <span>{{ suffix.seller }}</span>
-                  <span>{{ suffix.price }}</span>
+                  <span>Seller reference: {{ suffix.price }}</span>
                   <span v-if="suffix.usdCents > 0">{{ usd(suffix.usdCents) }}</span>
                   <span>{{ suffix.sales }} sales</span>
                 </li>
@@ -596,7 +600,7 @@ async function pay() {
             <li class="name-offer" v-for="listing in service.listings" :key="listing.accountName">
               <strong class="mono">{{ listing.accountName }}</strong>
               <span>{{ listing.seller }}</span>
-              <span>{{ listing.price }}</span>
+              <span>Seller reference: {{ listing.price }}</span>
               <span v-if="listing.usdCents > 0">{{ usd(listing.usdCents) }}</span>
               <span>{{ listing.sold ? 'Sold' : 'For sale' }}</span
               ><button
