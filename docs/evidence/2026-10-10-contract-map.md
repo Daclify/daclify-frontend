@@ -110,3 +110,5 @@ Installed the checked isolated build with assets first and atomic index replacem
 Ignored frontend artifacts: `.artifacts/permission-tree-public-tree.png`, `.artifacts/permission-tree-public-mobile-tree.png`, desktop/mobile full-page captures, `.artifacts/permission-tree-public-report.json`. Synthetic regressions and polish screenshots remain in the task-only archive's `.artifacts/permission-tree-final/` and `.artifacts/permission-tree-polish/`.
 
 Inline review checked actual-parent grouping, cycle/orphan retention, per-permission signer weights and thresholds, matching-only RPC links, public resource/cancellation boundaries, native keyboard disclosures, full-key wrapping and preserved card/inspector navigation. No outstanding important finding. Concurrent auth/package/vendor/docs work, including its separate changelog entry, is preserved and excluded from this change's commit/build.
+
+Follow-up implementation `d5121bc` is committed and pushed to `origin/dev`; the remote ref was verified. Only the tree files and its changelog section were included. The final ledger update follows separately without changing tested/deployed code.
