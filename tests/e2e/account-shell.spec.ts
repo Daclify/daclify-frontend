@@ -132,7 +132,7 @@ test('reviews EVM pairing and removal using a provider fixture', async ({ page }
   await expect(page.getByRole('button', { name: 'Remove sign-in pairing' })).toHaveCount(0);
   await page.getByRole('tab', { name: 'Sign-in methods', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Sign-in methods', exact: true })).toBeVisible();
-  await page.getByRole('tab', { name: 'Billing', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Service payment', exact: true })).toBeVisible();
+  await page.getByRole('tab', { name: 'Payment history', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Payment history', exact: true })).toBeVisible();
   await noOverflow(page);
 });

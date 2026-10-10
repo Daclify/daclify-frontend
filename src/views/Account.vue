@@ -12,7 +12,7 @@ import {
 } from '@lucide/vue';
 import { useWorkspace } from '../state/workspace';
 import { api, friendlyError, type ServiceReceipt } from '../api/client';
-import { formatReceiptAmount, hostedCheckoutUrl } from '../api/billing';
+import { formatReceiptAmount } from '../api/billing';
 import {
   createVault,
   generateVaultPassword,
@@ -46,7 +46,7 @@ const accountTabs = [
   { id: 'keys', label: 'Access & recovery', icon: ShieldCheck },
   { id: 'sign-in', label: 'Sign-in methods', icon: FingerprintPattern },
   { id: 'profile', label: 'Profile', icon: UserRound },
-  { id: 'service', label: 'Billing', icon: CreditCard },
+  { id: 'service', label: 'Payment history', icon: CreditCard },
 ] as const;
 type AccountTab = (typeof accountTabs)[number]['id'];
 function billingTab(value: unknown): boolean {
@@ -170,10 +170,11 @@ const accountKit = computed(() => {
     : undefined;
 });
 const receipts = ref<ServiceReceipt[]>([]);
+const receiptsLoading = ref(false);
 const billingError = ref('');
 const billingNote = computed(() => {
   if (route.query.billing === 'submitted') {
-    return 'The card payment is recorded when Stripe notifies this service. Refresh the receipt if it is not listed yet.';
+    return 'The card payment is recorded when Stripe notifies this service. Refresh history if it is not listed yet.';
   }
   if (route.query.billing === 'cancelled') return 'The card payment was cancelled.';
   return '';
@@ -182,31 +183,29 @@ watch(
   () => state.account?.id,
   (id) => {
     receipts.value = [];
+    receiptsLoading.value = false;
+    billingError.value = '';
     if (id) void loadReceipts();
   },
   { immediate: true },
 );
 async function loadReceipts() {
+  const accountId = state.account?.id;
+  if (!accountId) return;
+  receiptsLoading.value = true;
   billingError.value = '';
   try {
-    receipts.value = (await api.serviceReceipts()).receipts;
+    const response = await api.serviceReceipts();
+    if (state.account?.id === accountId) receipts.value = response.receipts;
   } catch (cause) {
+    if (state.account?.id !== accountId) return;
     receipts.value = [];
-    if (!(cause instanceof Error) || cause.message !== 'STRIPE_NOT_CONFIGURED') {
-      if (cause instanceof Error && cause.message === 'AUTH_REQUIRED') return;
-      billingError.value = friendlyError(cause);
-    }
-  }
-}
-async function pay() {
-  busy.value = true;
-  billingError.value = '';
-  try {
-    const checkout = await api.serviceCheckout();
-    window.location.assign(hostedCheckoutUrl(checkout.url));
-  } catch (cause) {
-    billingError.value = friendlyError(cause);
-    busy.value = false;
+    billingError.value =
+      cause instanceof Error && cause.message === 'STRIPE_NOT_CONFIGURED'
+        ? 'Payment history is unavailable on this service.'
+        : friendlyError(cause);
+  } finally {
+    if (state.account?.id === accountId) receiptsLoading.value = false;
   }
 }
 const password = ref('');
@@ -657,23 +656,25 @@ function backup() {
       class="panel settings-panel"
       role="tabpanel"
       aria-labelledby="account-tab-service"
+      :aria-busy="receiptsLoading"
     >
-      <h2>Service payment</h2>
-      <p>
-        Card checkout uses the Stripe price configured for this service. A card payment does not
-        change votes, permissions, withdrawals, or a DAO treasury.
-      </p>
+      <h2>Payment history</h2>
+      <p>Your Daclify service payment receipts.</p>
       <p v-if="billingNote">{{ billingNote }}</p>
       <p v-if="billingError" class="alert" role="alert">{{ billingError }}</p>
-      <ul v-if="receipts.length" class="receipt-list">
+      <p v-if="receiptsLoading" role="status">Loading payment history…</p>
+      <ul v-if="receipts.length" class="receipt-list" aria-label="Service payment receipts">
         <li v-for="(receipt, index) in receipts" :key="index">
-          {{ receipt.status }} · {{ formatReceiptAmount(receipt.currency, receipt.amountMinor) }}
+          {{ receipt.status === 'paid' ? 'Paid' : 'Failed' }} ·
+          {{ formatReceiptAmount(receipt.currency, receipt.amountMinor) }}
         </li>
       </ul>
+      <p v-else-if="!receiptsLoading && !billingError" class="muted">
+        No service payment receipts yet.
+      </p>
       <div class="button-row">
-        <button type="button" :disabled="busy" @click="pay">Continue to card payment</button
-        ><button type="button" class="secondary" :disabled="busy" @click="loadReceipts">
-          Refresh receipt
+        <button type="button" class="secondary" :disabled="receiptsLoading" @click="loadReceipts">
+          Refresh history
         </button>
       </div>
     </section>

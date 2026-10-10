@@ -42,7 +42,7 @@ test('local mode keeps the proxy and hides the public network switch', async ({ 
   await expect(page.getByRole('group', { name: 'Service network' })).toHaveCount(0);
 });
 
-test('a deployed build switches production and testnet and starts card checkout', async ({
+test('a deployed build switches production and testnet with read-only payment history', async ({
   page,
 }) => {
   const production = network('mainnet', 'https://telos.caleos.io');
@@ -71,16 +71,11 @@ test('a deployed build switches production and testnet and starts card checkout'
               ? { memberships: [] }
               : url.pathname === '/v1/billing/receipts'
                 ? { receipts: [] }
-                : url.pathname === '/v1/billing/checkout'
-                  ? { url: 'https://checkout.stripe.com/c/pay/cs_test_fixture' }
-                  : signedOut;
+                : signedOut;
     await route.fulfill({ status: 200, headers: cors, json: body });
   }
   await page.route(`${productionOrigin}/**`, (route) => serve(route, 'mainnet'));
   await page.route(`${testnetOrigin}/**`, (route) => serve(route, 'testnet'));
-  await page.route('https://checkout.stripe.com/**', (route) =>
-    route.fulfill({ status: 200, body: 'checkout', contentType: 'text/html' }),
-  );
   await page.goto('/');
   await expect(page.getByRole('button', { name: 'Production' })).toHaveAttribute(
     'aria-pressed',
@@ -88,10 +83,10 @@ test('a deployed build switches production and testnet and starts card checkout'
   );
   await expect(page.getByText('mainnet network', { exact: true })).toBeAttached();
   await page.goto('/account');
-  await page.getByRole('tab', { name: 'Billing', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Service payment' })).toBeVisible();
-  await page.getByRole('button', { name: 'Continue to card payment' }).click();
-  await expect(page).toHaveURL(/checkout\.stripe\.com/);
+  await page.getByRole('tab', { name: 'Payment history', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Payment history' })).toBeVisible();
+  await expect(page.getByText('No service payment receipts yet.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Continue to card payment' })).toHaveCount(0);
   await page.goto('/');
   await page.getByRole('button', { name: 'Testnet' }).click();
   await expect(page.getByRole('button', { name: 'Testnet' })).toHaveAttribute(

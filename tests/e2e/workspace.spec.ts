@@ -93,19 +93,16 @@ test('shows card payment state without treating the return page as paid', async 
   await page.getByRole('button', { name: 'Create encrypted vault' }).click();
   await page.getByLabel('I have saved my recovery kit and credential').check();
   await page.getByRole('button', { name: 'Finish account setup' }).click();
-  await page.getByRole('tab', { name: 'Billing', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Service payment', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Continue to card payment' }).click();
-  await expect(page.getByRole('alert')).toContainText(
-    'Card payments are not configured on this service.',
-  );
+  await page.getByRole('tab', { name: 'Payment history', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Payment history', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Continue to card payment' })).toHaveCount(0);
   await page.goto('/account?billing=cancelled');
   await expect(page.getByText('The card payment was cancelled.', { exact: true })).toBeVisible();
   await expect(page.locator('.receipt-list')).toHaveCount(0);
   await page.goto('/account?billing=submitted');
   await expect(
     page.getByText(
-      'The card payment is recorded when Stripe notifies this service. Refresh the receipt if it is not listed yet.',
+      'The card payment is recorded when Stripe notifies this service. Refresh history if it is not listed yet.',
       { exact: true },
     ),
   ).toBeVisible();

@@ -153,7 +153,7 @@ test('keeps account tasks compact and all paired methods reachable by keyboard',
   ).toBeVisible();
   await page.getByRole('tab', { name: 'Sign-in methods', exact: true }).focus();
   await page.keyboard.press('End');
-  await expect(page.getByRole('tab', { name: 'Billing', exact: true })).toBeFocused();
+  await expect(page.getByRole('tab', { name: 'Payment history', exact: true })).toBeFocused();
   await page.keyboard.press('Home');
   await expect(access).toBeFocused();
   await page.setViewportSize({ width: 320, height: 720 });

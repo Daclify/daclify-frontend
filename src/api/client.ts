@@ -892,7 +892,6 @@ export const api = {
     ),
   relay: (requestData: instruction, sig: string) =>
     request(ApiRoutes.relay.path, ApiRoutes.relay.response, { request: requestData, sig }),
-  serviceCheckout: () => request('/v1/billing/checkout', ServiceCheckoutSchema, {}),
   serviceReceipts: () => request('/v1/billing/receipts', ServiceReceiptsSchema),
   signInOptions: () => request('/v1/sign-in/options', SignInOptionsSchema),
   resumeSession: () => request('/v1/sign-in/session', SessionSchema, {}),

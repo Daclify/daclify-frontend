@@ -26,3 +26,12 @@ Files: Account.vue, SignInMethods.vue, LinkedAccounts.vue, NativeWalletPanel.vue
 - [x] Reorganize access and device actions; consolidate EVM with other sign-in methods; use compact native disclosures and responsive profile fields. Update changed accessible labels in callers and existing tests.
 - [x] Run the new regression, existing account entry/provider/wallet/paired recovery/device tests and inspect desktop/mobile screenshots. Fix issues and review the diff inline.
 - [x] Run lint, typecheck, units, production build; update user guidance and evidence, commit only owned files and push dev. Deliver the checked frontend build to testnet under existing authorization.
+
+## Task 2: Payment history correction
+
+The user approved removing the generic checkout from account settings. Use the existing service receipt API; retain purchase-specific checkout flows and legacy billing return links.
+
+- [x] Confirm the current receipt scope and reproduce the missing Payment history behavior in the browser.
+- [x] Rename Billing to Payment history, remove generic checkout and its unused client method, and show loading, empty and unavailable states truthfully.
+- [x] Verify receipts, refresh, checkout return handling, desktop/mobile accessibility and keyboard navigation; update affected callers and user guidance.
+- [x] Review the final diff, run required checks, commit/push dev and deliver the verified testnet build.
