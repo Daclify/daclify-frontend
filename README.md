@@ -1,5 +1,27 @@
 # Daclify V2 frontend
 
+## Temporary production landing (`temp-landing`)
+
+This branch serves a standalone coming-soon landing page, with app links pointing
+to **https://testnet.app.daclify.com**. It reuses the app's brand, visual tokens,
+Inter and Lucide icons without starting the router, account session or API.
+Old application paths also show the landing through the existing SPA fallback.
+The normal application source is retained; `dev` remains the application branch.
+Do not deploy this branch to the testnet app domain: its links point there.
+
+```sh
+npm run dev
+# Open the printed local URL (normally http://127.0.0.1:5178).
+npm run build
+npm run test:e2e:landing
+```
+
+No backend or frontend API environment settings are needed for this page. Deploy
+the full `dist` directory only when approved for the production placeholder.
+It does not advertise PWA installation. The original application browser suites
+target `dev`; use the landing-specific command on this branch.
+See the [scope and verification ledger](docs/superpowers/plans/2026-10-10-temp-landing.md).
+
 Vue 3 application for account onboarding, DAO creation, governance, works, payroll, treasury, documents, and the hosted-service receipt. The stack is Vue 3, Vite, Vue Router, and Pinia. It does not use Quasar. It does not define contract rules, custody, or a second copy of the API schemas.
 
 The screen consumes the packed protocol from [daclify-backend-core](https://github.com/Daclify/daclify-backend-core) and the packed module SDK from [daclify-backend-modules](https://github.com/Daclify/daclify-backend-modules). Their versioned public packages are committed in [vendor](vendor/README.md), with integrity hashes in `package-lock.json`. A frontend-only checkout can run `npm ci` and build without backend checkouts or registry credentials. To change the SDKs, check out the producers as siblings and run core’s [development bootstrap](https://github.com/Daclify/daclify-backend-core/blob/dev/docs/development.md), then commit the refreshed packages and lockfiles. Deploy names, Stripe, and API origins are specified in core’s operations guide.

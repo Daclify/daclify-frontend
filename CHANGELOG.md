@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased — temporary production landing (`temp-landing` only)
+
+Serve a standalone coming-soon page with Daclify's existing brand, product overview,
+illustrative workspace, launch status and FAQs. App and handbook links lead to
+testnet. The placeholder starts without the application router, accounts or API
+and does not advertise PWA installation. Keep the real application source on this
+temporary branch; add dedicated desktop/mobile landing checks and preview guidance.
+
 ## 0.10.0-alpha.5 development — handbook discovery and reading
 
 Use the existing six guide collections as the overview without a duplicate sidebar. Show full-text search results with canonical paragraph previews; keep search/collection state in the URL so back/reload restores it. Preserve DAO and other route context. Provide clear empty/reset and unknown-guide recovery states.

@@ -1,6 +1,10 @@
 {
   "requirements": [
     {
+      "id": "TEMP-PRODUCTION-LANDING",
+      "tests": ["tests/e2e/landing.spec.ts"]
+    },
+    {
       "id": "ACCOUNT-ENTRY-AND-PROVIDER-CHOICES",
       "tests": [
         "tests/e2e/account-entry-experience.spec.ts",
