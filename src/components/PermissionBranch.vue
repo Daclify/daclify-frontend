@@ -307,8 +307,19 @@ function contributorName(node: PermissionNode) {
 .permission-children {
   margin: 0 0 0 18px;
   padding: 0 0 0 26px;
-  border-left: 1px solid var(--border-control);
   list-style: none;
+}
+.authority-branch[data-edge-kind='hierarchy']::after {
+  content: '';
+  position: absolute;
+  top: -12px;
+  bottom: 0;
+  left: -27px;
+  border-left: 1px solid var(--border-control);
+}
+.authority-branch[data-edge-kind='hierarchy']:last-child::after {
+  bottom: auto;
+  height: 44px;
 }
 .authority-branch[data-edge-kind='hierarchy']::before {
   content: '';
@@ -364,6 +375,9 @@ summary:focus-visible,
   .authority-branch[data-edge-kind='hierarchy']::before {
     left: -13px;
     width: 12px;
+  }
+  .authority-branch[data-edge-kind='hierarchy']::after {
+    left: -13px;
   }
   .contributor-select {
     grid-template-columns: 24px 16px minmax(0, 1fr);

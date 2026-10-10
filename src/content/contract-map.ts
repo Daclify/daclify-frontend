@@ -170,18 +170,19 @@ export function authorityConnections(
 export interface ContractConnection {
   from: string;
   to: string;
-  kind: 'delegation' | 'action';
+  kind: 'delegation' | 'action' | 'configuration';
   descriptions: string[];
 }
 
 export function contractConnections(
   contracts: ContractReading[],
   readings: Readonly<Record<string, Pick<API.v1.AccountObject, 'permissions'>>> = {},
+  configuration?: Pick<NonNullable<PlatformStatus['chain']>, 'network' | 'fees' | 'creation'>,
 ): ContractConnection[] {
   const accounts = new Set(contracts.map((contract) => contract.account));
   const connections = new Map<string, ContractConnection>();
   const add = (from: string, to: string, kind: ContractConnection['kind'], description: string) => {
-    if (from === to || !accounts.has(to)) return;
+    if (from === to || !accounts.has(from) || !accounts.has(to)) return;
     const id = kind + ':' + from + ':' + to;
     const existing = connections.get(id);
     if (existing) existing.descriptions.push(description);
@@ -209,6 +210,16 @@ export function contractConnections(
       ) ?? [])
         add(contract.account, link.split('::')[0] ?? '', 'action', authority + ' → ' + link);
     }
+  if (configuration) {
+    const runtime = configuration.network.runtime;
+    for (const [account, role] of [
+      [configuration.network.hub, 'Hub registry'],
+      [configuration.creation?.settler, 'Creation settler'],
+      [configuration.fees?.treasury, 'Fee treasury'],
+      [configuration.fees?.names, 'Name service'],
+    ])
+      if (account) add(runtime, account, 'configuration', runtime + ' → ' + account + ' · ' + role);
+  }
   return [...connections.values()];
 }
 

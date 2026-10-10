@@ -47,7 +47,9 @@ const delegatedDefinition = computed(
         contract.permissions.some((permission) => permission.name === node.value?.permission),
     ),
 );
-const diagramConnections = computed(() => contractConnections(contracts.value, readings.value));
+const diagramConnections = computed(() =>
+  contractConnections(contracts.value, readings.value, props.chain ?? undefined),
+);
 const accountDetails = computed(() => {
   const contract = selected.value;
   if (!contract) return;

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { API, PrivateKey } from '@wharfkit/antelope';
+import { NetworkSchema, VERSION } from '@daclify/core-protocol';
 import {
   authorityConnections,
   contractConnections,
@@ -216,6 +217,98 @@ describe('contract account connections', () => {
           permissions: contract.permissions.filter((permission) => permission.keys.length),
         },
       ]),
+    ).toEqual([]);
+  });
+});
+describe('configured contract account roles', () => {
+  const configuration = {
+    network: NetworkSchema.parse({
+      chainId: 'ab'.repeat(32),
+      rpcUrl: 'https://rpc.example',
+      runtime: 'core.we',
+      hub: 'hub',
+      environment: 'local',
+      interfaceVersion: 1,
+      coreVersion: VERSION,
+      capabilities: [],
+    }),
+    fees: {
+      third_party_bps: 500,
+      first_party_bps: 10000,
+      treasury: 'fees',
+      token_contract: 'eosio.token',
+      token_symbol: '4,TLOS',
+      names: 'names',
+    },
+    creation: {
+      shared_usd: 0,
+      independent_usd: 5000,
+      premium_bps: 2000,
+      settler: 'relay',
+      median: '1',
+      precision: 4,
+      observed_at: 1,
+    },
+  };
+  const accounts = ['hub', 'relay', 'fees', 'names'].map((account) => ({
+    ...contract,
+    account,
+    permissions: [],
+  }));
+  it('shows configured roles with their own relationship kind even without delegated authorities or linked actions', () => {
+    expect(contractConnections([contract, ...accounts], {}, configuration)).toEqual([
+      {
+        from: 'core.we',
+        to: 'hub',
+        kind: 'configuration',
+        descriptions: ['core.we → hub · Hub registry'],
+      },
+      {
+        from: 'core.we',
+        to: 'relay',
+        kind: 'configuration',
+        descriptions: ['core.we → relay · Creation settler'],
+      },
+      {
+        from: 'core.we',
+        to: 'fees',
+        kind: 'configuration',
+        descriptions: ['core.we → fees · Fee treasury'],
+      },
+      {
+        from: 'core.we',
+        to: 'names',
+        kind: 'configuration',
+        descriptions: ['core.we → names · Name service'],
+      },
+    ]);
+  });
+  it('does not invent missing, external or self references, and requires both accounts to be present', () => {
+    expect(contractConnections(accounts, {}, configuration)).toEqual([]);
+    expect(contractConnections([contract], {}, configuration)).toEqual([]);
+    expect(
+      contractConnections(
+        [contract, ...accounts],
+        {},
+        {
+          ...configuration,
+          network: { ...configuration.network, hub: null },
+          fees: null,
+          creation: null,
+        },
+      ),
+    ).toEqual([]);
+    expect(
+      contractConnections(
+        [contract, ...accounts],
+        {},
+        {
+          ...configuration,
+          network: { ...configuration.network, hub: 'core.we' },
+          fees: { ...configuration.fees, treasury: '', names: 'outside' },
+          creation: null,
+        },
+      ),
     ).toEqual([]);
   });
 });

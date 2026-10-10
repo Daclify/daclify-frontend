@@ -6,7 +6,7 @@ Choose which paired methods unlock the original vault on another device, with di
 
 ## Unreleased — interactive contract authorities
 
-Show contract accounts as a name-only connection diagram; selecting a name switches one Contract Account Details panel with live RAM, CPU, NET, a nested permission tree and release hashes. Draw reported cross-account delegations and matched action links; highlight shared signing keys without inventing contract calls. Keep full keys, threshold badges and signer weights inline in the tree. Remove reversible cards, the list toggle and duplicate authority disclosures. Preserve exact integer readings, explicit unlimited/unknown/failure states, chain/account checks, retry and refresh selection. Include keyboard, mobile and enlarged-text access. No authority changes or new dependencies.
+Show contract accounts as a name-only connection diagram; selecting a name switches one Contract Account Details panel with live RAM, CPU, NET, a nested permission tree and release hashes. Draw reported cross-account delegations, matched action links and distinct configured Hub/settler/treasury/name-service connections; highlight shared signing keys without inventing contract calls. Keep full keys, threshold badges and signer weights inline in the tree, with connectors ending at the last child. Remove reversible cards, the list toggle and duplicate authority disclosures. Preserve exact integer readings, explicit unlimited/unknown/failure states, chain/account checks, retry and refresh selection. Include keyboard, mobile and enlarged-text access. No authority changes or new dependencies.
 
 ## 0.10.0-alpha.10 development — recover with a kit's vault password
 

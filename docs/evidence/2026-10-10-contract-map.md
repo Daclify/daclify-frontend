@@ -162,3 +162,55 @@ After strengthening disclosure retention assertions, reran that regression on de
 The independent account work was committed as `f015f75` on the shared dev branch during final delivery. This UI commit follows it and changes only the thirteen listed UI/test/guide/changelog files. Both the original baseline and integrated 0.12 build were verified as recorded above.
 
 Git delivery: implementation `3032ed2` is committed and pushed to `origin/dev`; remote SHA `3032ed2180e3974db4d6db4bf81a477e43a6f198` was verified. The final documentation ledger follows separately. Application source matches the qualified 0.12 integration snapshot and the public entry page matches the installed checked build.
+
+## Tree endpoints and configured account connections
+
+Baseline: `3adc0ac`. The user requests that a tree connector stop at active when no custom child follows, and asks why Hub, Relay, Fees and Names appear isolated. They explicitly approve showing configured connections with a separate line style. The original graph showed cross-contract permission delegations and matching RPC action links only. Actual public status and direct account RPC reads confirm that these four accounts have no such links in this snapshot, while canonical configuration references them:
+
+| Producer field | Account | Displayed role |
+| --- | --- | --- |
+| network.hub | daclifyhubv1 | Hub registry |
+| creation.settler | daclifyrelay | Creation settler |
+| fees.treasury | daclifyfees1 | Fee treasury |
+| fees.names | daclifynames | Name service |
+
+Configured relationships now have dotted cream arrows from the runtime, their own legend and accessible role descriptions. Both endpoints must be returned accounts; missing, external and self references are omitted. The existing permission-related layers and name-only account buttons remain. Configuration paths route outside intervening nodes. Configuration is distinct from owner/active signing authority, while configured actors can be trusted for business operations: the native runtime reads the creation settler and requires its authorization in `../daclify-backend-core/contracts/runtime/runtime.cpp`. No native authority was changed.
+
+The original Decid tree was measured with a 66-pixel tail below active's elbow. Replace the full child-list border with individual branch spines; the final sibling's spine meets its elbow, while earlier siblings continue and custom children retain their own nested connectors. This CSS correction is verified through actual layout measurements and screenshots rather than a committed test mirroring CSS declarations.
+
+Configured-role RED: the positive model expected four edges and received none; the browser expected four configuration paths and found none. GREEN: sixteen model cases and the focused role-selection browser case pass. Vue/type checking caught a test tuple inferred as string|undefined; a literal const tuple corrects the test typing. No application cast, suppression, new dependency or producer change was introduced.
+
+### Qualification and actual read-back
+
+| Check | Actual result |
+| --- | --- |
+| Current-version full units | 209/209 pass, including 16 model cases |
+| Complete desktop/mobile Status and guide browsers | 52/52 pass |
+| Changed source/test formatting | Pass |
+| Isolated archive full units | 209/209 pass |
+| Isolated configured selection and responsive/keyboard/200%/Axe cases | 4/4 pass across both projects |
+| Isolated Vue/type/testnet build | Pass; existing Docs chunk-size warning remains |
+| Actual public API/RPC | 10 accounts with checked resources, 5 aggregated action edges, 4 configured-role edges, 57 matched runtime action chips |
+| Actual tree endpoints | 10 checks across owner/active/custom trees, configured accounts, mobile and 200% text; no spine extends below the final elbow |
+| Actual public Axe | Zero desktop, expanded-action and mobile violations |
+| Actual public build identity | All 30 loaded assets match installed files byte-for-byte |
+
+The isolated archive `/data/daclify-runtime/configured-connections-check-69btevis` uses committed 0.12.0-alpha.1 plus this correction's six source/test files and installs the unchanged lockfile with `npm ci --ignore-scripts --no-audit --no-fund`. Concurrent account-settings work, including Account.vue, DeviceApproval.vue and related components/tests/guides, remains excluded from the archive and this commit. Every correction source/test file matches the checked archive's bytes. Units use `--maxWorkers=4 --testTimeout=15000` and browsers use `--timeout=60000`, following the VM-load evidence above. No skipped cases, weakened assertions or cryptography/runtime timeout changes.
+
+Complete browser command:
+
+```sh
+LD_LIBRARY_PATH=/data/daclify-runtime/browser-libs/usr/lib/x86_64-linux-gnu \
+DACLIFY_TEST_UI_PORT=5468 npx playwright test \
+tests/e2e/status-map.spec.ts tests/e2e/status-tabs.spec.ts \
+tests/e2e/contract-permissions.spec.ts --timeout=60000 \
+--output=.artifacts/configured-connections-final
+```
+
+The final isolated build uses the public testnet settings and `npm run build -- --mode testnet --outDir .artifacts/configured-connections-testnet-dist`. Before publishing, verify that the installed index has not changed concurrently. Copy assets first, keep old hashed assets and replace the index atomically. Compare every built file against the installed bytes. Backup: `/data/daclify-runtime/configured-connections-before-20261010-181634`. No backend/service restart, production deployment, signing or account mutation occurred.
+
+Public API snapshot: `2026-10-10T18:16:38.057Z`, version `0.12.0-alpha.1`; read-back completed `2026-10-10T18:16:48.685Z` UTC. Fresh anonymous browser uses actual HTTPS/API/RPC without response interception. Keyboard selection switches each configured account's details; the Works leaf and core's execctx hierarchy have correctly terminated connectors. Actual desktop diagram, leaf tree and mobile diagram screenshots were inspected.
+
+Ignored frontend artifacts: `.artifacts/configured-connections-public-diagram.png`, `.artifacts/configured-connections-public-leaf-tree.png`, desktop/mobile details captures, `.artifacts/configured-connections-public-mobile-diagram.png`, `.artifacts/configured-connections-public-report.json` and the read-back script `.artifacts/configured-connections-public.mjs`.
+
+Inline final review checks endpoint guards, configured-role semantics, permission/action aggregation, layout routing, actual-parent tree endings, selected-account resources and keyboard/narrow/enlarged-text access. No outstanding important finding. Safari/Firefox, physical screen readers and Telegram webviews remain untested. Wider contract-call relationships are not inferred from these four configuration references.

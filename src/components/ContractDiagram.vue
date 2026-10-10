@@ -19,10 +19,11 @@ const layers = computed(() => {
   const remaining = new Set(accounts);
   remaining.delete(root);
   const rows = [[root]];
+  const permissionConnections = props.connections.filter((edge) => edge.kind !== 'configuration');
   let frontier = new Set([root]);
   while (frontier.size) {
     const neighbors = new Set(
-      props.connections.flatMap((edge) =>
+      permissionConnections.flatMap((edge) =>
         frontier.has(edge.from) ? [edge.to] : frontier.has(edge.to) ? [edge.from] : [],
       ),
     );
@@ -60,6 +61,14 @@ function measure() {
     const y2 = to.top + to.height / 2 - origin.top;
     const dx = x2 - x1,
       dy = y2 - y1;
+    if (connection.kind === 'configuration') {
+      const left = x2 < x1 || (Math.abs(dx) < 10 && index % 2 === 0);
+      const sideX = left ? 12 : origin.width - 12;
+      const startX = (left ? from.left : from.right) - origin.left;
+      const endY = to.top - origin.top;
+      // Keep configured-role lines outside intervening permission nodes.
+      return [{ connection, d: `M ${startX} ${y1} H ${sideX} V ${endY - 14} H ${x2} V ${endY}` }];
+    }
     const source = Math.min(
       from.width / 2 / (Math.abs(dx) || 1),
       from.height / 2 / (Math.abs(dy) || 1),
@@ -119,6 +128,17 @@ onUnmounted(() => observer?.disconnect());
           >
             <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--state-success)" />
           </marker>
+          <marker
+            id="contract-configuration-arrow"
+            viewBox="0 0 10 10"
+            refX="10"
+            refY="5"
+            markerWidth="6"
+            markerHeight="6"
+            orient="auto-start-reverse"
+          >
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--text-secondary)" />
+          </marker>
         </defs>
         <path
           v-for="path in paths"
@@ -144,7 +164,7 @@ onUnmounted(() => observer?.disconnect());
           :data-related="related.has(account)"
           :aria-pressed="selected === account"
           aria-controls="contract-account-details"
-          :aria-description="descriptions(account) || 'No cross-contract permission link reported.'"
+          :aria-description="descriptions(account) || 'No account connection reported.'"
           :title="descriptions(account)"
           @click="emit('select', account)"
         >
@@ -155,13 +175,14 @@ onUnmounted(() => observer?.disconnect());
     <div class="diagram-legend">
       <span><i class="delegation-line" aria-hidden="true"></i> Delegates authority</span>
       <span><i class="action-line" aria-hidden="true"></i> Linked actions</span>
+      <span><i class="configuration-line" aria-hidden="true"></i> Platform configuration</span>
       <span v-if="related.size" class="related-caption"
         >Highlighted names share the selected authority</span
       >
     </div>
     <p>
-      Click a contract to view its account details. Lines show reported permission links; accounts
-      without a reported link remain separate.
+      Click a contract to view its account details. Lines show permission links and configured
+      platform roles. Each account’s signing authority is shown in its permission tree.
     </p>
   </section>
 </template>
@@ -198,6 +219,11 @@ onUnmounted(() => observer?.disconnect());
 .diagram-lines > path[data-connection-kind='action'] {
   stroke: var(--state-success);
   stroke-dasharray: 5 5;
+}
+.diagram-lines > path[data-connection-kind='configuration'] {
+  stroke: var(--text-secondary);
+  stroke-dasharray: 1 5;
+  stroke-linecap: round;
 }
 .diagram-layer {
   display: grid;
@@ -257,6 +283,9 @@ onUnmounted(() => observer?.disconnect());
 }
 .diagram-legend .action-line {
   border-top: 2px dashed var(--state-success);
+}
+.diagram-legend .configuration-line {
+  border-top: 2px dotted var(--text-secondary);
 }
 .related-caption {
   color: var(--state-success);

@@ -226,6 +226,73 @@ test('a contract-name diagram switches a single account detail panel containing 
   await expect(details.getByRole('button', { name: 'core.we@active', exact: true })).toHaveCount(0);
 });
 
+test('configured accounts connect to the runtime with a distinct role description and remain selectable', async ({
+  page,
+}) => {
+  if (!status.chain) throw new Error('Fixture requires chain readings');
+  const configured = ApiRoutes.status.response.parse({
+    ...status,
+    chain: {
+      ...status.chain,
+      network: { ...network, hub: 'hub' },
+      fees: {
+        third_party_bps: 500,
+        first_party_bps: 10000,
+        treasury: 'fees',
+        token_contract: 'eosio.token',
+        token_symbol: '4,TLOS',
+        names: 'names',
+      },
+      creation: {
+        shared_usd: 0,
+        independent_usd: 5000,
+        premium_bps: 2000,
+        settler: 'relay',
+        median: '1',
+        precision: 4,
+        observed_at: 1,
+      },
+      contracts: [
+        ...status.chain.contracts,
+        ...['hub', 'relay', 'fees', 'names'].map((name) => ({
+          account: name,
+          moduleId: null,
+          codeHash: '00'.repeat(32),
+          expectedHash: null,
+          verified: false,
+          ramBytes: 4096,
+          ramUsed: 1024,
+          permissions: [permission('owner', ''), permission('active', 'owner')],
+        })),
+      ],
+    },
+  });
+  await page.route('**/v1/platform/status', (route) => route.fulfill({ json: configured }));
+  await openContracts(page);
+  const diagram = page.getByRole('region', { name: 'Contract connections', exact: true });
+  await expect(diagram.locator('[data-connection-kind="configuration"]')).toHaveCount(4);
+  await expect(diagram.getByText('Platform configuration', { exact: true })).toBeVisible();
+  for (const [name, role] of [
+    ['hub', 'Hub registry'],
+    ['relay', 'Creation settler'],
+    ['fees', 'Fee treasury'],
+    ['names', 'Name service'],
+  ] as const) {
+    const button = diagram.getByRole('button', { name, exact: true });
+    await expect(button).toHaveAttribute('aria-description', 'core.we → ' + name + ' · ' + role);
+    await button.focus();
+    await page.keyboard.press('Enter');
+    await expect(
+      page
+        .getByRole('region', { name: 'Contract Account Details', exact: true })
+        .getByRole('heading', { name, exact: true }),
+    ).toBeVisible();
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+});
+
 test('permission tree groups inline signers under owner, active and custom children with reported action links', async ({
   page,
 }) => {
