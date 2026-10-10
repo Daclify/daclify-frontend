@@ -1935,10 +1935,6 @@ nav a,
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.help-drag .help-move-icon {
-  width: 14px;
-  color: var(--text-muted);
-}
 .help-window-bar svg {
   width: 18px;
   height: 18px;
@@ -2175,9 +2171,6 @@ nav a,
     width: calc(100vw - 24px);
     height: calc(100dvh - 24px);
     resize: none;
-  }
-  .help-drag .help-move-icon {
-    display: none;
   }
   .help-bot-mark {
     width: 24px;

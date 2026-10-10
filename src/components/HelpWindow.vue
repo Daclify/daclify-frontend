@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, onBeforeUnmount, onMounted, nextTick, watch } from 'vue';
-import { Bot, Minus, Move, Maximize2, Minimize2, RotateCcw } from '@lucide/vue';
+import { Bot, Minus, Maximize2, Minimize2, RotateCcw } from '@lucide/vue';
 import DocsAssistant from './DocsAssistant.vue';
 const open = defineModel<boolean>({ required: true });
 const x = ref(Math.max(12, window.innerWidth - 472)),
@@ -150,7 +150,7 @@ watch(
         <span class="help-bot-mark"><Bot aria-hidden="true" /></span
         ><span class="help-window-title"
           ><strong>Daxi Help</strong><small>Daclify · Telos · DAOs</small></span
-        ><Move class="help-move-icon" aria-hidden="true" />
+        >
       </button>
       <button
         type="button"

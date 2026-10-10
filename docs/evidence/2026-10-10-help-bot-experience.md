@@ -39,3 +39,7 @@ Ran `LD_LIBRARY_PATH=/data/daclify-runtime/browser-libs/usr/lib/x86_64-linux-gnu
 The check waits for the app's initial network connection before choosing a question: initial network hydration changes the existing scoped history and resets the draft. The first harness attempts were corrected to use explicit browser contexts for Axe and to wait for that connection. No application code changed during this delivery.
 
 The live provider answer is verified for this question, not general provider reliability or Telegram delivery. Mobile checks remain browser emulation. GitHub publication remains separately pending credentials; it is not required by this server's direct static-file delivery. No mainnet release or chain transaction was performed.
+
+## Header icon follow-up
+
+At the user's request, removed the four-arrow Move icon, its import and unused CSS. Window dragging and keyboard movement remain. Prettier and `/data/daclify-runtime/bin/daclify-rebuild frontend` pass. `/data/daclify-runtime/help-icon-check.mjs` passes against public HTTPS: the title has only its bot icon and ArrowLeft still moves the window by 10 pixels. Reviewed the live screenshot at `/data/daclify-runtime/help-icon-removed.png`. The broader unit/browser suites were not repeated for this visual removal.
