@@ -185,6 +185,10 @@
     {
       "id": "DAO-PRICING-CONFIGURED-RATES-AND-UNAVAILABLE-STATES",
       "tests": ["tests/e2e/dao-pricing.spec.ts"]
+    },
+    {
+      "id": "COMPACT-PLATFORM-CONTROLS-AND-SAME-TAB-PRICING",
+      "tests": ["tests/e2e/platform-controls.spec.ts", "tests/e2e/dao-pricing.spec.ts"]
     }
   ]
 }

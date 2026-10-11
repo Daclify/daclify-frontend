@@ -91,12 +91,14 @@ test('creates free shared setup and administers only the linked platform DAO', a
     .getByRole('navigation')
     .getByRole('link', { name: 'Daclify DAO', exact: true })
     .click();
+  await page.getByRole('tab', { name: 'Policies', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Sign hosting policy update' })).toBeEnabled();
   await page.getByLabel('Included active member slots').fill('10');
   await page.getByRole('button', { name: 'Sign hosting policy update' }).click();
   await expect(
     page.getByText('Platform configuration updated on chain.', { exact: true }),
   ).toBeVisible();
+  await page.getByRole('tab', { name: 'Pricing', exact: true }).click();
   await page.getByLabel('TLOS RAM purchase fee (%)').fill('5');
   await page.getByLabel('Card RAM operational markup (%)').fill('20');
   await page.getByLabel('Free pinned storage per DAO (MB)').fill('100');
@@ -114,6 +116,7 @@ test('creates free shared setup and administers only the linked platform DAO', a
     cardRamBps: 2000,
     storage: { freeBytes: '100000000', unitBytes: '1000000000', monthlyUnitUsdCents: 100 },
   });
+  await page.getByRole('tab', { name: 'Catalogue', exact: true }).click();
   await page.getByLabel('Native module account', { exact: true }).first().fill('works');
   await page.getByLabel('Title', { exact: true }).fill('Works');
   await page.getByLabel('Verified deployed WASM hash').fill(ModuleCodeHashes.works);
