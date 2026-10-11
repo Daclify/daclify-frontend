@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
+import { ArrowUpRight } from '@lucide/vue';
 import {
   DaoPresets,
   DeploymentOptions,
@@ -338,7 +339,18 @@ onBeforeUnmount(() => {
       <h1>Create a DAO</h1>
       <p class="lead">Choose your deployment, account policy, and governance asset.</p>
     </div>
-    <RouterLink class="help-link" to="/docs/deployments">Deployment guide ↗</RouterLink>
+    <div class="button-row">
+      <RouterLink
+        class="button secondary"
+        to="/pricing"
+        target="_blank"
+        rel="noopener noreferrer"
+        title="View DAO pricing in a new tab"
+        >Pricing <ArrowUpRight :size="18" aria-hidden="true" />
+        <span class="sr-only">(opens in a new tab)</span>
+      </RouterLink>
+      <RouterLink class="help-link" to="/docs/deployments">Deployment guide ↗</RouterLink>
+    </div>
   </div>
   <p v-if="error" class="alert" role="alert">{{ error }}</p>
   <section class="panel deployment-options" aria-label="Deployment options">

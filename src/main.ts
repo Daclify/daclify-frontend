@@ -36,6 +36,7 @@ const router = createRouter({
     { path: '/daclify', component: () => import('./views/PlatformEntry.vue') },
     { path: '/status', component: () => import('./views/Status.vue') },
     { path: '/create', component: () => import('./views/CreateDao.vue') },
+    { path: '/pricing', component: () => import('./views/Pricing.vue') },
     { path: '/hosting', component: () => import('./views/Hosting.vue') },
     { path: '/resources', component: () => import('./views/Resources.vue') },
     { path: '/payments', component: () => import('./views/Payments.vue') },

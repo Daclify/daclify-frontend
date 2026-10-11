@@ -181,6 +181,10 @@
         "tests/e2e/quick-signup.spec.ts",
         "tests/e2e/assisted-recovery-opt-out.spec.ts"
       ]
+    },
+    {
+      "id": "DAO-PRICING-CONFIGURED-RATES-AND-UNAVAILABLE-STATES",
+      "tests": ["tests/e2e/dao-pricing.spec.ts"]
     }
   ]
 }
