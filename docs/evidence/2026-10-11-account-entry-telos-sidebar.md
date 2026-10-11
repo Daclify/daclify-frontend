@@ -108,3 +108,9 @@ At the user's request, the Login card now uses the Telos EVM Light and Telos Zer
 - No dependencies, provider configuration or authentication behavior changed. The full unit, signup, native-wallet and authenticated-management suites were not rerun for this visual change.
 
 Local build/check logs, the additional browser checker, original images and screenshots are retained under `/data/daclify-runtime/releases/20261011-telos-wordmark-buttons/`.
+
+### Wordmark publication
+
+Committed source `0bcfd70af9ef07fb0bb69d7fe07ca25e89f4e6ae` was pushed to `dev`, archived and installed from its pinned lockfile, then published with the existing testnet frontend helper. The served and public indexes matched SHA-256 `ee1355e34386a42f3e555743effb4aba0455d130707544db47e9d21239da0237` before and after verification. The prior index and its 22 referenced entry assets remain available for rollback and already open tabs.
+
+The additional live wordmark checker passed at 1440, 390 and 320 pixels, confirming both images load in amber `#f4b35d`, remain distinct and retain their badge-letter cutouts. Zero/EVM/E-Mail selection, accessible names, focus restoration, destination retention, Axe and overflow passed with no browser errors; live screenshots were reviewed. The standard public site checker also passed on desktop and mobile against real API reads. Source, snapshots, original images, scripts, screenshots, build/check logs and their hashes are recorded in `release-manifest.json` in the release directory. This frontend publication did not restart the API or change contracts or provider/recovery configuration.
