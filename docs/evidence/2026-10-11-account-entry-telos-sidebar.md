@@ -90,3 +90,9 @@ Login choices now contain one icon and only Passkey, Telegram, E-Mail, Telos Zer
 - Twenty-two existing desktop/mobile account-entry and fast-sign-in cases passed, covering provider selection, unavailable-provider explanations, configuration retry, Telegram widget cleanup and Mini App selection, email verification/session destinations, pending-wallet controls, authenticated management, full-access email sign-in and preservation of another saved vault.
 - Direct browser checks at 1280, 390 and 320 pixels verified the exact five labels, one icon per button, distinct anchor/gem icons, compact heights with at least 44-pixel targets, E-Mail selection, no horizontal overflow and no Axe violations.
 - Updated the existing account-entry, fast-sign-in, quick-signup and public-check callers to use E-Mail. No dependencies or new tests were added. The full unit, native and quick-signup fixture suites were not rerun.
+
+### Compact login button publication
+
+Committed source `9048aaa65902b326cfa2829600708537d5d60cf3` was archived and installed from its pinned lockfile, then published with the existing testnet frontend helper. Public and served indexes matched SHA-256 `9338ad922626fb0600fa083cd1b0fb080dd6d93159d1c41e5bf29bddb24f3cea`; previous assets and the rollback index were retained.
+
+Both the standard public site check and the dedicated login-button check passed at 1440×1000 and 390×844. The latter verified all five exact labels, one icon each, distinct Telos icons, no secondary text or chevrons, compact accessible targets, E-Mail form selection and Back focus restoration. Axe and overflow checks passed without browser errors. Source, snapshots, logs, hashes and the release manifest are retained under `/data/daclify-runtime/releases/20261011-login-method-buttons/`. This frontend publication did not restart the API or change contracts, provider configuration or recovery behavior.
