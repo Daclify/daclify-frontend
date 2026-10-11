@@ -33,13 +33,15 @@ Files: `src/views/CreateDao.vue`, `src/views/PlatformDao.vue`, `tests/e2e/dao-pr
 
 Files: `docs/evidence/2026-10-11-platform-controls.md`, frontend version/lock, core `docs/operations/dao-pricing.md`.
 
-- [ ] Record actual results and update the pricing navigation guide.
-- [ ] Publish a fresh frontend version from committed source with unchanged SDK archives, API and native contracts.
-- [ ] Verify the deployed Create link and all Platform sections on desktop/mobile, without submitting live governance changes; record screenshots and measured page height.
-- [ ] Integrate and push remote dev, preserving original checkout changes and unrelated commits.
+- [x] Record actual results and update the pricing navigation guide.
+- [x] Publish a fresh frontend version from committed source with unchanged SDK archives, API and native contracts.
+- [x] Verify the deployed Create link and all Platform sections on desktop/mobile, without submitting live governance changes; record screenshots and measured page height.
+- [x] Integrate and push remote dev, preserving original checkout changes and unrelated commits.
 
 ## Execution ledger
 
 Baseline: running Platform page measured 7,222 px at 1440×1000 and showed 13 forms. Existing fee-release verification passed frontend 43 files / 276 tests and 20 pricing/module-access/apps browser tests. This work uses the already isolated fee worktree on `feat/platform-controls-ui`, based on remote dev; original checkouts retain separate Telos-governance commits.
 
 Verification checkpoint: observed the current-tab and missing-section regressions fail (five failures, three existing pricing checks passed). Initial redesign checks exposed a combined input label and invalid definition-list structure; both were corrected from browser evidence. Final focused browser suite passed all 16 desktop/mobile cases. Full frontend verification passed 43 files / 276 tests, lint and Vue/TypeScript checks; the final testnet-mode build passed with its existing bundle-size warning. A source comparison confirmed all existing load, validation and signed-action callbacks are byte-for-byte unchanged. Native browser journey tab navigation was updated, but its Docker-dependent fixture was not run for this UI change.
+
+Delivery: committed source cddac91, frontend 0.13.0-alpha.10, archived npm-ci/testnet build and atomic static publication passed. Original assets and a private index backup were retained; the API/native contracts and pinned SDKs were unchanged. Actual live Create/Pricing and all three Platform sections passed desktop/mobile, read-only enforcement, main-region Axe, catalogue search/edit and no page errors/overflow. Desktop default height fell from 7,222 to 2,246 px (approximately 69%). Frontend and core guide changes were fast-forwarded into remote dev; original Telos-governance commits/checkouts remained intact. [Live evidence](../../evidence/2026-10-11-platform-controls.md).
