@@ -4,6 +4,8 @@ The continuing `/data` development server publishes `https://testnet.app.daclify
 through Caddy on port 9091. Its API is `https://testnet.api.daclify.com`, on port 9090.
 Frontend public configuration comes from `.env.testnet`; API credentials remain separate.
 
+The combined 11 October 2026 update now serves core/frontend `0.14.0-alpha.1` and modules SDK `0.10.0-alpha.1`, including the Telos entry, monthly module fees and compact platform controls. `/telos` reads testnet contract history; voting stays disabled until Decide signing pins are qualified. The actual public desktop/mobile checks and exact deployed source are recorded in [the workspace rollout evidence](../../daclify-backend-core/docs/evidence/2026-10-11-workspace-testnet-rollout.md). Recovery remains the same-VM development mode and its current qualification expires on 17 October at 14:46 UTC.
+
 Caddy serves `/data/daclify-runtime/builds/frontend-testnet`, **not the repository's
 `dist/` directory**. A normal `npm run build` uses production mode and may have no
 testnet API configuration. Serving that output caused requests such as `/v1/network`
