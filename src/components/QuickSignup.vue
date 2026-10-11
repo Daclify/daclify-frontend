@@ -185,6 +185,9 @@ onUnmounted(() => {
     </p>
     <p v-if="loading" role="status">Checking quick signup…</p>
     <p v-if="error" class="alert" role="alert">{{ error }}</p>
+    <p v-if="options?.assisted.reason" class="notice" role="status">
+      {{ options.assisted.reason }}
+    </p>
     <template v-if="available">
       <p class="field-help">
         Already paired this email or Telegram? We’ll open your existing account with its current
