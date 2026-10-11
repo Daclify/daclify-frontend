@@ -30,6 +30,14 @@ import {
 } from '@daclify/core-protocol/sdk';
 import { api, setAccountControlSigner } from '../api/client';
 import {
+  AppSnapshotEnvelopeSchema,
+  appEvidenceDomain,
+  appKeyGrantDomain,
+  type AppEvidenceContextSchema,
+} from '@daclify/core-protocol';
+import type { ActivityTableSchemas } from '@daclify/modules/sdk';
+import type { z } from 'zod';
+import {
   unlockVault,
   createEpochGrant,
   openCommittedEpoch,
@@ -358,6 +366,120 @@ export function downloadBackup(record: SavedVault): void {
 
 function guardEpochAccess(started: number): void {
   if (!secrets || generation !== started) throw new Error('VAULT_LOCKED');
+}
+export async function prepareAppEpoch(
+  dao: DaoRef,
+  appId: string,
+  epoch: string,
+  recipients: DaoContent['members'],
+) {
+  const started = generation;
+  if (!secrets) throw new Error('VAULT_LOCKED');
+  if (!recipients.length || recipients.length > 100) throw new Error('APP_GRANT_BATCH');
+  const key = crypto.getRandomValues(new Uint8Array(32)),
+    commitment = await sha256Hex(key),
+    grants = [];
+  for (const recipient of recipients) {
+    if (!recipient.active) throw new Error('MEMBER_INACTIVE');
+    const publicKey = EncryptionPublicKeySchema.parse(JSON.parse(recipient.encryption_key));
+    grants.push({
+      recipient: recipient.id,
+      encryptionKey: recipient.encryption_key,
+      envelope: JSON.stringify(
+        await createEpochGrant(publicKey, key, appKeyGrantDomain(dao, appId, epoch, recipient.id)),
+      ),
+    });
+  }
+  guardEpochAccess(started);
+  return { commitment, grants };
+}
+async function appEpochKey(
+  dao: DaoRef,
+  appId: string,
+  memberId: string,
+  key: z.infer<typeof ActivityTableSchemas.appkeys>,
+  grant: z.infer<typeof ActivityTableSchemas.appgrants>,
+) {
+  const started = generation,
+    opened = secrets;
+  if (!opened) throw new Error('VAULT_LOCKED');
+  if (
+    key.dao_id !== dao.daoId ||
+    key.app_id !== appId ||
+    grant.dao_id !== dao.daoId ||
+    grant.key_epoch !== key.id ||
+    grant.recipient !== memberId
+  )
+    throw new Error('APP_KEY_SCOPE');
+  const bytes = await openCommittedEpoch(
+    opened.encryptionPrivateKey,
+    EpochGrantSchema.parse(JSON.parse(grant.envelope)),
+    appKeyGrantDomain(dao, appId, key.id, memberId),
+    key.key_commitment,
+  );
+  guardEpochAccess(started);
+  return bytes;
+}
+export async function grantAppEpoch(
+  dao: DaoRef,
+  appId: string,
+  memberId: string,
+  key: z.infer<typeof ActivityTableSchemas.appkeys>,
+  grant: z.infer<typeof ActivityTableSchemas.appgrants>,
+  recipient: DaoContent['members'][number],
+) {
+  const started = generation;
+  if (!recipient.active) throw new Error('MEMBER_INACTIVE');
+  const bytes = await appEpochKey(dao, appId, memberId, key, grant);
+  const envelope = await createEpochGrant(
+    EncryptionPublicKeySchema.parse(JSON.parse(recipient.encryption_key)),
+    bytes,
+    appKeyGrantDomain(dao, appId, key.id, recipient.id),
+  );
+  guardEpochAccess(started);
+  return JSON.stringify(envelope);
+}
+export async function encryptAppSnapshot(
+  context: z.infer<typeof AppEvidenceContextSchema>,
+  memberId: string,
+  key: z.infer<typeof ActivityTableSchemas.appkeys>,
+  grant: z.infer<typeof ActivityTableSchemas.appgrants>,
+  plaintext: Uint8Array,
+) {
+  const started = generation;
+  if (plaintext.length > 3 * 1024 * 1024) throw new Error('FILE_TOO_LARGE');
+  if (key.id !== context.keyEpoch) throw new Error('APP_KEY_SCOPE');
+  const epoch = await appEpochKey(context.dao, context.appId, memberId, key, grant);
+  const snapshot = AppSnapshotEnvelopeSchema.parse({
+    version: 1,
+    context,
+    envelope: await sealContent(plaintext, epoch, appEvidenceDomain(context)),
+  });
+  guardEpochAccess(started);
+  const bytes = new TextEncoder().encode(JSON.stringify(snapshot));
+  return { bytes, commitment: await sha256Hex(bytes) };
+}
+export async function decryptAppSnapshot(
+  context: z.infer<typeof AppEvidenceContextSchema>,
+  memberId: string,
+  key: z.infer<typeof ActivityTableSchemas.appkeys>,
+  grant: z.infer<typeof ActivityTableSchemas.appgrants>,
+  bytes: Uint8Array,
+  commitment: string,
+) {
+  const started = generation;
+  if (bytes.length > 5 * 1024 * 1024 || (await sha256Hex(bytes)) !== commitment)
+    throw new Error('DOCUMENT_INTEGRITY');
+  const snapshot = AppSnapshotEnvelopeSchema.parse(JSON.parse(new TextDecoder().decode(bytes)));
+  if (
+    appEvidenceDomain(snapshot.context) !== appEvidenceDomain(context) ||
+    key.id !== context.keyEpoch
+  )
+    throw new Error('APP_KEY_SCOPE');
+  const epoch = await appEpochKey(context.dao, context.appId, memberId, key, grant),
+    plaintext = await openContent(snapshot.envelope, epoch, appEvidenceDomain(context));
+  guardEpochAccess(started);
+  return plaintext;
 }
 async function epochKey(
   dao: DaoRef,

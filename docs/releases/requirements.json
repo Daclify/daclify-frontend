@@ -42,10 +42,7 @@
     },
     {
       "id": "APP-WELCOME-AND-HUB-NAVIGATION",
-      "tests": [
-        "tests/e2e/homepage.spec.ts",
-        "tests/e2e/network-lock.spec.ts"
-      ]
+      "tests": ["tests/e2e/homepage.spec.ts", "tests/e2e/network-lock.spec.ts"]
     },
     {
       "id": "GROUPED-DOCUMENTATION",
@@ -58,72 +55,47 @@
     },
     {
       "id": "INSTALLABLE-PWA",
-      "tests": [
-        "tests/e2e/pwa.spec.ts"
-      ]
+      "tests": ["tests/e2e/pwa.spec.ts"]
     },
     {
       "id": "MODULE-DETAIL-DESIGN",
-      "tests": [
-        "tests/e2e/module-cards.spec.ts",
-        "tests/e2e/marketplace.spec.ts"
-      ]
+      "tests": ["tests/e2e/module-cards.spec.ts", "tests/e2e/marketplace.spec.ts"]
     },
     {
       "id": "MODULE-CARDS-AND-DAO-ACTIVATION",
-      "tests": [
-        "tests/e2e/module-cards.spec.ts",
-        "tests/unit/access-components.test.ts"
-      ]
+      "tests": ["tests/e2e/module-cards.spec.ts", "tests/unit/access-components.test.ts"]
     },
     {
       "id": "MODULES-AND-NAMES-NAVIGATION",
-      "tests": [
-        "tests/e2e/catalogue-navigation.spec.ts",
-        "tests/e2e/marketplace.spec.ts"
-      ]
+      "tests": ["tests/e2e/catalogue-navigation.spec.ts", "tests/e2e/marketplace.spec.ts"]
     },
     {
       "id": "STANDALONE-FRONTEND-SDK-PACKAGES",
-      "tests": [
-        "tests/unit/sdk-packages.test.ts"
-      ]
+      "tests": ["tests/unit/sdk-packages.test.ts"]
     },
     {
       "id": "VAULT-RECOVERY",
-      "tests": [
-        "tests/unit/vault.test.ts"
-      ]
+      "tests": ["tests/unit/vault.test.ts"]
     },
     {
       "id": "WORKSPACE-STATE",
-      "tests": [
-        "tests/unit/workspace.test.ts"
-      ]
+      "tests": ["tests/unit/workspace.test.ts"]
     },
     {
       "id": "BROWSER-WORKSPACE",
-      "tests": [
-        "tests/e2e/workspace.spec.ts"
-      ]
+      "tests": ["tests/e2e/workspace.spec.ts"]
     },
     {
       "id": "LINT-POLICY",
-      "tests": [
-        "tests/unit/lint-policy.test.ts"
-      ]
+      "tests": ["tests/unit/lint-policy.test.ts"]
     },
     {
       "id": "PROVIDER-SESSION",
-      "tests": [
-        "tests/unit/provider-session.test.ts"
-      ]
+      "tests": ["tests/unit/provider-session.test.ts"]
     },
     {
       "id": "PLATFORM-PAID-CREATION-AND-ADMIN",
-      "tests": [
-        "tests/e2e/platform.spec.ts"
-      ]
+      "tests": ["tests/e2e/platform.spec.ts"]
     },
     {
       "id": "WALLET-DISASTER-RECOVERY",
@@ -135,16 +107,11 @@
     },
     {
       "id": "PAYMENT-BROWSER-CONSENT",
-      "tests": [
-        "tests/e2e/connected-payments.spec.ts"
-      ]
+      "tests": ["tests/e2e/connected-payments.spec.ts"]
     },
     {
       "id": "OPERATOR-ISSUER-ISOLATION",
-      "tests": [
-        "tests/unit/operators.test.ts",
-        "tests/unit/auth-audience.test.ts"
-      ]
+      "tests": ["tests/unit/operators.test.ts", "tests/unit/auth-audience.test.ts"]
     },
     {
       "id": "DEPLOYED-NETWORK-CONFIGURATION",
@@ -157,28 +124,19 @@
     {
       "id": "WP02-EXECUTIVE-BROWSER",
       "suite": "browser",
-      "tests": [
-        "tests/e2e/executives.spec.ts"
-      ]
+      "tests": ["tests/e2e/executives.spec.ts"]
     },
     {
       "id": "DOCS-CONTRACT-PERMISSIONS",
-      "tests": [
-        "tests/e2e/contract-permissions.spec.ts"
-      ]
+      "tests": ["tests/e2e/contract-permissions.spec.ts"]
     },
     {
       "id": "DAXI-BROAD-SCOPE-AND-SOURCES",
-      "tests": [
-        "tests/e2e/docs-assistant.spec.ts",
-        "tests/unit/documentation.test.ts"
-      ]
+      "tests": ["tests/e2e/docs-assistant.spec.ts", "tests/unit/documentation.test.ts"]
     },
     {
       "id": "STATUS-TABS-AND-AI-CONFIGURATION",
-      "tests": [
-        "tests/e2e/status-tabs.spec.ts"
-      ]
+      "tests": ["tests/e2e/status-tabs.spec.ts"]
     },
     {
       "id": "STATUS-CONTRACT-PERMISSION-MAP-AND-RESOURCES",
@@ -190,9 +148,7 @@
     },
     {
       "id": "SDK-ONLY-MODULE-COMPATIBILITY",
-      "tests": [
-        "tests/unit/module-release.test.ts"
-      ]
+      "tests": ["tests/unit/module-release.test.ts"]
     },
     {
       "id": "PASSWORDLESS-ORIGINAL-KEY-ACCESS",
@@ -215,9 +171,7 @@
     },
     {
       "id": "AUDIT-NAMES-INVENTORY-PAGING",
-      "tests": [
-        "tests/e2e/names-management.spec.ts"
-      ]
+      "tests": ["tests/e2e/names-management.spec.ts"]
     },
     {
       "id": "ACCOUNT-QUICK-SIGNUP-AND-ASSISTED-OPT-OUT",

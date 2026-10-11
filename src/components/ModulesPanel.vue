@@ -85,10 +85,10 @@ const showOngoing = ref(true);
 const draftLabel = ref<Record<string, string>>({});
 const draftPaused = ref<Record<string, boolean>>({});
 const names = {
-  activity: 'Community Activity',
   decide: 'Decide',
   works: 'Works',
   payroll: 'Payroll',
+  activity: 'Community Activity',
   'grants-rounds': 'Grants rounds',
   'endorsement-admission': 'Endorsement admission',
 };
@@ -736,13 +736,15 @@ const selectedProject = computed(() =>
           {{
             module.deployment.id === 'decide'
               ? 'Member, credit, or escrowed native stake ballots.'
-              : module.deployment.id === 'works'
-                ? 'Reserved milestones with independent contributor review.'
-                : module.deployment.id === 'grants-rounds'
-                  ? 'Application consent, eligibility review and vote-authorized Works awards.'
-                  : module.deployment.id === 'endorsement-admission'
-                    ? 'Opt-in membership with current member endorsements and a disclosed admission policy.'
-                    : 'One settlement pays every due installment. Pause and the label do not rewrite the term.'
+              : module.deployment.id === 'activity'
+                ? 'Member-authorised completions, independent reviews and compact references across connected apps.'
+                : module.deployment.id === 'works'
+                  ? 'Reserved milestones with independent contributor review.'
+                  : module.deployment.id === 'grants-rounds'
+                    ? 'Application consent, eligibility review and vote-authorized Works awards.'
+                    : module.deployment.id === 'endorsement-admission'
+                      ? 'Opt-in membership with current member endorsements and a disclosed admission policy.'
+                      : 'One settlement pays every due installment. Pause and the label do not rewrite the term.'
           }}
         </p>
         <dl>

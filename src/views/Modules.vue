@@ -128,6 +128,13 @@ const PRESENTATION: Record<
   string,
   { title: string; icon: Component; category: string; summary: string }
 > = {
+  activity: {
+    title: 'Community Activity',
+    icon: Sprout,
+    category: 'Connected apps',
+    summary:
+      'Connect community apps to DAO membership and record selected completions and reviews.',
+  },
   decide: {
     title: 'Decide',
     icon: Vote,

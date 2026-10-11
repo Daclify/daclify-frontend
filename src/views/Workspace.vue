@@ -13,6 +13,7 @@ import ModulesPanel from '../components/ModulesPanel.vue';
 import TreasuryPanel from '../components/TreasuryPanel.vue';
 import WorkspaceOverview from '../components/WorkspaceOverview.vue';
 import DaoSettings from '../components/DaoSettings.vue';
+import ConnectedApps from './ConnectedApps.vue';
 import PlatformDao from './PlatformDao.vue';
 const route = useRoute(),
   state = useWorkspace();
@@ -133,6 +134,7 @@ const workTabs: ReadonlyArray<readonly [string, string]> = [
   ['grants-rounds', 'Grants'],
   ['treasury', 'Treasury'],
   ['documents', 'Documents'],
+  ['apps', 'Connected apps'],
   ['members', 'Members'],
 ];
 const tabs = computed(() =>
@@ -280,6 +282,7 @@ const setupTabs = computed<ReadonlyArray<readonly [string, string]>>(() => [
       :member="membership"
       @updated="state.refresh"
     />
+    <ConnectedApps v-else-if="section === 'apps'" :key="panelKey" :dao="dao" :member="membership" />
     <PlatformDao v-else-if="section === 'platform' && isPlatform" :key="panelKey" />
     <ContentPanel
       v-else-if="['documents', 'members'].includes(section)"

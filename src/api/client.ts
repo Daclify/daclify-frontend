@@ -243,6 +243,12 @@ export function verifiedModuleRelease(state: ModuleState): ModuleState {
   };
 }
 export const api = {
+  appSourceAccess: (id: string) =>
+    request(
+      ApiRoutes.appSourceAccess.path.replace(':id', z.uuid().parse(id)),
+      ApiRoutes.appSourceAccess.response,
+      {},
+    ),
   signupOptions: () =>
     request(SignupRoutes.signupOptions.path, SignupRoutes.signupOptions.response),
   signupEmailStart: (email: string) =>
@@ -302,6 +308,41 @@ export const api = {
     request(
       RecoveryRoutes.recoveryAssistedRevision.path,
       RecoveryRoutes.recoveryAssistedRevision.response,
+    ),
+  connectedApps: (daoId: string) =>
+    request(
+      ApiRoutes.connectedApps.path.replace(':id', IdSchema.parse(daoId)),
+      ApiRoutes.connectedApps.response,
+    ),
+  stageConnectedApp: (input: z.infer<typeof ApiRoutes.stageConnectedApp.input>) =>
+    request(
+      ApiRoutes.stageConnectedApp.path,
+      ApiRoutes.stageConnectedApp.response,
+      ApiRoutes.stageConnectedApp.input.parse(input),
+    ),
+  appConsent: (id: string) =>
+    request(
+      ApiRoutes.appConsent.path.replace(':id', z.uuid().parse(id)),
+      ApiRoutes.appConsent.response,
+    ),
+  approveApp: (id: string, sessionId?: string) =>
+    request(
+      ApiRoutes.approveApp.path.replace(':id', z.uuid().parse(id)),
+      ApiRoutes.approveApp.response,
+      ApiRoutes.approveApp.input.parse(sessionId ? { sessionId } : {}),
+    ),
+  rejectApp: (id: string) =>
+    request(
+      ApiRoutes.rejectApp.path.replace(':id', z.uuid().parse(id)),
+      ApiRoutes.rejectApp.response,
+      {},
+    ),
+  appKeys: (daoId: string, appId: string) =>
+    request(
+      ModuleApiRoutes.appKeys.path
+        .replace(':id', IdSchema.parse(daoId))
+        .replace(':appId', IdSchema.parse(appId)),
+      ModuleApiRoutes.appKeys.response,
     ),
   beginDeviceRecovery: (input: z.infer<typeof RecoveryRoutes.deviceRecoveryBegin.input>) =>
     request(
