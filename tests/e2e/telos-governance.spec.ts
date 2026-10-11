@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
 import {
   ABI,
   Blob as ChainBlob,
@@ -301,6 +302,8 @@ test('public history and active elections need no account and reject unsafe cont
   ).toBeVisible();
   await page.getByRole('button', { name: 'Council election', exact: true }).click();
   await expect(page.getByRole('link', { name: 'Ballot content' })).toHaveCount(0);
+  await expect(page.getByRole('main')).toHaveCount(1);
+  expect((await new AxeBuilder({ page }).include('#main').analyze()).violations).toEqual([]);
   expect(flow.counts()).toEqual({ signupCount: 0, broadcasts: 0 });
 });
 test('first native vote verifies signup and casts the external vote without DAO membership', async ({

@@ -286,7 +286,7 @@ async function vote() {
 }
 </script>
 <template>
-  <main class="telos-governance">
+  <div class="telos-governance">
     <header>
       <p class="eyebrow">TELOS NETWORK GOVERNANCE</p>
       <h1>Telos governance</h1>
@@ -424,7 +424,7 @@ async function vote() {
         >Telos voting app</a
       >
     </article>
-  </main>
+  </div>
 </template>
 <style scoped>
 .telos-governance {
