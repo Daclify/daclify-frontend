@@ -127,7 +127,7 @@ test('opens all current DAO prices from Create a DAO without requiring an accoun
   await expect(page.getByRole('heading', { name: 'DAO pricing', exact: true })).toBeVisible();
   const main = page.getByRole('main');
   for (const text of [
-    '12 included member slots',
+    'Up to 12 members free',
     '$1.75',
     '$0.55',
     '$0.21',
@@ -148,6 +148,24 @@ test('opens all current DAO prices from Create a DAO without requiring an accoun
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   );
+});
+test('uses total member numbers and adds tier prices in monthly examples', async ({ page }) => {
+  await page.goto('/pricing');
+  const membership = page.getByRole('region', { name: 'Monthly membership pricing' });
+  for (const range of ['Members 13–52', 'Members 53–252', 'Members 253+'])
+    await expect(membership).toContainText(range);
+  const examples = membership.getByRole('table', { name: 'Example monthly totals' });
+  for (const [members, total] of [
+    ['52', '$70.00'],
+    ['102', '$97.50'],
+    ['302', '$190.50'],
+  ] as const)
+    await expect(
+      examples
+        .getByRole('row')
+        .filter({ has: page.getByRole('cell', { name: members, exact: true }) }),
+    ).toContainText(total);
+  await expect(membership).toContainText('including empty places');
 });
 test('keeps missing and wrong-chain pricing unavailable rather than showing free rates', async ({
   page,

@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
-import type { PlatformStatus } from '@daclify/core-protocol';
+import {
+  HostedPricingSchema,
+  hostedMonthlyPrice,
+  type PlatformStatus,
+} from '@daclify/core-protocol';
 import { ArrowLeft, RefreshCw } from '@lucide/vue';
 import { api, friendlyError } from '../api/client';
 import { useWorkspace } from '../state/workspace';
@@ -10,6 +14,24 @@ const status = ref<PlatformStatus>();
 const busy = ref(false),
   error = ref('');
 const chain = computed(() => status.value?.chain);
+const memberPricing = computed(() => {
+  const value = HostedPricingSchema.safeParse({
+    freeSlots: chain.value?.hosting?.free_members,
+    rates: chain.value?.seatPricing,
+  });
+  return value.success ? value.data : null;
+});
+const monthlyExamples = computed(() => {
+  const pricing = memberPricing.value;
+  return pricing
+    ? [0, 40, 90, 290]
+        .filter((extra) => pricing.freeSlots + extra <= 5000)
+        .map((extra) => ({
+          members: pricing.freeSlots + extra,
+          cents: hostedMonthlyPrice(extra, pricing),
+        }))
+    : [];
+});
 const verified = computed(
   () =>
     status.value?.rpc === 'reachable' &&
@@ -135,24 +157,59 @@ onUnmounted(() => {
       </section>
 
       <section class="panel" aria-labelledby="member-pricing">
-        <h2 id="member-pricing">Monthly member capacity</h2>
-        <template v-if="chain.hosting && chain.seatPricing">
-          <p class="price-highlight">{{ chain.hosting.free_members }} included member slots</p>
-          <dl class="fact-list">
-            <dt>Paid slots 1–40</dt>
-            <dd>{{ money(chain.seatPricing.first_usd) }} / slot / month</dd>
-            <dt>Paid slots 41–240</dt>
-            <dd>{{ money(chain.seatPricing.next_usd) }} / slot / month</dd>
-            <dt>Paid slots above 240</dt>
-            <dd>{{ money(chain.seatPricing.rest_usd) }} / slot / month</dd>
+        <h2 id="member-pricing">Monthly membership pricing</h2>
+        <template v-if="memberPricing">
+          <p class="price-highlight">Up to {{ memberPricing.freeSlots }} members free</p>
+          <dl v-if="memberPricing.freeSlots < 5000" class="fact-list">
+            <template v-if="memberPricing.freeSlots < 5000">
+              <dt>
+                Members {{ memberPricing.freeSlots + 1 }}–{{
+                  Math.min(memberPricing.freeSlots + 40, 5000)
+                }}
+              </dt>
+              <dd>{{ money(memberPricing.rates.first_usd) }} each / month</dd>
+            </template>
+            <template v-if="memberPricing.freeSlots + 40 < 5000">
+              <dt>
+                Members {{ memberPricing.freeSlots + 41 }}–{{
+                  Math.min(memberPricing.freeSlots + 240, 5000)
+                }}
+              </dt>
+              <dd>{{ money(memberPricing.rates.next_usd) }} each / month</dd>
+            </template>
+            <template v-if="memberPricing.freeSlots + 240 < 5000">
+              <dt>Members {{ memberPricing.freeSlots + 241 }}+</dt>
+              <dd>{{ money(memberPricing.rates.rest_usd) }} each / month</dd>
+            </template>
           </dl>
           <p class="field-help">
-            Paid slots start after the included slots. Tiers are graduated: each rate applies only
-            to the slots in that tier. Billing covers approved capacity, including unused slots.
+            Only places above the free allowance are charged. Add the cost of each range together to
+            get your monthly total.
+          </p>
+          <table class="membership-examples">
+            <caption>
+              Example monthly totals
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">Member places</th>
+                <th scope="col">Total / month</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="example in monthlyExamples" :key="example.members">
+                <td>{{ example.members }}</td>
+                <td>{{ example.cents === 0 ? 'Free' : money(example.cents) }}</td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="field-help">
+            These totals cover membership only. Your DAO pays for approved member places, including
+            empty places.
           </p>
         </template>
         <p v-else>Member pricing is not reported for this network.</p>
-        <RouterLink to="/hosting">Manage a DAO's member capacity ↗</RouterLink>
+        <RouterLink to="/hosting">Manage member places ↗</RouterLink>
       </section>
 
       <section class="panel" aria-labelledby="storage-pricing">
@@ -287,6 +344,21 @@ onUnmounted(() => {
   font-size: 1.25rem;
   font-weight: 700;
   color: var(--accent-amber);
+}
+.membership-examples {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+.membership-examples caption {
+  text-align: left;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.membership-examples th,
+.membership-examples td {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
 }
 @media (max-width: 55rem) {
   .pricing-grid {
