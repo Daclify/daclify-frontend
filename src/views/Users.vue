@@ -1,24 +1,15 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
-import {
-  PeopleRoutes,
-  PublicProfileSchema,
-  type PublicMember,
-  type PublicProfile,
-} from '@daclify/core-protocol';
-import type { z } from 'zod';
+import { PublicProfileSchema, type PublicMember, type PublicProfile } from '@daclify/core-protocol';
 import PeopleGrid from '../components/PeopleGrid.vue';
-import { api, friendlyError } from '../api/client';
+import { api } from '../api/client';
 import { useWorkspace } from '../state/workspace';
+import { usePublicDirectory } from '../state/public-people';
 const state = useWorkspace(),
-  people = ref<PublicMember[]>([]),
-  ownProfile = ref<PublicProfile>(),
-  next = ref<z.infer<typeof PeopleRoutes.members.response>['next']>(null),
-  busy = ref(false),
-  error = ref('');
-let generation = 0,
-  disposed = false;
-const seen = new Set<string>();
+  { users, next, busy, error, load } = usePublicDirectory(),
+  ownProfile = ref<PublicProfile>();
+let disposed = false,
+  generation = 0;
 const localMembership = computed(() =>
   state.memberships.find(
     (member) =>
@@ -34,94 +25,83 @@ const own = (person: PublicMember) =>
       member.dao.daoId === person.dao.daoId &&
       member.memberId === person.id,
   );
-const publicUsers = computed(() => {
-  const users = new Map<string, PublicMember>();
-  for (const person of people.value.filter(
-    (p) =>
-      p.dao.chainId === state.network?.chainId &&
-      p.dao.contract === state.network.runtime &&
-      !own(p),
-  )) {
-    const key = person.native_account
-      ? `native:${person.native_account}`
-      : `${person.dao.daoId}:${person.id}`;
-    const existing = users.get(key);
-    if (!existing || (!existing.profile && person.profile)) users.set(key, person);
-  }
-  return [...users.entries()].map(([key, person]) => ({
-    key,
-    label: person.profile?.name || person.native_account || `Member ${person.id}`,
-    profile: person.profile ?? undefined,
-    to: `/users/${person.dao.daoId}/${person.id}`,
-    badges: [
-      state.daos.find(
-        (dao) =>
-          dao.reference.daoId === person.dao.daoId &&
-          dao.reference.chainId === person.dao.chainId &&
-          dao.reference.contract === person.dao.contract,
-      )?.title ?? `DAO ${person.dao.daoId}`,
-    ],
-  }));
-});
-const cards = computed(() => [
-  ...(state.account
-    ? [
-        {
-          key: 'me',
-          label: ownProfile.value?.name || localMembership.value?.nativeAccount || 'Your profile',
-          profile: ownProfile.value,
-          to: '/users/me',
-          own: true,
-        },
-      ]
-    : []),
-  ...publicUsers.value,
-]);
-async function load(cursor?: z.infer<typeof PeopleRoutes.members.query>) {
-  if (busy.value) return;
-  const request = generation;
-  busy.value = true;
-  error.value = '';
-  try {
-    const page = await api.publicMembers(cursor);
-    if (disposed || request !== generation) return;
-    if (page.next) {
-      const key = JSON.stringify(page.next);
-      const previousDao = BigInt(cursor?.daoId ?? '0'),
-        currentDao = BigInt(page.next.daoId);
-      if (
-        seen.has(key) ||
-        currentDao < previousDao ||
-        (currentDao === previousDao && BigInt(page.next.after) <= BigInt(cursor?.after ?? '0'))
+const cards = computed(() => {
+  const result = users.value.map((user) => {
+    const member = user.memberships.find((m) => !!m.profile) ?? user.memberships[0];
+    if (!member) throw new Error('PUBLIC_MEMBER_REQUIRED');
+    const ownedMember = state.account ? user.memberships.find(own) : undefined;
+    const yours = !!ownedMember;
+    const ownRoute = ownedMember
+      ? ownedMember.dao.daoId === localMembership.value?.dao.daoId &&
+        ownedMember.id === localMembership.value?.memberId
+        ? '/users/me'
+        : `/users/${ownedMember.dao.daoId}/${ownedMember.id}`
+      : undefined;
+    const profile =
+      yours &&
+      user.memberships.some(
+        (m) =>
+          m.dao.daoId === localMembership.value?.dao.daoId &&
+          m.id === localMembership.value?.memberId,
       )
-        throw new Error('CHAIN_RESPONSE_INVALID');
-      seen.add(key);
-    }
-    people.value.push(...page.members);
-    next.value = page.next;
-  } catch (cause) {
-    if (request === generation) error.value = friendlyError(cause);
-  } finally {
-    if (request === generation) busy.value = false;
-  }
-}
-watch(
-  () => JSON.stringify([state.network?.chainId, state.network?.runtime, state.account?.id]),
-  () => {
-    generation++;
-    people.value = [];
-    seen.clear();
-    ownProfile.value = undefined;
-    next.value = null;
-    busy.value = false;
-    void load();
-  },
-  { immediate: true },
-);
+        ? (ownProfile.value ?? user.profile)
+        : user.profile;
+    return {
+      key: user.key,
+      label: profile?.name || user.nativeAccount || `Member ${member.id}`,
+      profile: profile ?? undefined,
+      to: ownRoute ?? `/users/${member.dao.daoId}/${member.id}`,
+      own: yours,
+      lastActive: user.lastActive,
+      communities: [
+        ...new Map(
+          user.memberships.map((m) => [
+            m.dao.daoId,
+            {
+              key: m.dao.daoId,
+              title:
+                state.daos.find(
+                  (d) =>
+                    d.reference.daoId === m.dao.daoId &&
+                    d.reference.chainId === m.dao.chainId &&
+                    d.reference.contract === m.dao.contract,
+                )?.title ?? `DAO ${m.dao.daoId}`,
+              to: `/dao/${m.dao.daoId}`,
+              active: m.active,
+            },
+          ]),
+        ).values(),
+      ],
+    };
+  });
+  if (state.account && !result.some((card) => card.own))
+    result.unshift({
+      key: 'me',
+      label: ownProfile.value?.name || localMembership.value?.nativeAccount || 'Your profile',
+      profile: ownProfile.value,
+      to: '/users/me',
+      own: true,
+      lastActive: null,
+      communities: state.memberships
+        .filter(
+          (m) =>
+            m.dao.chainId === state.network?.chainId && m.dao.contract === state.network.runtime,
+        )
+        .map((m) => ({
+          key: m.dao.daoId,
+          title:
+            state.daos.find((d) => d.reference.daoId === m.dao.daoId)?.title ??
+            `DAO ${m.dao.daoId}`,
+          to: `/dao/${m.dao.daoId}`,
+          active: m.active,
+        })),
+    });
+  return result;
+});
 watch(
   () => localMembership.value,
   async (member) => {
-    const request = generation;
+    const request = ++generation;
     ownProfile.value = undefined;
     if (!member) return;
     try {
@@ -153,7 +133,7 @@ onBeforeUnmount(() => {
     ><RouterLink v-else class="button" to="/account">Sign in</RouterLink>
   </div>
   <p class="field-help">
-    Browse public DAO members. Open a card to see their profile and community.
+    Meet DAO members, explore their communities and connect through their public profiles.
   </p>
   <p v-if="error" class="alert" role="alert">
     {{
@@ -162,24 +142,27 @@ onBeforeUnmount(() => {
         : 'Could not load users.'
     }}
     {{ error }}
-    <button type="button" class="text-button" @click="load(next ?? undefined)">Retry</button>
+    <button type="button" class="text-button" @click="load()">Retry</button>
   </p>
   <PeopleGrid
     :people="cards"
     :loading="busy"
     :failed="!!error"
-    :has-more="!!next"
+    :has-more="busy || !!next"
     empty-text="No public DAO members are registered on this network yet."
   />
-  <p v-if="busy" role="status">Loading public members…</p>
-  <button v-else-if="next" class="secondary" @click="load(next ?? undefined)">
-    Load more users
-  </button>
+  <p v-if="busy" role="status">Loading members across DAOs…</p>
+  <p v-if="busy || next" class="field-help">
+    Community links and latest activity cover memberships loaded so far.
+  </p>
+  <button v-else-if="next" class="secondary" @click="load()">Load more users</button>
   <details class="users-privacy">
     <summary>About this directory</summary>
     <p class="field-help">
       Members appear even before publishing a profile. Profiles belong to public DAO memberships;
-      the same native account is listed once. Private sign-in pairings are never displayed.
+      matching public accounts or signing identities connect their communities. Private sign-in
+      pairings are never displayed. Last active means their latest successful DAO action; older
+      activity may not have been recorded.
     </p>
   </details>
 </template>

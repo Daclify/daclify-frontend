@@ -852,6 +852,7 @@ export const api = {
     const params = new URLSearchParams();
     if (query.after !== undefined) params.set('after', query.after);
     if (query.daoId !== undefined) params.set('daoId', query.daoId);
+    if (query.memberId !== undefined) params.set('memberId', query.memberId);
     if (query.onlyDao !== undefined) params.set('onlyDao', query.onlyDao);
     return request(PeopleRoutes.members.path + '?' + params, PeopleRoutes.members.response);
   },

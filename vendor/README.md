@@ -22,7 +22,7 @@ Review and commit the two archives, frontend manifest/lockfile and any affected
 producer source/lockfiles together. Run frontend verification and a build before
 pushing. Do not edit archives by hand.
 
-Current core `0.13.0-alpha.3` and module `0.9.0-alpha.19` archives are **unpublished development artifacts**, not a
+Current core `0.13.0-alpha.4` and module `0.9.0-alpha.20` archives are **unpublished development artifacts**, not a
 qualified production release. Their exact bytes are pinned by the frontend Git
 commit and lockfile. Registry publication and production release qualification
 remain governed by core's release policy; this distribution path bypasses neither.

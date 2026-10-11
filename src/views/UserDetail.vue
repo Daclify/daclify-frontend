@@ -1,11 +1,19 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
-import { PublicProfileSchema, type PublicProfile, IdSchema } from '@daclify/core-protocol';
+import {
+  PublicProfileSchema,
+  type PublicProfile,
+  type PublicMember,
+  IdSchema,
+  unifyPublicMembers,
+} from '@daclify/core-protocol';
 import { MapPin, Globe, AtSign, ArrowLeft, UserRoundPen } from '@lucide/vue';
 import { api, friendlyError } from '../api/client';
 import { useWorkspace } from '../state/workspace';
 import Account from './Account.vue';
+import { usePublicDirectory, profileContacts } from '../state/public-people';
+import LastDaoActivity from '../components/LastDaoActivity.vue';
 const route = useRoute(),
   state = useWorkspace(),
   profile = ref<PublicProfile>(),
@@ -15,8 +23,32 @@ const route = useRoute(),
   memberActive = ref(false),
   exists = ref(false),
   editing = ref(false),
-  profileRevision = ref(0);
+  profileRevision = ref(0),
+  publicMember = ref<PublicMember>();
+const directory = usePublicDirectory();
+const user = computed(() =>
+  unifyPublicMembers([
+    ...directory.people.value,
+    ...(publicMember.value ? [publicMember.value] : []),
+  ]).find((person) =>
+    person.memberships.some(
+      (member) =>
+        member.dao.daoId === daoId.value &&
+        member.id === memberId.value &&
+        member.dao.chainId === state.network?.chainId &&
+        member.dao.contract === state.network.runtime,
+    ),
+  ),
+);
+const communities = computed(() => user.value?.memberships ?? []);
+const displayProfile = computed(() => profile.value ?? user.value?.profile ?? undefined);
 const failedImages = ref({ avatar: false, background: false });
+watch(
+  () => [displayProfile.value?.avatar, displayProfile.value?.background],
+  () => {
+    failedImages.value = { avatar: false, background: false };
+  },
+);
 const selfRoute = computed(() => route.path === '/users/me');
 const identity = computed(() =>
   selfRoute.value
@@ -75,6 +107,7 @@ watch(
     error.value = '';
     exists.value = false;
     memberNative.value = '';
+    publicMember.value = undefined;
     editing.value = false;
     busy.value = true;
     try {
@@ -84,15 +117,17 @@ watch(
       }
       const d = IdSchema.parse(daoId.value),
         m = IdSchema.parse(memberId.value);
-      const people = await api.contentPage(d, {
-        documents: 'done',
-        keyGrants: 'done',
-        epochs: 'done',
-        members: m,
-      });
+      const publicPage = await api.publicMembers({ daoId: d, memberId: m });
       if (disposed || request !== generation) return;
-      const row = people.members.find((person) => person.id === m);
+      const row = publicPage.members.find(
+        (person) =>
+          person.id === m &&
+          person.dao.daoId === d &&
+          person.dao.chainId === state.network?.chainId &&
+          person.dao.contract === state.network.runtime,
+      );
       if (!row) return;
+      publicMember.value = row;
       exists.value = true;
       memberNative.value = row.native_account;
       memberActive.value = row.active;
@@ -103,15 +138,7 @@ watch(
           ? PublicProfileSchema.parse(JSON.parse(stored.profile))
           : undefined;
       } else {
-        const page = await api.people({ daoId: d, memberId: m });
-        if (disposed || request !== generation) return;
-        profile.value = page.profiles.find(
-          (person) =>
-            person.memberId === m &&
-            person.dao.daoId === d &&
-            person.dao.chainId === state.network?.chainId &&
-            person.dao.contract === state.network.runtime,
-        )?.profile;
+        profile.value = row.profile ?? undefined;
       }
     } catch (cause) {
       if (request === generation) error.value = friendlyError(cause);
@@ -127,21 +154,18 @@ onBeforeUnmount(() => {
 });
 const title = computed(
   () =>
-    profile.value?.fullName ||
-    profile.value?.name ||
+    displayProfile.value?.fullName ||
+    displayProfile.value?.name ||
     memberNative.value ||
+    user.value?.nativeAccount ||
     (own.value ? 'Your profile' : `Member ${memberId.value ?? ''}`),
 );
-const links = computed(() =>
-  (['website', 'facebook', 'instagram', 'youtube', 'linkedin'] as const).flatMap((key) => {
-    const url = profile.value?.[key];
-    return url ? [{ key, url }] : [];
-  }),
-);
+const contacts = computed(() => profileContacts(displayProfile.value));
 function saved() {
   profileRevision.value++;
   void state.refresh();
   editing.value = false;
+  void directory.load(true);
 }
 </script>
 <template>
@@ -156,12 +180,12 @@ function saved() {
   <template v-else-if="!error && (exists || own)">
     <section
       class="profile-hero"
-      :class="{ 'profile-without-cover': !profile?.background || failedImages.background }"
+      :class="{ 'profile-without-cover': !displayProfile?.background || failedImages.background }"
     >
-      <div v-if="profile?.background && !failedImages.background" class="profile-cover">
+      <div v-if="displayProfile?.background && !failedImages.background" class="profile-cover">
         <img
-          v-if="profile?.background && !failedImages.background"
-          :src="`https://ipfs.io/ipfs/${profile.background}`"
+          v-if="displayProfile?.background && !failedImages.background"
+          :src="`https://ipfs.io/ipfs/${displayProfile.background}`"
           alt=""
           referrerpolicy="no-referrer"
           @error="failedImages.background = true"
@@ -170,8 +194,8 @@ function saved() {
       <div class="profile-identity">
         <span class="person-avatar large"
           ><img
-            v-if="profile?.avatar && !failedImages.avatar"
-            :src="`https://ipfs.io/ipfs/${profile.avatar}`"
+            v-if="displayProfile?.avatar && !failedImages.avatar"
+            :src="`https://ipfs.io/ipfs/${displayProfile.avatar}`"
             alt=""
             referrerpolicy="no-referrer"
             @error="failedImages.avatar = true"
@@ -180,7 +204,7 @@ function saved() {
         <div>
           <p class="eyebrow">{{ own ? 'YOUR PUBLIC PROFILE' : 'PUBLIC PROFILE' }}</p>
           <h1>{{ title }}</h1>
-          <p v-if="profile?.name" class="person-handle">@{{ profile.name }}</p>
+          <p v-if="displayProfile?.name" class="person-handle">@{{ displayProfile.name }}</p>
         </div>
         <button
           v-if="own"
@@ -195,9 +219,11 @@ function saved() {
           }}
         </button>
       </div>
-      <p v-if="profile?.motto" class="lead">{{ profile.motto }}</p>
-      <p v-if="profile?.introduction" class="profile-introduction">{{ profile.introduction }}</p>
-      <p v-if="!profile" class="muted">
+      <p v-if="displayProfile?.motto" class="lead">{{ displayProfile.motto }}</p>
+      <p v-if="displayProfile?.introduction" class="profile-introduction">
+        {{ displayProfile.introduction }}
+      </p>
+      <p v-if="!displayProfile" class="muted">
         {{
           own
             ? 'Publish your profile to introduce yourself.'
@@ -205,25 +231,55 @@ function saved() {
         }}
       </p>
       <div class="profile-facts">
-        <span v-if="profile?.location"><MapPin aria-hidden="true" />{{ profile.location }}</span
-        ><a
-          v-for="link in links"
-          :key="link.key"
-          :href="link.url"
-          target="_blank"
-          rel="noopener noreferrer"
-          ><Globe aria-hidden="true" />{{ link.key
-          }}<span class="sr-only"> (opens in a new tab)</span></a
-        ><span v-if="profile?.telegram"><AtSign aria-hidden="true" />{{ profile.telegram }}</span>
+        <span v-if="displayProfile?.location"
+          ><MapPin aria-hidden="true" />{{ displayProfile.location }}</span
+        >
+        <template v-for="contact in contacts" :key="contact.key">
+          <a
+            v-if="contact.href"
+            :href="contact.href"
+            :target="contact.key === 'email' ? undefined : '_blank'"
+            rel="noopener noreferrer"
+            ><component
+              :is="contact.key === 'email' || contact.key === 'telegram' ? AtSign : Globe"
+              aria-hidden="true"
+            />{{ contact.label
+            }}<span v-if="contact.key !== 'email'" class="sr-only"> (opens in a new tab)</span></a
+          >
+          <span v-else>{{ contact.label }}</span>
+        </template>
       </div>
-      <p v-if="profile?.email" class="muted">Public contact: {{ profile.email }}</p>
+      <LastDaoActivity :last-active="user?.lastActive ?? publicMember?.lastActive ?? null" />
     </section>
     <section v-if="daoId && memberId" class="panel profile-membership">
       <div class="panel-heading">
-        <h2>Community membership</h2>
-        <span class="pill">{{ memberActive ? 'Active member' : 'Inactive member' }}</span>
+        <h2>Community memberships</h2>
+        <span v-if="!communities.length" class="pill">{{
+          memberActive ? 'Active member' : 'Inactive member'
+        }}</span>
       </div>
-      <RouterLink :to="`/dao/${dao.reference.daoId}/members`" v-if="dao"
+      <ul v-if="communities.length" class="profile-community-list">
+        <li v-for="community in communities" :key="`${community.dao.daoId}:${community.id}`">
+          <RouterLink :to="`/dao/${community.dao.daoId}`">{{
+            state.daos.find(
+              (d) =>
+                d.reference.daoId === community.dao.daoId &&
+                d.reference.chainId === community.dao.chainId &&
+                d.reference.contract === community.dao.contract,
+            )?.title ?? `DAO ${community.dao.daoId}`
+          }}</RouterLink>
+          <span class="pill">{{ community.active ? 'Active member' : 'Inactive member' }}</span>
+          <RouterLink
+            v-if="community.dao.daoId !== daoId || community.id !== memberId"
+            class="help-link"
+            :to="`/users/${community.dao.daoId}/${community.id}`"
+            >Membership profile<span class="sr-only">
+              for DAO {{ community.dao.daoId }}</span
+            ></RouterLink
+          >
+        </li>
+      </ul>
+      <RouterLink :to="`/dao/${dao.reference.daoId}/members`" v-else-if="dao"
         >{{ dao.title }} · member {{ memberId }}</RouterLink
       >
       <RouterLink v-else :to="`/dao/${daoId}/members`"
@@ -233,8 +289,27 @@ function saved() {
         On-chain governance account: <span class="mono">{{ memberNative }}</span>
       </p>
       <p class="field-help">
-        This is a public member record. Private sign-in pairings are not displayed.
+        These connections come from public on-chain membership records. Private sign-in pairings are
+        not displayed.
       </p>
+      <p v-if="directory.busy.value" role="status">Loading community connections…</p>
+      <p v-if="directory.next.value || directory.busy.value" class="field-help">
+        Community links and latest activity cover memberships loaded so far.
+      </p>
+      <p v-if="directory.error.value" class="alert" role="alert">
+        Some community connections could not be loaded. {{ directory.error.value }}
+        <button class="text-button" type="button" @click="directory.load()">
+          Retry connections
+        </button>
+      </p>
+      <button
+        v-else-if="directory.next.value && !directory.busy.value"
+        class="secondary"
+        type="button"
+        @click="directory.load()"
+      >
+        Load more community connections
+      </button>
     </section>
     <div v-if="own" v-show="editing" id="profile-account-settings">
       <Account
@@ -265,6 +340,18 @@ function saved() {
 }
 .profile-membership {
   margin-top: 1.5rem;
+}
+.profile-community-list {
+  list-style: none;
+  padding: 0;
+}
+.profile-community-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--border-default);
 }
 .profile-identity > div {
   min-width: 0;

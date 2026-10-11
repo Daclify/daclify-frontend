@@ -1,6 +1,6 @@
 # Frontend documentation
 
-Current development application: **0.13.0-alpha.3**, consuming core **0.13.0-alpha.3** and modules **0.9.0-alpha.19** SDK/help packages. Development uses `dev`. See the [repository README](../README.md) for routes, local development, account recovery and test phases, and the [Netlify dev guide](netlify-dev.md) for the separate testnet site.
+Current development application: **0.13.0-alpha.4**, consuming core **0.13.0-alpha.4** and modules **0.9.0-alpha.20** SDK/help packages. Development uses `dev`. See the [repository README](../README.md) for routes, local development, account recovery and test phases, and the [Netlify dev guide](netlify-dev.md) for the separate testnet site.
 
 ## Help inside the application
 
@@ -64,3 +64,5 @@ The published files are isolated from ordinary repository builds.
 See core [payment operations](../../daclify-backend-core/docs/operations/connected-payments.md) and app `/docs/shared-hosting`, `/docs/payments`, `/docs/independent-operators`. Independent API discovery now has issuer/code/ABI and current-registration checks; actual operator browser cookies and external providers still need qualification.
 
 Resources → Archive now shows the configured encrypted backup option, exact manifest commitment and saved restore-verification receipt. Backup creation and reload are covered by desktop/mobile browser tests; native approval/pruning require the separate configured availability, authority and release gates; export alone does not enable them. Operator key/path details never enter this UI.
+
+- [Public Users directory](users/public-directory.md) explains profiles, community links, identity grouping and DAO activity.

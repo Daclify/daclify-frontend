@@ -214,14 +214,28 @@ test('directory search can clear a no-match result and filters the own card too'
 });
 test('failed profile lookup can retry without claiming the member is missing', async ({ page }) => {
   let reads = 0;
-  await page.route('**/v1/daos/1/content?*', (route) => {
+  await page.route('**/v1/people/members?*', (route) => {
+    if (!new URL(route.request().url()).searchParams.has('memberId')) return route.fallback();
     reads++;
     return reads === 1
       ? route.fulfill({
           status: 503,
           json: { code: 'SERVICE_UNAVAILABLE', message: 'Unavailable' },
         })
-      : route.fulfill({ json: content });
+      : route.fulfill({
+          json: {
+            members: [
+              {
+                dao: reference,
+                id: '1',
+                native_account: 'alice',
+                active: true,
+                profile: profiles.profiles[0]?.profile,
+              },
+            ],
+            next: null,
+          },
+        });
   });
   await page.goto('/users/1/1');
   await expect(page.getByRole('alert')).toBeVisible();
@@ -232,10 +246,27 @@ test('failed profile lookup can retry without claiming the member is missing', a
   await page.screenshot({ path: test.info().outputPath('member-profile.png'), fullPage: true });
 });
 test('foreign DAO public profiles cannot supply a member detail', async ({ page }) => {
-  await page.route('**/v1/people?*', (route) =>
+  await page.route('**/v1/people/members?*', (route) =>
     route.fulfill({
       json: {
-        profiles: [{ ...profiles.profiles[0], dao: { ...reference, daoId: '77' } }],
+        members: [
+          {
+            dao: reference,
+            id: '1',
+            native_account: 'alice',
+            identityKey: null,
+            active: true,
+            profile: null,
+          },
+          {
+            dao: { ...reference, daoId: '77' },
+            id: '1',
+            native_account: '',
+            identityKey: null,
+            active: true,
+            profile: profiles.profiles[0]?.profile,
+          },
+        ],
         next: null,
       },
     }),
@@ -298,6 +329,10 @@ test('signed-out Users shows existing members before they publish profiles', asy
   await expect(page.locator('.person-card')).toHaveCount(2);
   await expect(page.getByRole('heading', { name: 'alice', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Member 2', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'alice', exact: true })).toHaveAttribute(
+    'href',
+    '/users/1/1',
+  );
   await page.getByRole('link', { name: /alice/ }).click();
   await expect(
     page.getByText('This member has not published a profile.', { exact: true }),
@@ -346,13 +381,143 @@ test('Users loads the next DAO and replaces a native fallback with its published
     },
   );
   await page.goto('/users');
-  await expect(page.getByRole('heading', { name: 'alice', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Load more users' }).click();
   await expect(page.locator('.person-card')).toHaveCount(2);
   await expect(page.getByRole('heading', { name: 'Alice Adams', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'alice', exact: true })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Member 2', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Load more users' })).toHaveCount(0);
+});
+test('a key-only membership uses its proven public account name even without any published profile', async ({
+  page,
+}) => {
+  await page.route('**/v1/me', (route) =>
+    route.fulfill({ status: 401, json: { code: 'AUTH_REQUIRED', message: 'Sign in' } }),
+  );
+  await page.route(
+    (url) => url.pathname === PeopleRoutes.members.path,
+    (route) => {
+      const query = new URL(route.request().url()).searchParams,
+        later = query.get('daoId') === '4';
+      return route.fulfill({
+        json: {
+          members: [
+            {
+              dao: { ...reference, daoId: later ? '4' : '1' },
+              id: '1',
+              native_account: later ? 'alice' : '',
+              identityKey: 'ef'.repeat(32),
+              active: true,
+              profile: null,
+            },
+          ],
+          next: later || query.has('memberId') ? null : { daoId: '4', after: '0' },
+        },
+      });
+    },
+  );
+  await page.goto('/users/1/1');
+  await expect(page.getByRole('heading', { name: 'alice', level: 1, exact: true })).toBeVisible();
+  await expect(
+    page.locator('.profile-membership').getByRole('link', { name: 'DAO 4', exact: true }),
+  ).toHaveAttribute('href', '/dao/4');
+  await expect(page.getByText('DAO activity not recorded', { exact: true })).toBeVisible();
+  await expect(
+    page.getByText('This member has not published a profile.', { exact: true }),
+  ).toBeVisible();
+});
+test('unified users show all DAO links, published avatar and contacts, and latest successful DAO activity', async ({
+  page,
+}) => {
+  const cid = 'bafkreiehxpuhtr5f6v4eu4byjo2j7kkrhjvd7psmfu4imnpdzb3bdqb7vy';
+  const otherDao = { ...dao, reference: { ...reference, daoId: '4' }, title: 'Garden DAO' };
+  await page.route('**/v1/me', (route) =>
+    route.fulfill({ status: 401, json: { code: 'AUTH_REQUIRED', message: 'Sign in' } }),
+  );
+  await page.route('**/v1/daos', (route) => route.fulfill({ json: { daos: [dao, otherDao] } }));
+  await page.route('https://ipfs.io/ipfs/**', (route) =>
+    route.fulfill({
+      contentType: 'image/svg+xml',
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="#a84"/></svg>',
+    }),
+  );
+  await page.route(
+    (url) => url.pathname === PeopleRoutes.members.path,
+    (route) => {
+      const query = new URL(route.request().url()).searchParams;
+      const later = query.get('daoId') === '4';
+      return route.fulfill({
+        json: {
+          members: [
+            {
+              dao: later ? otherDao.reference : reference,
+              id: '1',
+              native_account: later ? '' : 'alice',
+              identityKey: 'ef'.repeat(32),
+              active: !later,
+              lastActive: later ? 1_800_000_600 : 1_800_000_000,
+              profile: later
+                ? null
+                : {
+                    name: 'alice',
+                    fullName: 'Alice Adams',
+                    motto: 'Growing communities',
+                    location: 'Canary Islands',
+                    avatar: cid,
+                    email: 'alice@example.org',
+                    telegram: '@alice12',
+                    website: 'https://alice.example.org',
+                  },
+            },
+          ],
+          next: later || query.has('memberId') ? null : { daoId: '4', after: '0' },
+        },
+      });
+    },
+  );
+  await page.goto('/users');
+  await expect(page.locator('.person-card')).toHaveCount(1);
+  const card = page.locator('.person-card');
+  await expect(card.getByRole('link', { name: 'Daclify DAO', exact: true })).toHaveAttribute(
+    'href',
+    '/dao/1',
+  );
+  await expect(card.getByRole('link', { name: /Garden DAO/ })).toHaveAttribute('href', '/dao/4');
+  await expect(card.getByRole('link', { name: /Garden DAO/ })).toContainText('Inactive');
+  await expect(card.getByRole('link', { name: /alice@example.org/ })).toHaveAttribute(
+    'href',
+    'mailto:alice%40example.org',
+  );
+  await expect(card.getByRole('link', { name: /@alice12/ })).toHaveAttribute(
+    'href',
+    'https://t.me/alice12',
+  );
+  await expect(card.locator('img')).toHaveAttribute('src', `https://ipfs.io/ipfs/${cid}`);
+  await expect(card.locator('time')).toHaveAttribute(
+    'datetime',
+    new Date(1_800_000_600_000).toISOString(),
+  );
+  expect(await page.locator('a a').count()).toBe(0);
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  await page.screenshot({ path: test.info().outputPath('unified-users.png'), fullPage: true });
+  await card.getByRole('link', { name: /Alice Adams/ }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Community memberships', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page
+      .locator('.profile-membership')
+      .getByRole('link', { name: /Garden DAO/ })
+      .first(),
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Edit profile & account' })).toHaveCount(0);
+  await page.getByRole('link', { name: 'All users', exact: true }).click();
+  await page.getByRole('button', { name: 'List view', exact: true }).click();
+  await expect(page.locator('.people-list .person-card')).toHaveCount(1);
+  await page.getByRole('searchbox').fill('Garden');
+  await expect(page.locator('.person-card')).toHaveCount(1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
 });
 test('sidebar and hub open the same DAO; members have shared public profiles and view controls', async ({
   page,
@@ -471,14 +636,19 @@ test('unavailable IPFS avatars keep the readable profile fallback', async ({ pag
   await page.route('https://ipfs.io/ipfs/**', (route) =>
     route.fulfill({ status: 404, body: 'Unavailable image fixture' }),
   );
-  await page.route('**/v1/people?*', (route) =>
+  await page.route('**/v1/people/members?*', (route) =>
     route.fulfill({
       json: {
-        ...profiles,
-        profiles: profiles.profiles.map((person) => ({
-          ...person,
-          profile: { ...person.profile, avatar: cid, background: cid },
-        })),
+        members: [
+          {
+            dao: reference,
+            id: '1',
+            native_account: 'alice',
+            active: true,
+            profile: { ...profiles.profiles[0]?.profile, avatar: cid, background: cid },
+          },
+        ],
+        next: null,
       },
     }),
   );

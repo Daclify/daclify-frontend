@@ -1785,6 +1785,45 @@ nav a,
 .person-card-body {
   min-width: 0;
   padding-right: 16px;
+  width: 100%;
+}
+.person-profile-link {
+  color: inherit;
+}
+.person-profile-link::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 20px;
+}
+.person-profile-link:focus-visible::after {
+  outline: 2px solid var(--accent-amber);
+  outline-offset: 4px;
+}
+.person-direct-link {
+  position: relative;
+  z-index: 1;
+}
+.person-communities {
+  margin: 1rem 0;
+}
+.person-section-label {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+.person-communities .pill {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.person-contacts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 1rem 0;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
 }
 .profile-hero {
   overflow: hidden;

@@ -164,14 +164,21 @@ it('does not unlock keys or replace CSRF state when the account changes while va
     }),
   });
   let complete: ((value: { account: Account; csrfToken: string }) => void) | undefined;
+  let notifyAttached: (() => void) | undefined;
+  const attached = new Promise<void>((resolve) => {
+    notifyAttached = resolve;
+  });
   const attach = vi.spyOn(api, 'attachVault').mockImplementation(
     () =>
       new Promise((resolve) => {
         complete = resolve;
+        if (!notifyAttached) throw new Error('Missing fixture notification');
+        notifyAttached();
       }),
   );
   const operation = unlockAndLogin(password, recovered);
-  await vi.waitFor(() => expect(attach).toHaveBeenCalledOnce());
+  await Promise.race([attached, operation]);
+  expect(attach).toHaveBeenCalledOnce();
   workspace.account = AccountSchema.parse({ ...recovered, id: randomUUID() });
   sessionStorage.setItem('daclify.csrf', 'b'.repeat(43));
   if (!complete) throw new Error('Missing fixture completion');

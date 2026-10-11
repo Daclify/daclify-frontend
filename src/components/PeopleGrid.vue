@@ -3,6 +3,7 @@ import { computed, ref } from 'vue';
 import { LayoutGrid, List, Search } from '@lucide/vue';
 import type { PublicProfile } from '@daclify/core-protocol';
 import PersonCard from './PersonCard.vue';
+import type { CommunityLink } from '../state/public-people';
 const props = defineProps<{
   people: Array<{
     key: string;
@@ -12,6 +13,8 @@ const props = defineProps<{
     own?: boolean;
     badges?: string[];
     active?: boolean;
+    communities?: CommunityLink[];
+    lastActive?: number | null;
   }>;
   members?: boolean;
   loading?: boolean;
@@ -48,6 +51,7 @@ const visible = computed(() =>
           person.profile?.location,
           person.profile?.motto,
           ...(person.badges ?? []),
+          ...(person.communities?.map((community) => community.title) ?? []),
         ]
           .join(' ')
           .toLowerCase()
@@ -117,6 +121,8 @@ const visible = computed(() =>
       :to="person.to"
       :own="person.own ?? false"
       :badges="person.badges ?? []"
+      :communities="person.communities ?? []"
+      :last-active="person.lastActive"
       :heading="members ? 'h3' : 'h2'"
     />
   </div>
