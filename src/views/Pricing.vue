@@ -4,6 +4,7 @@ import {
   HostedPricingSchema,
   hostedMonthlyPrice,
   type PlatformStatus,
+  type ModuleFeePricing,
 } from '@daclify/core-protocol';
 import { ArrowLeft, RefreshCw } from '@lucide/vue';
 import { api, friendlyError } from '../api/client';
@@ -11,6 +12,13 @@ import { useWorkspace } from '../state/workspace';
 
 const workspace = useWorkspace();
 const status = ref<PlatformStatus>();
+const modulePricing = ref<ModuleFeePricing>(),
+  moduleError = ref('');
+const verifiedModules = computed(
+  () =>
+    modulePricing.value?.chainId === workspace.network?.chainId &&
+    modulePricing.value?.runtime === workspace.network?.runtime,
+);
 const busy = ref(false),
   error = ref('');
 const chain = computed(() => status.value?.chain);
@@ -61,11 +69,20 @@ let sequence = 0;
 async function load() {
   const current = ++sequence;
   status.value = undefined;
+  modulePricing.value = undefined;
+  moduleError.value = '';
   busy.value = true;
   error.value = '';
   try {
-    const value = await api.platformStatus();
-    if (current === sequence) status.value = value;
+    const [platform, modules] = await Promise.allSettled([
+      api.platformStatus(),
+      api.moduleFeePricing(),
+    ]);
+    if (current !== sequence) return;
+    if (platform.status === 'rejected') throw platform.reason;
+    status.value = platform.value;
+    if (modules.status === 'fulfilled') modulePricing.value = modules.value;
+    else moduleError.value = friendlyError(modules.reason);
   } catch (cause) {
     if (current === sequence) error.value = friendlyError(cause);
   } finally {
@@ -280,17 +297,54 @@ onUnmounted(() => {
 
       <section class="panel" aria-labelledby="module-pricing">
         <h2 id="module-pricing">Module prices</h2>
-        <dl v-if="chain.catalogue.length" class="fact-list">
-          <template v-for="module in chain.catalogue" :key="module.account">
-            <dt>{{ module.title || module.account }}</dt>
-            <dd>{{ module.price }}</dd>
-          </template>
-        </dl>
-        <p v-else>No module prices are published on this network.</p>
-        <p class="field-help">
-          Listed prices are in the module's payment token. Funding work, payroll or grants is
-          separate from the module price.
-        </p>
+        <template v-if="verifiedModules && modulePricing">
+          <p class="price-highlight">
+            All existing modules free through {{ modulePricing.freeMembers }} active members
+          </p>
+          <p>
+            Above {{ modulePricing.freeMembers }} members, each enabled module has its own monthly
+            fee per DAO.
+          </p>
+          <dl v-if="modulePricing.plans.length" class="fact-list">
+            <template v-for="plan in modulePricing.plans" :key="plan.pricing.account">
+              <dt>{{ plan.title }}</dt>
+              <dd>
+                {{
+                  plan.pricing.monthlyUsdCents === 0
+                    ? 'Free'
+                    : money(plan.pricing.monthlyUsdCents) + ' / DAO / month'
+                }}
+              </dd>
+            </template>
+          </dl>
+          <p v-else>Monthly module fees have not been configured on this network.</p>
+          <p v-if="modulePricing.plans.length">
+            All listed modules:
+            {{
+              money(
+                modulePricing.plans.reduce((sum, plan) => sum + plan.pricing.monthlyUsdCents, 0),
+              )
+            }}
+            / DAO / month above {{ modulePricing.freeMembers }} members.
+          </p>
+          <p class="field-help">
+            An administrator buys one calendar month; renewal is manual. Existing votes, completion
+            and payouts remain available after expiry. Member capacity and storage are separate.
+          </p>
+        </template>
+        <p v-else role="status">Monthly module pricing is unavailable. {{ moduleError }}</p>
+        <RouterLink to="/module-access">Manage a DAO’s module access ↗</RouterLink>
+        <p class="field-help">Work, payroll and grant funding are separate from module access.</p>
+        <details v-if="chain.catalogue.length">
+          <summary>Catalogue usage prices</summary>
+          <dl class="fact-list">
+            <template v-for="module in chain.catalogue" :key="module.account"
+              ><dt>{{ module.title || module.account }}</dt>
+              <dd>{{ module.price }}</dd></template
+            >
+          </dl>
+          <p>Native token usage prices apply separately where configured.</p>
+        </details>
         <RouterLink to="/modules">Explore modules ↗</RouterLink>
       </section>
     </div>

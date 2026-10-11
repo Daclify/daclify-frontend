@@ -39,6 +39,7 @@ const router = createRouter({
     { path: '/create', component: () => import('./views/CreateDao.vue') },
     { path: '/pricing', component: () => import('./views/Pricing.vue') },
     { path: '/hosting', component: () => import('./views/Hosting.vue') },
+    { path: '/module-access', component: () => import('./views/ModuleAccess.vue') },
     { path: '/resources', component: () => import('./views/Resources.vue') },
     { path: '/payments', component: () => import('./views/Payments.vue') },
     { path: '/modules', component: () => import('./views/Modules.vue') },

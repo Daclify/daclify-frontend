@@ -6,6 +6,8 @@ import {
   DEFAULT_RESOURCE_POLICY,
   ResourcePolicySchema,
   type PlatformStatus,
+  type ModuleFeePricing,
+  ModuleFeePriceSchema,
 } from '@daclify/core-protocol';
 import {
   encodeAction,
@@ -21,6 +23,8 @@ import { useWorkspace } from '../state/workspace';
 const workspace = useWorkspace();
 const status = ref<PlatformStatus>(),
   catalogue = ref<Awaited<ReturnType<typeof api.marketplace>>>();
+const modulePricing = ref<ModuleFeePricing>(),
+  monthlyRates = ref<Record<string, string>>({});
 const error = ref(''),
   success = ref(''),
   busy = ref(false);
@@ -71,11 +75,29 @@ async function load() {
   error.value = '';
   status.value = undefined;
   catalogue.value = undefined;
+  modulePricing.value = undefined;
   try {
-    const [s, c] = await Promise.all([api.platformStatus(), api.marketplace()]);
+    const [s, c, fees] = await Promise.all([
+      api.platformStatus(),
+      api.marketplace(),
+      api.moduleFeePricing().catch(() => undefined),
+    ]);
     if (current !== sequence) return;
     status.value = s;
     catalogue.value = c;
+    if (
+      fees &&
+      fees.chainId === workspace.network?.chainId &&
+      fees?.runtime === workspace.network?.runtime
+    ) {
+      modulePricing.value = fees;
+      monthlyRates.value = Object.fromEntries(
+        fees.plans.map((plan) => [
+          plan.pricing.account,
+          formatUnits(BigInt(plan.pricing.monthlyUsdCents), 2),
+        ]),
+      );
+    }
     const cfg = s.chain?.creation;
     freeSlots.value = s.chain?.hosting?.free_members ?? 10;
     settler.value = cfg?.settler ?? '';
@@ -137,6 +159,31 @@ async function fees() {
         ...actor(),
         free_members: freeSlots.value,
         settler: settler.value,
+      }),
+    );
+  } catch (cause) {
+    error.value = friendlyError(cause);
+  }
+}
+async function monthlyFee(plan: NonNullable<typeof modulePricing.value>['plans'][number]) {
+  try {
+    if (
+      modulePricing.value?.chainId !== workspace.network?.chainId ||
+      modulePricing.value?.runtime !== workspace.network?.runtime
+    )
+      throw new Error('DAO_REFERENCE');
+    const price = ModuleFeePriceSchema.parse({
+      ...plan.pricing,
+      monthlyUsdCents: Number(parseUnits(monthlyRates.value[plan.pricing.account] ?? '', 2)),
+    });
+    await sign(
+      'govmodfee',
+      encodeAction('govmodfee', {
+        ...actor(),
+        account: price.account,
+        expected_revision: price.revision,
+        monthly_usd: price.monthlyUsdCents,
+        actions: price.actions,
       }),
     );
   } catch (cause) {
@@ -293,6 +340,35 @@ async function describe() {
   </div>
   <p v-if="error" class="alert" role="alert">{{ error }}</p>
   <p v-if="success" role="status">{{ success }}</p>
+  <section class="panel" aria-labelledby="monthly-module-fees">
+    <h2 id="monthly-module-fees">Monthly module access prices</h2>
+    <p>
+      All existing modules are free through 10 active members. These rates apply per DAO above that
+      threshold.
+    </p>
+    <form
+      v-for="plan in modulePricing?.plans"
+      :key="plan.pricing.account"
+      class="form-panel"
+      @submit.prevent="monthlyFee(plan)"
+    >
+      <fieldset :disabled="!canSign || !newPoliciesReady">
+        <label :for="'monthly-module-' + plan.pricing.account"
+          >{{ plan.title }} (USD / DAO / month)</label
+        ><input
+          :id="'monthly-module-' + plan.pricing.account"
+          v-model="monthlyRates[plan.pricing.account]"
+          inputmode="decimal"
+          required
+          pattern="[0-9]+(\.[0-9]{1,2})?"
+        /><button>Sign {{ plan.title }} monthly price</button>
+      </fieldset>
+    </form>
+    <p class="field-help">
+      Set zero for free access, or at least $0.50. Existing paid intervals keep their expiry.
+      Completion and payout actions remain available.
+    </p>
+  </section>
   <section class="panel">
     <h2>Platform workspace</h2>
     <template v-if="dao"
