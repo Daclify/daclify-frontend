@@ -1,0 +1,124 @@
+{
+  "feature": "Contract resources card testnet frontend deployment",
+  "authorization": "User explicitly requested: so deploy it",
+  "manifest": {
+    "sourceCommit": "018fa04c21b303c31930987a6635d888e6e62fba",
+    "target": "https://testnet.app.daclify.com",
+    "previousIndexSha256": "3acd6786d57ea64b7a0df064955290e218a5858c61ad11e6b83d9b2e7163a43e",
+    "publishedRoot": "/data/daclify-runtime/builds/frontend-testnet",
+    "authorization": "User: so deploy it; testnet frontend only",
+    "previousUnitAndBrowserEvidence": "/data/daclify-frontend/docs/evidence/2026-10-11-contract-resources.json"
+  },
+  "publicAssets": {
+    "checkedAt": "Sun, 11 Oct 2026 10:54:33 GMT",
+    "publicOrigin": "https://testnet.app.daclify.com",
+    "indexSha256": "c0686a030852f2db55954436521e2ace6e347ccdeec1c4b9f1a495289c7d2f07",
+    "featureAsset": "/assets/Status-oM9939G-.js",
+    "featureAssetSha256": "5756e28ade11062be34202051066c2484bf40f354b0604baefbf81e0e7565f92",
+    "resourceCardPresent": true,
+    "ramSliderPresent": true,
+    "publicIndexMatchesPublishedBuild": true,
+    "publicFeatureAssetMatchesPublishedBuild": true,
+    "previousAssetRetained": true
+  },
+  "publicResourceChecks": {
+    "checkedAt": "2026-10-11T10:55:11.008Z",
+    "origin": "https://testnet.app.daclify.com",
+    "apiOrigin": "https://testnet.api.daclify.com",
+    "scope": "Real public HTTPS UI/API/RPC; no response fixtures, localhost CORS proxy, wallet connection, signatures or transactions",
+    "reports": [
+      {
+        "viewport": {
+          "width": 1440,
+          "height": 1100
+        },
+        "result": "passed",
+        "totals": "RAM used\n17,170,373 bytes\nRAM allocated\n19,794,833 bytes\nUsed RAM replacement estimate\n$17.42\n983.6635 TLOS",
+        "accounts": 10,
+        "contractAccounts": 8,
+        "ramSlider": "100% current quota; 200% double",
+        "cpuNetViews": "passed",
+        "accessibilityViolations": 0,
+        "fits": true,
+        "errors": [],
+        "misplaced": [],
+        "mutations": 0,
+        "screenshot": "/data/daclify-runtime/contract-resources-deploy-20261011/desktop.png"
+      },
+      {
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "result": "passed",
+        "totals": "RAM used\n17,170,373 bytes\nRAM allocated\n19,794,833 bytes\nUsed RAM replacement estimate\n$17.42\n983.6635 TLOS",
+        "accounts": 10,
+        "contractAccounts": 8,
+        "ramSlider": "100% current quota; 200% double",
+        "cpuNetViews": "passed",
+        "accessibilityViolations": 0,
+        "fits": true,
+        "errors": [],
+        "misplaced": [],
+        "mutations": 0,
+        "screenshot": "/data/daclify-runtime/contract-resources-deploy-20261011/mobile.png"
+      }
+    ]
+  },
+  "connectedDeployment": {
+    "apiVersion": "0.13.0-alpha.4",
+    "moduleVersion": "0.9.0-alpha.20",
+    "chainId": "1eaa0824707c8c16bd25145493bf062aecddfeb56c736f6ba6397f3195f33c9f",
+    "environment": "testnet"
+  },
+  "commands": [
+    {
+      "command": "/data/daclify-runtime/bin/daclify-rebuild frontend",
+      "result": "passed",
+      "log": "/data/daclify-runtime/contract-resources-deploy-20261011/build-publish.log"
+    },
+    {
+      "command": "LD_LIBRARY_PATH=/data/daclify-runtime/browser-libs/usr/lib/x86_64-linux-gnu npm run test:testnet-public",
+      "result": "passed",
+      "viewports": 2,
+      "log": "/data/daclify-runtime/contract-resources-deploy-20261011/public-regressions.log"
+    },
+    {
+      "command": "LD_LIBRARY_PATH=/data/daclify-runtime/browser-libs/usr/lib/x86_64-linux-gnu node /data/daclify-runtime/contract-resources-deploy-20261011/check-public-resources.mjs",
+      "result": "passed",
+      "viewports": 2,
+      "log": "/data/daclify-runtime/contract-resources-deploy-20261011/public-resources.log",
+      "script": "/data/daclify-runtime/contract-resources-deploy-20261011/check-public-resources.mjs"
+    }
+  ],
+  "artifactSha256": {
+    "build-publish.log": "a3cf29432ffa0d6b9e8b55af17e5224192361934cf9ae93eccb1e66b62502070",
+    "public-regressions.log": "d5ca341f67f876d32e87d2b485228f0269a6c935f5838a9eafa6ce8cd6a63b3d",
+    "public-resources.log": "5bd66c22a66daa00e6ee3d4129ea98cf786db23f0265c829173b79f11580847b",
+    "check-public-resources.mjs": "a56830466fc6404421ab1bded92b0adb347e7f1f120873651643dd9b19176e20",
+    "desktop.png": "b8258490f035a77690a788bc427606cfe4c8855b6d4a80e866e0ddfddcb75c5d",
+    "mobile.png": "8195f9e9a6fb30f114d0c9dcc94bf8143994c23bc85ef80ac268d6c6ddbd04eb"
+  },
+  "review": {
+    "publicScreenshotsVisuallyInspected": true,
+    "publicIndexAndFeatureAssetEqualPublishedBuild": true,
+    "previousHashedAssetsRetained": true,
+    "browserErrors": 0,
+    "accessibilityViolations": 0,
+    "mobileOverflow": false
+  },
+  "verificationSetupFailure": {
+    "log": "/data/daclify-runtime/contract-resources-deploy-20261011/public-resources.import-error.log",
+    "cause": "The first additional verification script used CommonJS require for an ESM-only public package. It failed before opening the browser. Corrected to import its published public ESM entry; both public viewport checks then passed."
+  },
+  "scope": "Testnet frontend static files only; no backend restart, smart-contract deployment, authority change or asset movement.",
+  "limitations": [
+    "No actual Anchor connection or signing was performed.",
+    "No RAM purchase or CPU/NET stake transaction was submitted.",
+    "CPU/NET capacity remains dependent on network conditions; the slider scales TLOS stake."
+  ],
+  "rollback": {
+    "previousEntryPoint": "/data/daclify-runtime/contract-resources-deploy-20261011/index.before.html",
+    "note": "Previous hashed assets are retained. Restore this index atomically if frontend rollback is needed."
+  }
+}

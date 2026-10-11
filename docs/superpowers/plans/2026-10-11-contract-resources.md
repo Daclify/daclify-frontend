@@ -70,4 +70,14 @@ Implemented inline on `dev`, preserving unrelated work. The standing continuous-
 - A read-only live testnet smoke showed 17,170,373 used bytes across eight contract accounts, 19,794,833 allocated bytes and a $17.42 replacement-cost reference (983.6635 testnet TLOS). Two zero-code service accounts were listed separately. No mutation, wallet connection or signed transaction occurred. A local pass-through added localhost CORS response headers to real GET responses; deployment-origin CORS was not verified.
 - Evidence, log hashes, source hashes and screenshots are recorded in `docs/evidence/2026-10-11-contract-resources.json`. The delivery commit includes this ledger and is identifiable with `git log -- docs/evidence/2026-10-11-contract-resources.json`; its hash is not embedded in its own contents.
 
-Live Anchor approval, asset purchases and deployment remain unrun. CPU/NET limits remain dependent on network conditions; the sliders scale TLOS stake.
+At initial code delivery, live Anchor approval, asset purchases and deployment were unrun. CPU/NET limits remain dependent on network conditions; the sliders scale TLOS stake.
+
+## Authorized testnet deployment
+
+The user explicitly requested deployment after code delivery. Published frontend source commit `018fa04c21b303c31930987a6635d888e6e62fba` through `daclify-rebuild frontend`, using the established testnet staging and index-last publication path. The prior entry point and hashed assets are retained. No backend restart, smart-contract deployment, authority change or asset movement occurred.
+
+The public HTTPS index and new Status asset match the published build byte for byte. The existing public Hub/Status/Names/DAO regression check passed on desktop and mobile. Additional real public resource checks passed on both viewports: ten configured accounts, eight contract totals, current RAM/TLOS/USD estimates, used/free percentages, the 100% current/200% double preview, CPU/NET views, disconnected-wallet gating, Escape/focus restoration, accessibility and viewport fit. No browser errors or misplaced API calls occurred. These checks used real API/RPC responses without fixtures or a localhost CORS proxy. Public screenshots were visually inspected.
+
+The additional verification script initially failed before browser startup because it used CommonJS loading for an ESM-only public package. Its public-entry import was corrected; the rerun passed. The published application required no fix.
+
+Deployment evidence and log/artifact hashes: [testnet deployment](../../evidence/2026-10-11-contract-resources-testnet-deployment.json). Live at [Status](https://testnet.app.daclify.com/status) → Contracts → Resources. Actual Anchor connection/signing and resource purchases remain unverified and unperformed.
