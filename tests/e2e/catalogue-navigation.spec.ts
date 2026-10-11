@@ -105,6 +105,7 @@ test('sidebar order and icon fold control match the workspace navigation', async
     'Documentation',
     'Status',
     'Daclify DAO',
+    'Telos DAO',
     'Names',
     'Help',
   ]);
@@ -116,6 +117,7 @@ test('sidebar order and icon fold control match the workspace navigation', async
   ).toHaveText('');
   await navigation.getByRole('link', { name: 'My DAO', exact: true }).click();
   await expect(page).toHaveURL(/\/hub\?mine=1$/);
+  await expect(page.getByRole('main').locator('a[href="/telos"]')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'My communities', exact: true })).toHaveAttribute(
     'aria-pressed',
     'true',
@@ -144,6 +146,14 @@ test('sidebar order and icon fold control match the workspace navigation', async
     'page',
   );
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  await navigation.getByRole('link', { name: 'Telos DAO', exact: true }).click();
+  await expect(page).toHaveURL(/\/telos$/);
+  await expect(page.getByRole('heading', { name: 'Telos governance', exact: true })).toBeVisible();
+  await openMenu(page);
+  await expect(navigation.getByRole('link', { name: 'Telos DAO', exact: true })).toHaveAttribute(
+    'aria-current',
+    'page',
+  );
 });
 
 test('opens separate Modules and Names pages from the sidebar', async ({ page }) => {
@@ -167,10 +177,12 @@ test('opens separate Modules and Names pages from the sidebar', async ({ page })
   await navigation.getByRole('link', { name: 'Names', exact: true }).click();
   await expect(page).toHaveURL(/\/names$/);
   await expect(page.getByRole('heading', { name: 'Names', exact: true })).toBeVisible();
+  await page.getByText('Browse prices and listed names', { exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Basic name', exact: true })).toBeVisible();
   await expect(page.getByLabel('Find a module', { exact: true })).toHaveCount(0);
   expect(reads.filter((path) => path === '/v1/marketplace')).toHaveLength(1);
   await page.reload();
+  await page.getByText('Browse prices and listed names', { exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Basic name', exact: true })).toBeVisible();
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   await page.screenshot({ path: test.info().outputPath('names.png'), fullPage: true });
@@ -217,7 +229,8 @@ test('keeps name validation and quotes on the Names page', async ({ page }) => {
   );
   await page.getByLabel('Telos account name', { exact: true }).fill('basicname111');
   await expect(page.locator('.quote-card')).toContainText('5.0000 TLOS');
-  await expect(page.locator('.quote-card')).toContainText('$5.00 by card');
+  await expect(page.locator('.quote-card')).toContainText('$5.00 reference price');
+  await expect(page.locator('.quote-card')).toContainText('Card checkout is not enabled');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
@@ -249,7 +262,9 @@ for (const status of ['submitted', 'cancelled']) {
     await expect(page).toHaveURL(new RegExp(`/names\\?names=${status}&source=checkout$`));
     await expect(page.getByRole('heading', { name: 'Names', exact: true })).toBeVisible();
     await expect(page.locator('.alert[role="status"]')).toContainText(
-      `The card payment was ${status}.`,
+      status === 'submitted'
+        ? 'Payment submitted. Your account is created after payment verification.'
+        : 'The card payment was cancelled.',
     );
   });
 }

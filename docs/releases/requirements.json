@@ -17,7 +17,9 @@
         "tests/unit/provider-session.test.ts",
         "tests/unit/auth-audience.test.ts",
         "tests/unit/telegram-login.test.ts",
-        "tests/unit/vault.test.ts"
+        "tests/unit/vault.test.ts",
+        "tests/e2e/quick-signup.spec.ts",
+        "tests/e2e/telos-governance.spec.ts"
       ]
     },
     {
@@ -189,6 +191,10 @@
     {
       "id": "COMPACT-PLATFORM-CONTROLS-AND-SAME-TAB-PRICING",
       "tests": ["tests/e2e/platform-controls.spec.ts", "tests/e2e/dao-pricing.spec.ts"]
+    },
+    {
+      "id": "TELOS-DAO-SIDEBAR-AND-HUB-SEPARATION",
+      "tests": ["tests/e2e/catalogue-navigation.spec.ts", "tests/e2e/telos-governance.spec.ts"]
     }
   ]
 }

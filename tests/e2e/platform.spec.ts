@@ -5,6 +5,8 @@ import { ApiRoutes } from '@daclify/core-protocol';
 import { ModuleCodeHashes } from '@daclify/modules/sdk';
 async function account(page: Parameters<typeof payCreation>[0]) {
   await page.goto('/account');
+  await page.getByRole('button', { name: 'New Account', exact: true }).click();
+  await page.getByRole('button', { name: 'Own Keys', exact: true }).click();
   await page.getByLabel('Vault password', { exact: true }).fill('synthetic-platform-password-2026');
   await page.getByRole('button', { name: 'Create encrypted vault' }).click();
   await page.getByLabel('I have saved my recovery kit and credential').check();

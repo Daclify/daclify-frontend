@@ -14,6 +14,8 @@ test('authors grant consent, an election and enforced admission through real sig
   test.setTimeout(60000);
   page.on('dialog', (dialog) => void dialog.accept());
   await page.goto('/account');
+  await page.getByRole('button', { name: 'New Account', exact: true }).click();
+  await page.getByRole('button', { name: 'Own Keys', exact: true }).click();
   await page
     .getByLabel('Vault password', { exact: true })
     .fill('module-authoring-fixture-password');

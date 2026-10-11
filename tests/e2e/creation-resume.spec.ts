@@ -9,6 +9,8 @@ test('checks preflight, retains immutable order review and requires explicit fre
   ).toHaveAttribute('href', '/account?returnTo=/create');
   await page.getByRole('main').getByRole('link', { name: 'Set up account', exact: true }).click();
   await expect(page).toHaveURL(/account\?returnTo=/);
+  await page.getByRole('button', { name: 'New Account', exact: true }).click();
+  await page.getByRole('button', { name: 'Own Keys', exact: true }).click();
   await page.getByLabel('Vault password', { exact: true }).fill('creation resume fixture password');
   await page.getByRole('button', { name: 'Create encrypted vault' }).click();
   await page.getByLabel('I have saved my recovery kit and credential').check();

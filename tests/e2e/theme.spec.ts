@@ -88,6 +88,8 @@ test('keyboard navigation and forms remain usable on desktop and mobile', async 
   await page.keyboard.press('Enter');
   await expect(page.locator('#main')).toBeFocused();
   await page.getByRole('link', { name: 'Sign in', exact: true }).click();
+  await page.getByRole('button', { name: 'New Account', exact: true }).click();
+  await page.getByRole('button', { name: 'Own Keys', exact: true }).click();
   await page.getByLabel('Vault password', { exact: true }).fill('visual fixture not saved');
   await expect(page.getByLabel('Vault password', { exact: true })).toHaveValue(
     'visual fixture not saved',

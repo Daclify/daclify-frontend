@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { chromium, expect } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
 import { NameQuoteSchema } from '@daclify/core-protocol';
 
 const origin = 'https://testnet.app.daclify.com';
@@ -36,9 +37,100 @@ try {
       await expect(page.locator('#main')).toContainText('Daclify DAO', { timeout: 20000 });
       assert.deepEqual(misplaced, [], 'API requests must use the configured API origin');
 
+      await page.goto(origin + '/account?returnTo=%2Fhub%3Fmine%3D1');
+      const main = page.getByRole('main');
+      const checkLayout = async () => {
+        assert.deepEqual((await new AxeBuilder({ page }).analyze()).violations, []);
+        assert.equal(
+          await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+          true,
+        );
+      };
+      await expect(
+        main.getByRole('group', { name: 'Account options' }).getByRole('button'),
+      ).toHaveCount(3);
+      for (const label of ['Login', 'New Account', 'Restore Account'])
+        await expect(main.getByRole('button', { name: label, exact: true })).toBeVisible();
+      await checkLayout();
+      await page.screenshot({
+        path: `.artifacts/public/account-entry-${viewport.width}.png`,
+        fullPage: true,
+      });
+      await main.getByRole('button', { name: 'Login', exact: true }).click();
+      await expect(main.getByRole('heading', { name: 'Welcome back', exact: true })).toBeVisible();
+      await expect(main.getByRole('button', { name: 'Email', exact: true })).toBeVisible();
+      await checkLayout();
+      await main.getByRole('button', { name: 'Back', exact: true }).click();
+      await expect(main.getByRole('button', { name: 'Login', exact: true })).toBeFocused();
+      await main.getByRole('button', { name: 'New Account', exact: true }).click();
+      await expect(
+        main.getByRole('heading', { name: 'New to Daclify?', exact: true }),
+      ).toBeVisible();
+      const choices = main.getByRole('group', { name: 'Create with:' });
+      await expect(choices.getByRole('button')).toHaveText([
+        'E-Mail',
+        'Telegram',
+        'Telos Zero',
+        'Own Keys',
+      ]);
+      await expect(choices.getByRole('button', { name: 'E-Mail', exact: true })).toBeDisabled();
+      await expect(choices.getByRole('button', { name: 'Telegram', exact: true })).toBeDisabled();
+      await checkLayout();
+      await page.screenshot({
+        path: `.artifacts/public/account-new-${viewport.width}.png`,
+        fullPage: true,
+      });
+      await choices.getByRole('button', { name: 'Telos Zero', exact: true }).click();
+      await expect(
+        main.getByRole('button', { name: 'Create with Telos Zero', exact: true }),
+      ).toBeEnabled();
+      await choices.getByRole('button', { name: 'Own Keys', exact: true }).click();
+      await expect(main.getByLabel('Vault password', { exact: true })).toBeFocused();
+      await checkLayout();
+      await main.getByRole('button', { name: 'Back', exact: true }).click();
+      await main.getByRole('button', { name: 'Restore Account', exact: true }).click();
+      await expect(main.getByLabel('Encrypted recovery kit', { exact: true })).toBeFocused();
+      await checkLayout();
+      await main.getByRole('button', { name: 'Cancel recovery', exact: true }).click();
+      await expect(
+        main.getByRole('button', { name: 'Restore Account', exact: true }),
+      ).toBeFocused();
+      assert.equal(new URL(page.url()).searchParams.get('returnTo'), '/hub?mine=1');
+
+      const menu = page.getByRole('button', { name: 'Menu', exact: true });
+      if (await menu.isVisible()) await menu.click();
+      const navigation = page
+        .getByRole('complementary', { name: 'Primary navigation' })
+        .getByRole('navigation');
+      const links = (await navigation.locator(':scope > a').allTextContents()).map((value) =>
+        value.trim(),
+      );
+      assert.equal(links[links.indexOf('Daclify DAO') + 1], 'Telos DAO');
+      await navigation.getByRole('link', { name: 'My DAO', exact: true }).click();
+      await expect(page).toHaveURL(origin + '/hub?mine=1');
+      await expect(main.locator('a[href="/telos"]')).toHaveCount(0);
+      if (await menu.isVisible()) await menu.click();
+      await navigation.getByRole('link', { name: 'Telos DAO', exact: true }).click();
+      await expect(page).toHaveURL(origin + '/telos');
+      await expect(
+        main.getByRole('heading', { name: 'Telos governance', exact: true }),
+      ).toBeVisible();
+      await expect(main.locator('.ballot-list li').first()).toBeVisible({ timeout: 25000 });
+      await main.getByRole('button', { name: 'History', exact: true }).click();
+      await expect(main.locator('.ballot-list li').first()).toBeVisible();
+      await main.locator('.ballot-list button').first().click();
+      await expect(main.getByRole('article', { name: 'Selected ballot' })).toBeVisible();
+      await checkLayout();
+      await page.screenshot({
+        path: `.artifacts/public/telos-dao-${viewport.width}.png`,
+        fullPage: true,
+      });
+
       await page.goto(origin + '/status');
       await page.getByRole('tab', { name: 'Contracts', exact: true }).click();
-      await expect(page.getByRole('heading', { name: 'Contracts and service accounts' })).toBeVisible();
+      await expect(
+        page.getByRole('heading', { name: 'Contracts and service accounts' }),
+      ).toBeVisible();
       const details = page.getByRole('region', { name: 'Contract Account Details' });
       await expect(
         details.getByRole('heading', { name: 'daclifycore1', exact: true }),
@@ -73,7 +165,13 @@ try {
         timeout: 20000,
       });
       await expect(page.getByRole('heading', { name: 'Daclify DAO', exact: true })).toBeVisible();
-      for (const path of ['/v1/network', '/v1/daos', '/v1/platform/status']) {
+      for (const path of [
+        '/v1/network',
+        '/v1/daos',
+        '/v1/platform/status',
+        '/v1/telos/ballots',
+        '/v1/sign-up/options',
+      ]) {
         assert.ok(
           reads.some(
             (read) =>

@@ -19,6 +19,8 @@ test('pairs a passkey and email with an existing vault', async ({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
   await authenticator(page);
   await page.goto('http://localhost:' + (process.env.DACLIFY_TEST_UI_PORT ?? 5178) + '/account');
+  await page.getByRole('button', { name: 'New Account', exact: true }).click();
+  await page.getByRole('button', { name: 'Own Keys', exact: true }).click();
   await page.getByLabel('Vault password', { exact: true }).fill('local-test-password-2026');
   await page.getByRole('button', { name: 'Create encrypted vault' }).click();
   await page.getByLabel('I have saved my recovery kit and credential').check();
@@ -49,6 +51,7 @@ test('pairs a passkey and email with an existing vault', async ({ page }) => {
   ).toBeVisible();
   await page.getByRole('tab', { name: 'Access & recovery', exact: true }).click();
   await page.getByRole('button', { name: 'Sign out' }).click();
+  await page.getByRole('button', { name: 'Login', exact: true }).click();
   await page.getByRole('button', { name: 'Passkey', exact: true }).click();
   await page.getByRole('button', { name: 'Sign in with a passkey' }).click();
   await page.getByText('Public join identity', { exact: true }).click();

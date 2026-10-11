@@ -14,6 +14,7 @@ import {
   Plus,
   Users,
   Bot,
+  Vote,
 } from '@lucide/vue';
 import { useWorkspace } from './state/workspace';
 import { lockVault, vaultUnlocked } from './auth/session';
@@ -164,6 +165,18 @@ onMounted(() => {
         <RouterLink v-else to="/daclify" aria-label="Daclify DAO" @click="mobileOpen = false"
           ><Shield class="nav-icon" aria-hidden="true" /><span class="nav-text"
             >Daclify DAO</span
+          ></RouterLink
+        >
+        <a
+          v-if="operator"
+          href="/telos"
+          aria-label="Telos DAO"
+          @click.prevent="leaveOperator('/telos')"
+          ><Vote class="nav-icon" aria-hidden="true" /><span class="nav-text">Telos DAO</span></a
+        >
+        <RouterLink v-else to="/telos" aria-label="Telos DAO" @click="mobileOpen = false"
+          ><Vote class="nav-icon" aria-hidden="true" /><span class="nav-text"
+            >Telos DAO</span
           ></RouterLink
         >
         <RouterLink to="/names" aria-label="Names" @click="mobileOpen = false"

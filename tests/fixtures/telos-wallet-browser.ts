@@ -1,12 +1,19 @@
 // Disposable Anchor boundary fixture; application code never imports this file.
-import { Session, SigningRequest, TransactRevisions } from '@wharfkit/session';
+import {
+  Session,
+  SessionKit,
+  LoginContext,
+  SigningRequest,
+  TransactRevisions,
+} from '@wharfkit/session';
+import WebRenderer from '@wharfkit/web-renderer';
 import { ABI, Action, PrivateKey, Transaction } from '@wharfkit/antelope';
 import { WalletPluginAnchor } from '@wharfkit/wallet-plugin-anchor';
 import { runtimeAbi } from '@daclify/core-protocol/sdk';
 import { telosDecideAbi } from '@daclify/modules/sdk';
 import { nativeWallet } from '../../src/auth/telos-zero';
 import { useWorkspace } from '../../src/state/workspace';
-export function installTelosWallet(privateKey: string) {
+export function installTelosWallet(privateKey: string, interceptLogin = false) {
   const network = useWorkspace().network;
   if (!network) throw new Error('Network required');
   const key = PrivateKey.from(privateKey),
@@ -59,4 +66,14 @@ export function installTelosWallet(privateKey: string) {
     };
   };
   nativeWallet.value = wallet;
+  if (interceptLogin)
+    SessionKit.prototype.login = async () => ({
+      context: new LoginContext({
+        fetch: window.fetch.bind(window),
+        ui: new WebRenderer(),
+        chain: wallet.chain,
+      }),
+      response: { chain: wallet.chain.id, permissionLevel: wallet.permissionLevel },
+      session: wallet,
+    });
 }

@@ -61,6 +61,8 @@ test('reviews EVM pairing and removal using a provider fixture', async ({ page }
     Object.defineProperty(window, 'ethereum', { value: ethereum, configurable: true });
   });
   await page.goto('/account');
+  await page.getByRole('button', { name: 'New Account', exact: true }).click();
+  await page.getByRole('button', { name: 'Own Keys', exact: true }).click();
   await page.getByLabel('Vault password', { exact: true }).fill('local-test-password-2026');
   await page.getByRole('button', { name: 'Create encrypted vault' }).click();
   await page.getByLabel('I have saved my recovery kit and credential').check();

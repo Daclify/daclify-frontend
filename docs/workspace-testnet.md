@@ -4,7 +4,7 @@ The continuing `/data` development server publishes `https://testnet.app.daclify
 through Caddy on port 9091. Its API is `https://testnet.api.daclify.com`, on port 9090.
 Frontend public configuration comes from `.env.testnet`; API credentials remain separate.
 
-The combined 11 October 2026 update now serves core/frontend `0.14.0-alpha.1` and modules SDK `0.10.0-alpha.1`, including the Telos entry, monthly module fees and compact platform controls. `/telos` reads testnet contract history; voting stays disabled until Decide signing pins are qualified. The actual public desktop/mobile checks and exact deployed source are recorded in [the workspace rollout evidence](../../daclify-backend-core/docs/evidence/2026-10-11-workspace-testnet-rollout.md). Recovery remains the same-VM development mode and its current qualification expires on 17 October at 14:46 UTC.
+The combined 11 October 2026 update serves core `0.14.0-alpha.1` and modules SDK `0.10.0-alpha.1`, including Telos governance, monthly module fees and compact platform controls. The subsequent frontend-only `0.14.0-alpha.2` update adds the three account-entry cards, four creation methods and Telos DAO sidebar entry. `/telos` reads testnet contract history; voting stays disabled until Decide signing pins are qualified. The actual public desktop/mobile checks and exact deployed source are recorded in [the workspace rollout evidence](../../daclify-backend-core/docs/evidence/2026-10-11-workspace-testnet-rollout.md). The frontend-only publication and account checks are recorded in [the account entry evidence](evidence/2026-10-11-account-entry-telos-sidebar.md). Recovery remains the same-VM development mode and its current qualification expires on 17 October at 14:46 UTC.
 
 Caddy serves `/data/daclify-runtime/builds/frontend-testnet`, **not the repository's
 `dist/` directory**. A normal `npm run build` uses production mode and may have no
@@ -28,7 +28,7 @@ LD_LIBRARY_PATH=/data/daclify-runtime/browser-libs/usr/lib/x86_64-linux-gnu npm 
 ```
 
 The read-only public browser check uses desktop and mobile viewports. It checks
-the testnet lock despite a saved production preference, Hub data, Status, real
+the testnet lock despite a saved production preference, all three account journeys, the Telos DAO menu and contract history, Hub data, Status, real
 contract RAM/CPU/NET reads, contract selection and the Daclify DAO workspace.
 It fails if API requests go to the app origin, required responses contain HTML,
 browser errors occur or an API returns a server error. It uses the actual public

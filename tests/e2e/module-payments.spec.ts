@@ -10,6 +10,8 @@ test('reserves and cancels work, then settles disabled payroll and withdraws the
 }) => {
   test.setTimeout(95000);
   await page.goto('/account');
+  await page.getByRole('button', { name: 'New Account', exact: true }).click();
+  await page.getByRole('button', { name: 'Own Keys', exact: true }).click();
   await page.getByLabel('Vault password', { exact: true }).fill('module payment fixture password');
   await page.getByRole('button', { name: 'Create encrypted vault' }).click();
   await page.getByLabel('I have saved my recovery kit and credential').check();

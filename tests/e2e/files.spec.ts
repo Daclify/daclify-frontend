@@ -35,6 +35,8 @@ async function openMenu(page: Page) {
 }
 async function createWorkspace(page: Page, encrypted = false) {
   await page.goto('/account');
+  await page.getByRole('button', { name: 'New Account', exact: true }).click();
+  await page.getByRole('button', { name: 'Own Keys', exact: true }).click();
   await page.getByLabel('Vault password', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Create encrypted vault' }).click();
   await page.getByLabel('I have saved my recovery kit and credential').check();

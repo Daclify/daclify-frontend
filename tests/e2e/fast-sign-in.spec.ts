@@ -177,6 +177,7 @@ test('gets full account access on a fresh device using the selected paired email
 }) => {
   const account = await fixture(page);
   await page.goto('/account');
+  await page.getByRole('button', { name: 'Login', exact: true }).click();
   await page.getByRole('button', { name: /^Email/ }).click();
   await page.getByLabel('Sign-in email', { exact: true }).fill('alice@example.test');
   await page.getByRole('button', { name: /Send.*code/ }).click();
@@ -213,6 +214,7 @@ test('preserves another account’s local kit and does not offer it as the recov
   );
   const account = await fixture(page);
   await page.goto('/account');
+  await page.getByRole('button', { name: 'Login', exact: true }).click();
   await page.getByRole('button', { name: /^Email/ }).click();
   await page.getByLabel('Sign-in email', { exact: true }).fill('alice@example.test');
   await page.getByRole('button', { name: /Send.*code/ }).click();
@@ -238,6 +240,7 @@ test('keeps public profile fields compact and retains drafts when optional secti
 }) => {
   await fixture(page, true);
   await page.goto('/account');
+  await page.getByRole('button', { name: 'Login', exact: true }).click();
   await page.getByRole('button', { name: /^Email/ }).click();
   await page.getByLabel('Sign-in email', { exact: true }).fill('alice@example.test');
   await page.getByRole('button', { name: /Send.*code/ }).click();

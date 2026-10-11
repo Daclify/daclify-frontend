@@ -28,6 +28,8 @@ test('hub, versioned help, keyboard navigation and accessible layout', async ({ 
 });
 test('generates a vault password and copies it before the vault is created', async ({ page }) => {
   await page.goto('/account');
+  await page.getByRole('button', { name: 'New Account', exact: true }).click();
+  await page.getByRole('button', { name: 'Own Keys', exact: true }).click();
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.getByRole('button', { name: 'Generate vault password', exact: true }).click();
   const generated = await page.getByLabel('Vault password', { exact: true }).inputValue();
@@ -39,6 +41,8 @@ test('generates a vault password and copies it before the vault is created', asy
 
 test('walletless account and real DAO creation flow', async ({ page }) => {
   await page.goto('/account');
+  await page.getByRole('button', { name: 'New Account', exact: true }).click();
+  await page.getByRole('button', { name: 'Own Keys', exact: true }).click();
   await page.getByLabel('Vault password', { exact: true }).fill('local-test-password-2026');
   await page.getByRole('button', { name: 'Create encrypted vault' }).click();
   await expect(page.getByRole('heading', { name: 'Save your recovery kit' })).toBeVisible();
@@ -79,16 +83,19 @@ test('walletless account and real DAO creation flow', async ({ page }) => {
   ).toBeVisible();
   await page.getByRole('button', { name: 'Vote Approve', exact: true }).click();
   await expect(page.getByText('Your vote: Approve', { exact: true })).toBeVisible();
-  await openMenu(page);
-  await page.getByRole('link', { name: 'Account', exact: true }).click();
+  await page.getByRole('link', { name: 'Your account', exact: true }).click();
+  await page.getByRole('button', { name: 'Edit profile & account', exact: true }).click();
+  await page.getByRole('tab', { name: 'Access & recovery', exact: true }).click();
   await page.getByRole('button', { name: 'Lock vault' }).click();
   await expect(page.getByText('Vault locked', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Sign out' }).click();
-  await expect(page.getByRole('heading', { name: 'Sign in to Daclify' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Your Daclify account' })).toBeVisible();
 });
 
 test('shows card payment state without treating the return page as paid', async ({ page }) => {
   await page.goto('/account');
+  await page.getByRole('button', { name: 'New Account', exact: true }).click();
+  await page.getByRole('button', { name: 'Own Keys', exact: true }).click();
   await page.getByLabel('Vault password', { exact: true }).fill('billing-return-password-2026');
   await page.getByRole('button', { name: 'Create encrypted vault' }).click();
   await page.getByLabel('I have saved my recovery kit and credential').check();
@@ -114,6 +121,8 @@ test('recovers the same account and DAO membership on a fresh browser', async ({
   browser,
 }) => {
   await page.goto('/account');
+  await page.getByRole('button', { name: 'New Account', exact: true }).click();
+  await page.getByRole('button', { name: 'Own Keys', exact: true }).click();
   await page.getByLabel('Vault password', { exact: true }).fill('original vault password 2026');
   await page.getByRole('button', { name: 'Create encrypted vault' }).click();
   await expect(page.getByRole('heading', { name: 'Save your recovery kit' })).toBeVisible();
@@ -136,7 +145,7 @@ test('recovers the same account and DAO membership on a fresh browser', async ({
   try {
     const recovered = await fresh.newPage();
     await recovered.goto(new URL('/account', page.url()).toString());
-    await recovered.getByRole('button', { name: 'Recover from an encrypted kit' }).click();
+    await recovered.getByRole('button', { name: 'Restore Account', exact: true }).click();
     await recovered.getByLabel('Encrypted recovery kit').setInputFiles({
       name: 'encrypted-kit.json',
       mimeType: 'application/json',
@@ -162,6 +171,8 @@ test('keeps private JSON encrypted on chain and clears plaintext when keys lock'
   page,
 }) => {
   await page.goto('/account');
+  await page.getByRole('button', { name: 'New Account', exact: true }).click();
+  await page.getByRole('button', { name: 'Own Keys', exact: true }).click();
   await page.getByLabel('Vault password', { exact: true }).fill('private fixture password 2026');
   await page.getByRole('button', { name: 'Create encrypted vault' }).click();
   await expect(page.getByRole('heading', { name: 'Save your recovery kit' })).toBeVisible();

@@ -23,9 +23,10 @@ async function emailCode(page: Page, email: string): Promise<string> {
 }
 async function signup(page: Page, email: string) {
   await page.goto('/account');
+  await page.getByRole('button', { name: 'New Account', exact: true }).click();
   const panel = page.locator('.quick-signup');
   await panel.getByRole('checkbox').check();
-  await panel.getByRole('button', { name: 'Continue with email', exact: true }).click();
+  await panel.getByRole('button', { name: 'E-Mail', exact: true }).click();
   await panel.getByLabel('Email address', { exact: true }).fill(email);
   await panel.getByRole('button', { name: 'Send code', exact: true }).click();
   await expect(panel.getByLabel('Email code', { exact: true })).toBeVisible();
@@ -65,6 +66,7 @@ test('quick email signup opens usable original keys without storing plaintext or
     fresh = await context.newPage();
   try {
     await fresh.goto(new URL('/account', page.url()).href);
+    await fresh.getByRole('button', { name: 'Login', exact: true }).click();
     const returning = fresh.locator('.account-returning');
     await returning.getByRole('button', { name: 'Email', exact: true }).click();
     await returning.getByLabel('Sign-in email', { exact: true }).fill(email);
@@ -86,9 +88,11 @@ test('offers the user-controlled vault when assisted signup is unavailable', asy
     data: { assisted: false },
   });
   await page.goto('/account');
+  await page.getByRole('button', { name: 'New Account', exact: true }).click();
   await expect(
     page.locator('.quick-signup').getByText(/Quick signup is unavailable/),
   ).toBeVisible();
+  await page.getByRole('button', { name: 'Own Keys', exact: true }).click();
   await expect(
     page.getByRole('button', { name: 'Create encrypted vault', exact: true }),
   ).toBeVisible();
@@ -136,9 +140,10 @@ test('creates usable original keys from a Telegram Mini App with real HMAC verif
     Reflect.set(window, 'Telegram', { WebApp: { initData: proof } });
   }, proof);
   await page.goto('/account');
+  await page.getByRole('button', { name: 'New Account', exact: true }).click();
   const panel = page.locator('.quick-signup');
   await panel.getByRole('checkbox').check();
-  await panel.getByRole('button', { name: 'Continue with Telegram', exact: true }).click();
+  await panel.getByRole('button', { name: 'Telegram', exact: true }).click();
   await panel
     .getByRole('button', { name: 'Create account from Telegram Mini App', exact: true })
     .click();
@@ -159,9 +164,10 @@ test('resumes Telegram OIDC signup after redirect with real JWT verification', a
     await route.fulfill({ status: 302, headers: { location: callback.href }, body: '' });
   });
   await page.goto('/account');
+  await page.getByRole('button', { name: 'New Account', exact: true }).click();
   let panel = page.locator('.quick-signup');
   await panel.getByRole('checkbox').check();
-  await panel.getByRole('button', { name: 'Continue with Telegram', exact: true }).click();
+  await panel.getByRole('button', { name: 'Telegram', exact: true }).click();
   await panel.getByRole('button', { name: 'Verify with Telegram', exact: true }).click();
   await expect(page).toHaveURL(/signup=/);
   panel = page.locator('.quick-signup');
@@ -189,11 +195,11 @@ test('leaves another account’s saved vault intact during quick signup', async 
   await page.goto('/account');
   await page.evaluate((kit) => localStorage.setItem('daclify.vault.v1', JSON.stringify(kit)), kit);
   await page.reload();
-  await page.getByRole('link', { name: 'Create another account', exact: true }).click();
+  await page.getByRole('button', { name: 'New Account', exact: true }).click();
   const panel = page.locator('.quick-signup'),
     email = `${crypto.randomUUID()}@example.test`;
   await panel.getByRole('checkbox').check();
-  await panel.getByRole('button', { name: 'Continue with email', exact: true }).click();
+  await panel.getByRole('button', { name: 'E-Mail', exact: true }).click();
   await panel.getByLabel('Email address', { exact: true }).fill(email);
   await panel.getByRole('button', { name: 'Send code', exact: true }).click();
   await expect(panel.getByLabel('Email code', { exact: true })).toBeVisible();

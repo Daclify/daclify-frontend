@@ -27,9 +27,10 @@ test('turns assisted recovery off after a verified same-key kit and preserves ac
     data: { assisted: true, failStorage: false },
   });
   await page.goto('/account');
+  await page.getByRole('button', { name: 'New Account', exact: true }).click();
   const quick = page.locator('.quick-signup');
   await quick.getByRole('checkbox').check();
-  await quick.getByRole('button', { name: 'Continue with email', exact: true }).click();
+  await quick.getByRole('button', { name: 'E-Mail', exact: true }).click();
   await quick.getByLabel('Email address', { exact: true }).fill(email);
   await quick.getByRole('button', { name: 'Send code', exact: true }).click();
   await expect(quick.getByLabel('Email code', { exact: true })).toBeVisible();

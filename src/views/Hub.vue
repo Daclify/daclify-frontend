@@ -148,9 +148,6 @@ async function connect() {
       </div>
       <RouterLink class="button" to="/create"><Plus aria-hidden="true" /> Create DAO</RouterLink>
     </header>
-    <RouterLink class="hub-guide" to="/telos"
-      >Telos governance: network proposals and elections <ArrowUpRight aria-hidden="true"
-    /></RouterLink>
     <div class="hub-context">
       <span v-if="state.network" class="hub-network"
         ><span class="status-dot" aria-hidden="true"></span

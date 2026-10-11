@@ -17,6 +17,7 @@ import {
   SignInMethodsSchema,
   CredentialHistorySchema,
   NativeLinksSchema,
+  SignupOptionsSchema,
   VERSION,
   type Account,
 } from '@daclify/core-protocol';
@@ -57,6 +58,74 @@ async function fixture(page: Page, options = configured) {
   });
 }
 const main = (page: Page) => page.locator('#main');
+test('starts with three compact account choices and returns focus from each journey', async ({
+  page,
+}) => {
+  await fixture(page);
+  await page.goto('/account?returnTo=/hub');
+  for (const name of ['Login', 'New Account', 'Restore Account'])
+    await expect(main(page).getByRole('button', { name, exact: true })).toBeVisible();
+  await expect(main(page).getByRole('heading', { name: 'Welcome back', exact: true })).toHaveCount(
+    0,
+  );
+  await expect(
+    main(page).getByRole('heading', { name: 'New to Daclify?', exact: true }),
+  ).toHaveCount(0);
+  await accessible(page);
+  await main(page).getByRole('button', { name: 'Login', exact: true }).click();
+  await expect(
+    main(page).getByRole('heading', { name: 'Welcome back', exact: true }),
+  ).toBeVisible();
+  await main(page).getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(main(page).getByRole('button', { name: 'Login', exact: true })).toBeFocused();
+  await main(page).getByRole('button', { name: 'Restore Account', exact: true }).click();
+  await expect(main(page).getByLabel('Encrypted recovery kit', { exact: true })).toBeFocused();
+  await main(page).getByRole('button', { name: 'Cancel recovery', exact: true }).click();
+  await expect(
+    main(page).getByRole('button', { name: 'Restore Account', exact: true }),
+  ).toBeFocused();
+  await expect(page).toHaveURL(/returnTo=\/hub$/);
+});
+test('shows four creation methods and keeps native and own keys independent of assisted consent', async ({
+  page,
+}) => {
+  await fixture(page);
+  await page.route('**/v1/sign-up/options', (route) =>
+    route.fulfill({
+      json: SignupOptionsSchema.parse({
+        telegram: { configured: true, username: 'daclify_fixture_bot', oidc: true, miniApp: false },
+        email: { delivery: 'mail' },
+        assisted: { available: true, reason: null },
+      }),
+    }),
+  );
+  await page.goto('/account');
+  await main(page).getByRole('button', { name: 'New Account', exact: true }).click();
+  await expect(
+    main(page).getByRole('heading', { name: 'New to Daclify?', exact: true }),
+  ).toBeVisible();
+  const choices = main(page).getByRole('group', { name: 'Create with:' });
+  await expect(choices.getByRole('button')).toHaveText([
+    'E-Mail',
+    'Telegram',
+    'Telos Zero',
+    'Own Keys',
+  ]);
+  await expect(choices.getByRole('button', { name: 'E-Mail', exact: true })).toBeDisabled();
+  await expect(choices.getByRole('button', { name: 'Telegram', exact: true })).toBeDisabled();
+  await expect(choices.getByRole('button', { name: 'Telos Zero', exact: true })).toBeEnabled();
+  await expect(choices.getByRole('button', { name: 'Own Keys', exact: true })).toBeEnabled();
+  await choices.getByRole('button', { name: 'Own Keys', exact: true }).click();
+  await expect(main(page).getByLabel('Vault password', { exact: true })).toBeVisible();
+  await main(page)
+    .getByRole('checkbox', { name: /I allow Daclify-assisted recovery/ })
+    .check();
+  await choices.getByRole('button', { name: 'E-Mail', exact: true }).click();
+  await expect(main(page).getByLabel('Email address', { exact: true })).toBeVisible();
+  await expect(main(page).getByLabel('Vault password', { exact: true })).toHaveCount(0);
+  await main(page).getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(main(page).getByRole('button', { name: 'New Account', exact: true })).toBeFocused();
+});
 async function accessible(page: Page) {
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -122,12 +191,13 @@ test('separates returning sign-in from creation and reveals only the selected pr
 }) => {
   await fixture(page);
   await page.goto('/account?returnTo=/hub');
+  await main(page).getByRole('button', { name: 'Login', exact: true }).click();
   await expect(
     main(page).getByRole('heading', { name: 'Welcome back', exact: true }),
   ).toBeVisible();
   await expect(
     main(page).getByRole('heading', { name: 'New to Daclify?', exact: true }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(main(page).getByLabel('Sign-in email', { exact: true })).toHaveCount(0);
   await expect(main(page).getByLabel('Telos EVM network', { exact: true })).toHaveCount(0);
   await main(page).getByRole('button', { name: 'Email', exact: true }).focus();
@@ -155,12 +225,11 @@ test('offers retry when provider configuration fails rather than pretending it i
       : route.fulfill({ json: configured });
   });
   await page.goto('/account');
+  await main(page).getByRole('button', { name: 'Login', exact: true }).click();
   await expect(
     main(page).getByText('Sign-in options could not be checked.', { exact: true }),
   ).toBeVisible();
-  await expect(
-    main(page).getByRole('button', { name: 'Create encrypted vault', exact: true }),
-  ).toBeVisible();
+  await expect(main(page).getByRole('button', { name: 'Back', exact: true })).toBeVisible();
   await main(page).getByRole('button', { name: 'Retry sign-in options', exact: true }).click();
   await main(page).getByRole('button', { name: 'Telegram', exact: true }).click();
   await expect(
@@ -173,13 +242,14 @@ test('keeps the independent vault available when quick signup is unavailable and
 }) => {
   await fixture(page);
   await page.goto('/account');
+  await main(page).getByRole('button', { name: 'New Account', exact: true }).click();
   await expect(main(page).getByText(/Quick signup is unavailable/)).toBeVisible();
+  await main(page).getByRole('button', { name: 'Own Keys', exact: true }).click();
   await expect(
     main(page).getByRole('button', { name: 'Create encrypted vault', exact: true }),
   ).toBeVisible();
-  await main(page)
-    .getByRole('button', { name: 'Recover from an encrypted kit', exact: true })
-    .click();
+  await main(page).getByRole('button', { name: 'Back', exact: true }).click();
+  await main(page).getByRole('button', { name: 'Restore Account', exact: true }).click();
   await expect(
     main(page).getByRole('heading', { name: 'Recover your account', exact: true }),
   ).toBeVisible();
@@ -189,10 +259,7 @@ test('keeps the independent vault available when quick signup is unavailable and
   await expect(main(page).getByLabel('Encrypted recovery kit', { exact: true })).toBeFocused();
   await main(page).getByRole('button', { name: 'Cancel recovery', exact: true }).click();
   await expect(
-    main(page).getByRole('heading', { name: 'Welcome back', exact: true }),
-  ).toBeVisible();
-  await expect(
-    main(page).getByRole('button', { name: 'Recover from an encrypted kit', exact: true }),
+    main(page).getByRole('button', { name: 'Restore Account', exact: true }),
   ).toBeFocused();
 });
 
@@ -209,6 +276,7 @@ test('does not load the legacy Telegram widget until selected and cleans it up w
     return route.fulfill({ contentType: 'application/javascript', body: '' });
   });
   await page.goto('/account');
+  await main(page).getByRole('button', { name: 'Login', exact: true }).click();
   await expect(main(page).getByRole('button', { name: 'Telegram', exact: true })).toBeVisible();
   expect(widgetLoads).toBe(0);
   await main(page).getByRole('button', { name: 'Telegram', exact: true }).click();
@@ -247,6 +315,7 @@ test('honors unavailable provider flags and explains local email and passkey lim
     }),
   );
   await page.goto('/account');
+  await main(page).getByRole('button', { name: 'Login', exact: true }).click();
   await main(page).getByRole('button', { name: 'Telegram', exact: true }).click();
   await expect(
     main(page).getByText('Telegram is not configured on this server.', { exact: true }),
@@ -293,6 +362,7 @@ test('supports the Telegram Mini App choice without accepting unverified launch 
     });
   });
   await page.goto('/account');
+  await main(page).getByRole('button', { name: 'Login', exact: true }).click();
   await main(page).getByRole('button', { name: 'Telegram', exact: true }).click();
   await main(page)
     .getByRole('button', { name: 'Continue from Telegram Mini App', exact: true })
@@ -334,25 +404,19 @@ test('email code steps preserve the recipient, prevent duplicate sends and allow
     });
   });
   await page.goto('/account');
+  await main(page).getByRole('button', { name: 'Login', exact: true }).click();
   await main(page).getByRole('button', { name: 'Email', exact: true }).click();
   await main(page).getByLabel('Sign-in email', { exact: true }).fill('member@example.test');
   await main(page).getByRole('button', { name: 'Send code', exact: true }).click();
   await expect.poll(() => sends).toBe(1);
   await expect(main(page).getByLabel('Sign-in email', { exact: true })).toBeDisabled();
   await expect(main(page).getByRole('button', { name: 'Telegram', exact: true })).toBeDisabled();
-  await expect(
-    main(page).getByRole('button', { name: 'Create encrypted vault', exact: true }),
-  ).toBeDisabled();
-  await expect(
-    main(page).getByRole('button', { name: 'Recover from an encrypted kit', exact: true }),
-  ).toBeDisabled();
+  await expect(main(page).getByRole('button', { name: 'Back', exact: true })).toBeDisabled();
   await expect(
     main(page).getByRole('button', { name: 'Sending code…', exact: true }),
   ).toBeDisabled();
   finishSend();
-  await expect(
-    main(page).getByRole('button', { name: 'Create encrypted vault', exact: true }),
-  ).toBeEnabled();
+  await expect(main(page).getByRole('button', { name: 'Back', exact: true })).toBeEnabled();
   await expect(
     main(page).getByText(/Enter the 8-digit code for member@example.test/),
   ).toBeVisible();
@@ -403,6 +467,7 @@ test('email opens a session without unlocking keys and returns to the complete d
     return route.fulfill({ json: SessionSchema.parse({ account, csrfToken: 'ab'.repeat(32) }) });
   });
   await page.goto('/account?returnTo=' + encodeURIComponent('/hub?q=ocean#communities'));
+  await main(page).getByRole('button', { name: 'Login', exact: true }).click();
   await main(page).getByRole('button', { name: 'Email', exact: true }).click();
   await main(page).getByLabel('Sign-in email', { exact: true }).fill('member@example.test');
   await main(page).getByRole('button', { name: 'Send code', exact: true }).click();
@@ -432,6 +497,7 @@ test('saved vault is offered before alternatives and creation never replaces it'
     kit,
   );
   await page.goto('/account?returnTo=/hub');
+  await main(page).getByRole('button', { name: 'Login', exact: true }).click();
   await expect(main(page).getByText('Saved on this device', { exact: true })).toBeVisible();
   await expect(
     main(page).getByRole('button', { name: 'Create encrypted vault', exact: true }),
@@ -450,6 +516,8 @@ for (const recoveryMethod of ['recovery code', 'vault password']) {
     await fixture(page);
     const accounts = await vaultLogin(page);
     await page.goto('/account');
+    await main(page).getByRole('button', { name: 'New Account', exact: true }).click();
+    await main(page).getByRole('button', { name: 'Own Keys', exact: true }).click();
     const password = 'disposable account create fixture';
     await main(page).getByLabel('Vault password', { exact: true }).fill(password);
     await main(page).getByRole('button', { name: 'Create encrypted vault', exact: true }).click();
@@ -488,9 +556,7 @@ for (const recoveryMethod of ['recovery code', 'vault password']) {
       await fixture(recovered);
       await vaultLogin(recovered, accounts);
       await recovered.goto(new URL('/account', page.url()).href);
-      await main(recovered)
-        .getByRole('button', { name: 'Recover from an encrypted kit', exact: true })
-        .click();
+      await main(recovered).getByRole('button', { name: 'Restore Account', exact: true }).click();
       await main(recovered)
         .getByLabel('Encrypted recovery kit', { exact: true })
         .setInputFiles({ name: 'disposable-kit.json', mimeType: 'application/json', buffer: kit });
@@ -529,6 +595,7 @@ test('entry and selected methods remain readable on phone, tablet, landscape and
     if (!width || !height) throw new Error('Invalid fixture viewport');
     await page.setViewportSize({ width, height });
     await page.goto('/account');
+    await main(page).getByRole('button', { name: 'Login', exact: true }).click();
     await expect(
       main(page).getByRole('heading', { name: 'Welcome back', exact: true }),
     ).toBeVisible();
@@ -564,10 +631,11 @@ test('creation and recovery shortcuts retain the destination and password tools 
   await fixture(page);
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.goto('/account?returnTo=%2Fhub%3Fmine%3D1');
-  const createLink = main(page).getByRole('link', { name: 'Create an account', exact: true });
+  const createLink = main(page).getByRole('button', { name: 'New Account', exact: true });
   await createLink.focus();
   await page.keyboard.press('Enter');
-  await expect(page.locator('#new-account')).toBeFocused();
+  await expect(page.locator('#new-title')).toBeFocused();
+  await main(page).getByRole('button', { name: 'Own Keys', exact: true }).click();
   expect(new URL(page.url()).searchParams.get('returnTo')).toBe('/hub?mine=1');
   await main(page).getByRole('button', { name: 'Generate vault password', exact: true }).click();
   const password = main(page).getByLabel('Vault password', { exact: true });
@@ -583,10 +651,9 @@ test('creation and recovery shortcuts retain the destination and password tools 
     main(page).getByRole('button', { name: 'Copy vault password', exact: true }),
   ).toHaveText('Copied');
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(generated);
-  await main(page).getByRole('link', { name: 'Recovery options', exact: true }).click();
-  await expect(
-    main(page).getByRole('button', { name: 'Recover from an encrypted kit', exact: true }),
-  ).toBeFocused();
+  await main(page).getByRole('button', { name: 'Back', exact: true }).click();
+  await main(page).getByRole('button', { name: 'Restore Account', exact: true }).click();
+  await expect(main(page).getByLabel('Encrypted recovery kit', { exact: true })).toBeFocused();
   expect(new URL(page.url()).searchParams.get('returnTo')).toBe('/hub?mine=1');
   await accessible(page);
 });
@@ -614,25 +681,16 @@ test('a pending wallet request prevents another account flow and cancellation re
     });
   });
   await page.goto('/account');
+  await main(page).getByRole('button', { name: 'Login', exact: true }).click();
   await main(page).getByRole('button', { name: 'Telos EVM', exact: true }).click();
   await main(page).getByRole('button', { name: 'Continue with Telos EVM', exact: true }).click();
   await expect(
     main(page).getByRole('button', { name: 'Waiting for wallet…', exact: true }),
   ).toBeDisabled();
   await expect(main(page).getByRole('button', { name: 'Email', exact: true })).toBeDisabled();
-  await expect(
-    main(page).getByRole('button', { name: 'Create encrypted vault', exact: true }),
-  ).toBeDisabled();
-  await expect(
-    main(page).getByRole('button', { name: 'Recover from an encrypted kit', exact: true }),
-  ).toBeDisabled();
+  await expect(main(page).getByRole('button', { name: 'Back', exact: true })).toBeDisabled();
   await page.evaluate(() => window.dispatchEvent(new Event('daclify-fixture-cancel-wallet')));
-  await expect(
-    main(page).getByRole('button', { name: 'Create encrypted vault', exact: true }),
-  ).toBeEnabled();
-  await expect(
-    main(page).getByRole('button', { name: 'Recover from an encrypted kit', exact: true }),
-  ).toBeEnabled();
+  await expect(main(page).getByRole('button', { name: 'Back', exact: true })).toBeEnabled();
   await main(page).getByRole('button', { name: 'Email', exact: true }).click();
   await expect(main(page).getByLabel('Sign-in email', { exact: true })).toBeVisible();
 });
@@ -654,6 +712,8 @@ test('authenticated account tabs retain all paired-method management and key con
     route.fulfill({ json: NativeLinksSchema.parse({ links: [] }) }),
   );
   await page.goto('/account');
+  await main(page).getByRole('button', { name: 'New Account', exact: true }).click();
+  await main(page).getByRole('button', { name: 'Own Keys', exact: true }).click();
   await main(page)
     .getByLabel('Vault password', { exact: true })
     .fill('disposable management fixture password');

@@ -9,21 +9,24 @@ import { acceptProviderSession } from '../auth/session';
 import { cancelQuickSignup, completeQuickSignup } from '../auth/signup';
 import { mountTelegramWidget, telegramMiniAppProof } from '../auth/telegram-login';
 import { accountDestination } from '../auth/destination';
+import { Mail, Send, Wallet, KeyRound } from '@lucide/vue';
+import NativeWalletPanel from './NativeWalletPanel.vue';
 
 const props = defineProps<{ disabled?: boolean; pendingId?: string | undefined }>();
 const emit = defineEmits<{
   authenticated: [account: Account];
   busy: [active: boolean];
-  available: [ready: boolean];
+  ownKeys: [active: boolean];
 }>();
 const state = useWorkspace(),
   route = useRoute();
 const options = ref<Awaited<ReturnType<typeof api.signupOptions>>>(),
   consent = ref(false),
   busy = ref(false),
+  nativeBusy = ref(false),
   error = ref(''),
   loading = ref(true),
-  selected = ref<'email' | 'telegram'>(),
+  selected = ref<'email' | 'telegram' | 'native' | 'keys'>(),
   email = ref(''),
   code = ref(''),
   awaitingCode = ref(false),
@@ -44,7 +47,8 @@ const available = computed(
     !!options.value?.assisted.available &&
     (options.value.email.delivery === 'mail' || telegramUsable.value),
 );
-const working = computed(() => busy.value || props.disabled);
+const operating = computed(() => busy.value || nativeBusy.value);
+const working = computed(() => operating.value || props.disabled);
 const username = computed(() =>
   selected.value === 'telegram' && consent.value && !options.value?.telegram.oidc
     ? options.value?.telegram.username
@@ -53,8 +57,7 @@ const username = computed(() =>
 let disposed = false,
   revision = 0,
   unmountTelegram = () => {};
-watch(busy, (active) => emit('busy', active), { flush: 'sync' });
-watch(available, (ready) => emit('available', ready), { immediate: true });
+watch(operating, (active) => emit('busy', active), { flush: 'sync' });
 function guard() {
   const started = revision,
     scope = csrfStorageKey(),
@@ -119,9 +122,12 @@ async function verified(result: SignupVerification, check: () => void) {
     await complete(check);
   }
 }
-function choose(provider: 'email' | 'telegram') {
-  if (working.value || !consent.value || !available.value) return;
+function choose(provider: 'email' | 'telegram' | 'native' | 'keys') {
+  if (working.value) return;
+  if ((provider === 'email' || provider === 'telegram') && (!consent.value || !available.value))
+    return;
   selected.value = provider;
+  emit('ownKeys', provider === 'keys');
   error.value = '';
 }
 async function sendCode() {
@@ -152,6 +158,7 @@ function startOver() {
   cancelQuickSignup();
   ticket.value = undefined;
   selected.value = undefined;
+  emit('ownKeys', false);
   awaitingCode.value = false;
   email.value = '';
   code.value = '';
@@ -177,7 +184,7 @@ onUnmounted(() => {
 });
 </script>
 <template>
-  <section class="quick-signup" aria-labelledby="quick-signup-title" :aria-busy="busy">
+  <section class="quick-signup" aria-labelledby="quick-signup-title" :aria-busy="operating">
     <h3 id="quick-signup-title">Get started quickly</h3>
     <p>
       Use Telegram or email to create your account and unlock your keys. No vault password or
@@ -188,7 +195,11 @@ onUnmounted(() => {
     <p v-if="options?.assisted.reason" class="notice" role="status">
       {{ options.assisted.reason }}
     </p>
-    <template v-if="available">
+    <p class="field-help">
+      Email and Telegram use assisted recovery. Telos Zero pairs your wallet; Own Keys keeps your
+      keys with you.
+    </p>
+    <div v-if="available">
       <p class="field-help">
         Already paired this email or Telegram? We’ll open your existing account with its current
         recovery settings.
@@ -203,27 +214,56 @@ onUnmounted(() => {
         ><input v-model="consent" type="checkbox" :disabled="working" />I allow Daclify-assisted
         recovery for my signing and private-document keys.</label
       >
+    </div>
+    <p v-if="!ticket" class="create-with-label" id="create-with-label">Create with:</p>
+    <div v-if="!ticket" class="signup-choices" role="group" aria-labelledby="create-with-label">
+      <button
+        type="button"
+        class="secondary"
+        :aria-pressed="selected === 'email'"
+        :disabled="working || !consent || !available || options?.email.delivery !== 'mail'"
+        @click="choose('email')"
+      >
+        <Mail aria-hidden="true" />E-Mail
+      </button>
+      <button
+        type="button"
+        class="secondary"
+        :aria-pressed="selected === 'telegram'"
+        :disabled="working || !consent || !available || !telegramUsable"
+        @click="choose('telegram')"
+      >
+        <Send aria-hidden="true" />Telegram
+      </button>
+      <button
+        type="button"
+        class="secondary"
+        :aria-pressed="selected === 'native'"
+        :disabled="working"
+        @click="choose('native')"
+      >
+        <Wallet aria-hidden="true" />Telos Zero
+      </button>
+      <button
+        type="button"
+        class="secondary"
+        :aria-pressed="selected === 'keys'"
+        :disabled="working"
+        @click="choose('keys')"
+      >
+        <KeyRound aria-hidden="true" />Own Keys
+      </button>
+    </div>
+    <NativeWalletPanel
+      v-if="!ticket && selected === 'native'"
+      mode="signup"
+      @authenticated="emit('authenticated', $event)"
+      @busy="nativeBusy = $event"
+    />
+    <template v-if="available">
       <p v-if="ticket" class="notice">
         Your {{ ticket.provider }} identity is verified. Complete encrypted account setup below.
       </p>
-      <div v-if="!ticket" class="button-row">
-        <button
-          v-if="options?.email.delivery === 'mail'"
-          class="secondary"
-          :disabled="working || !consent"
-          @click="choose('email')"
-        >
-          Continue with email
-        </button>
-        <button
-          v-if="telegramUsable"
-          class="secondary"
-          :disabled="working || !consent"
-          @click="choose('telegram')"
-        >
-          Continue with Telegram
-        </button>
-      </div>
       <form v-if="!ticket && selected === 'email' && !awaitingCode" @submit.prevent="sendCode">
         <label for="signup-email">Email address</label
         ><input
@@ -286,8 +326,8 @@ onUnmounted(() => {
       </button>
     </template>
     <p v-else-if="!loading">
-      Quick signup is unavailable on this operator. Create your encrypted vault below, or sign in
-      with a method already paired to your account.
+      Quick signup is unavailable on this operator. Choose Telos Zero or Own Keys, or sign in with a
+      method already paired to your account.
     </p>
     <button v-if="!loading && !options" class="secondary" :disabled="working" @click="loadOptions">
       Retry quick signup options
@@ -312,7 +352,38 @@ onUnmounted(() => {
 .quick-signup form > button {
   margin-top: 16px;
 }
-.quick-signup .button-row {
-  margin-block: 20px;
+.create-with-label {
+  margin-bottom: 10px;
+  font-weight: 600;
+}
+.signup-choices {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.signup-choices button {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  min-height: 76px;
+  padding: 12px 8px;
+  border-radius: var(--radius-md);
+  font-size: 0.8125rem;
+}
+.signup-choices button[aria-pressed='true'] {
+  border-color: var(--accent-amber);
+  background: var(--surface-raised);
+}
+.signup-choices svg {
+  width: 20px;
+  height: 20px;
+  color: var(--accent-amber);
+}
+@media (max-width: 440px) {
+  .signup-choices {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 </style>

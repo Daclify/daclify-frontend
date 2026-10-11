@@ -9,7 +9,7 @@ import { lockVault } from '../auth/session';
 import { useWorkspace } from '../state/workspace';
 import { selectedSigner } from '../auth/action-signer';
 import { z } from 'zod';
-const props = defineProps<{ mode: 'enter' | 'manage' }>(),
+const props = defineProps<{ mode: 'enter' | 'manage' | 'signup' }>(),
   emit = defineEmits<{ authenticated: [account: Account]; busy: [active: boolean] }>();
 const state = useWorkspace(),
   links = ref<z.infer<typeof NativeLinksSchema>['links']>([]),
@@ -17,7 +17,11 @@ const state = useWorkspace(),
   error = ref(''),
   notice = ref('');
 const label = computed(() =>
-  props.mode === 'enter' ? 'Continue with Telos Zero' : 'Pair Telos Zero',
+  props.mode === 'signup'
+    ? 'Create with Telos Zero'
+    : props.mode === 'enter'
+      ? 'Continue with Telos Zero'
+      : 'Pair Telos Zero',
 );
 const router = useRouter();
 watch(busy, (active) => emit('busy', active), { flush: 'sync' });
@@ -73,8 +77,9 @@ async function useWallet() {
     await connectNative();
     guard(stamp, generation);
     const identity = nativeIdentity(),
-      purpose = props.mode === 'manage' ? 'pair' : 'login';
+      purpose = props.mode === 'manage' ? 'pair' : props.mode === 'signup' ? 'signup' : 'login';
     const challenge = await api.nativeChallenge(purpose, identity.account);
+    guard(stamp, generation);
     if (
       challenge.identity.chainId !== identity.chainId ||
       challenge.identity.account !== identity.account
@@ -84,7 +89,7 @@ async function useWallet() {
     guard(stamp, generation);
     const result = await api.nativeFinish(purpose, challenge.id, proof);
     guard(stamp, generation);
-    if (purpose === 'login') {
+    if (purpose !== 'pair') {
       const session = SessionSchema.parse(result);
       selectedSigner.value = 'native';
       emit('authenticated', acceptProviderSession(session.account, session.csrfToken));
@@ -164,9 +169,14 @@ async function useControl() {
 }
 </script>
 <template>
-  <section aria-label="Telos Zero sign-in">
-    <h3 v-if="mode === 'enter'">Telos Zero</h3>
-    <p>
+  <section :aria-label="mode === 'signup' ? 'Telos Zero account creation' : 'Telos Zero sign-in'">
+    <h3 v-if="mode !== 'manage'">Telos Zero</h3>
+    <p v-if="mode === 'signup'">
+      Create or open your Daclify account paired with your existing Telos Zero wallet. Approve the
+      account proof in Anchor. You can add Daclify keys for new DAOs and private documents afterward
+      in Account.
+    </p>
+    <p v-else>
       Use an Anchor wallet to sign in with a paired account or recover its existing on-chain DAO
       access after a service failure. Recovery uses the current blockchain binding; it creates no
       new DAO membership. Original document keys require an enabled full-access method, an encrypted

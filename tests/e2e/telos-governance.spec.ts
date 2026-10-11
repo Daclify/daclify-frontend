@@ -283,14 +283,33 @@ async function fixture(
     resume,
     challenged: () => challengeRequested,
     counts: () => ({ signupCount, broadcasts }),
-    install: () =>
-      page.evaluate(async (value) => {
-        const path = '/tests/fixtures/telos-wallet-browser.ts';
-        const fixture = await import(path);
-        fixture.installTelosWallet(value);
-      }, key.toString()),
+    install: (interceptLogin = false) =>
+      page.evaluate(
+        async (value) => {
+          const path = '/tests/fixtures/telos-wallet-browser.ts';
+          const fixture = await import(path);
+          fixture.installTelosWallet(value.key, value.interceptLogin);
+        },
+        { key: key.toString(), interceptLogin },
+      ),
   };
 }
+test('creates a paired native account through signup outside a governance vote', async ({
+  page,
+}) => {
+  const flow = await fixture(page);
+  await page.goto('/account');
+  await page.getByRole('button', { name: 'New Account', exact: true }).click();
+  await page
+    .getByRole('group', { name: 'Create with:' })
+    .getByRole('button', { name: 'Telos Zero', exact: true })
+    .click();
+  await flow.install(true);
+  await page.getByRole('button', { name: 'Create with Telos Zero', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Your account', exact: true })).toBeVisible();
+  await expect(page.getByText('Wallet only', { exact: true })).toBeVisible();
+  expect(flow.counts()).toEqual({ signupCount: 1, broadcasts: 0 });
+});
 test('public history and active elections need no account and reject unsafe content links', async ({
   page,
 }) => {

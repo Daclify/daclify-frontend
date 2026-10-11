@@ -18,7 +18,6 @@ import {
   VERSION,
   type Account,
 } from '@daclify/core-protocol';
-const origin = 'http://127.0.0.1:5218';
 const dao = {
   chainId: 'ab'.repeat(32),
   contract: 'daclifycore',
@@ -98,6 +97,7 @@ test('requires admin access, a current signer and explicit monthly consent befor
   });
   await page.route('**/networks.json', (r) => r.fulfill({ json: { mode: 'local' } }));
   await page.route('**/v1/**', async (r) => {
+    const origin = new URL(page.url()).origin;
     const path = new URL(r.request().url()).pathname;
     const body: unknown = r.request().method() === 'POST' ? r.request().postDataJSON() : null;
     let response: unknown;
@@ -228,6 +228,8 @@ test('requires admin access, a current signer and explicit monthly consent befor
   await expect(page.getByRole('heading', { name: 'Administrator access required' })).toBeVisible();
   expect(changes).toHaveLength(0);
   await page.goto('/account?returnTo=' + encodeURIComponent(query));
+  await page.getByRole('button', { name: 'New Account', exact: true }).click();
+  await page.getByRole('button', { name: 'Own Keys', exact: true }).click();
   await page.getByLabel('Vault password', { exact: true }).fill('browser-payment-fixture-password');
   await page.getByRole('button', { name: 'Create encrypted vault' }).click();
   await page.getByLabel('I have saved my recovery kit and credential').check();

@@ -9,6 +9,8 @@ import {
   FingerprintPattern,
   UserRound,
   CreditCard,
+  ArrowLeft,
+  ChevronRight,
 } from '@lucide/vue';
 import { useWorkspace } from '../state/workspace';
 import { api, friendlyError, type ServiceReceipt } from '../api/client';
@@ -82,7 +84,7 @@ watch(
 watch(restoring, (active) => {
   void nextTick(() =>
     document
-      .getElementById(active ? 'kit' : state.account ? 'account-tab-keys' : 'recover-account')
+      .getElementById(active ? 'kit' : state.account ? 'account-tab-keys' : 'entry-restore')
       ?.focus(),
   );
 });
@@ -161,9 +163,45 @@ watch(
   },
 );
 const saved = ref(savedVault());
-const newAccount = ref(false),
-  quickReady = ref(false),
+const entry = ref<'choices' | 'login' | 'new'>(
+    typeof route.query.signup === 'string' ? 'new' : 'choices',
+  ),
+  ownKeys = ref(false),
   quickBusy = ref(false);
+const entryChoices = [
+  { id: 'login', label: 'Login', description: 'Open your existing account.', icon: KeyRound },
+  { id: 'new', label: 'New Account', description: 'Get started with Daclify.', icon: UserRound },
+  {
+    id: 'restore',
+    label: 'Restore Account',
+    description: 'Use your encrypted recovery kit.',
+    icon: LifeBuoy,
+  },
+] as const;
+function openEntry(next: 'login' | 'new' | 'restore') {
+  if (busy.value || providerBusy.value || quickBusy.value) return;
+  error.value = '';
+  password.value = '';
+  if (next === 'restore') restoring.value = true;
+  else {
+    entry.value = next;
+    void nextTick(() =>
+      document.getElementById(next === 'login' ? 'returning-title' : 'new-title')?.focus(),
+    );
+  }
+}
+function backToChoices() {
+  if (busy.value || providerBusy.value || quickBusy.value) return;
+  const previous = entry.value;
+  entry.value = 'choices';
+  ownKeys.value = false;
+  password.value = '';
+  error.value = '';
+  void nextTick(() => document.getElementById('entry-' + previous)?.focus());
+}
+watch(ownKeys, (active) => {
+  if (active) void nextTick(() => document.getElementById('password')?.focus());
+});
 const accountKit = computed(() => {
   const record = saved.value,
     account = state.account;
@@ -229,7 +267,11 @@ const heading = computed(() =>
       ? 'Save your recovery kit'
       : state.account
         ? 'Your account'
-        : 'Sign in to Daclify',
+        : entry.value === 'login'
+          ? 'Sign in to Daclify'
+          : entry.value === 'new'
+            ? 'Create your Daclify account'
+            : 'Your Daclify account',
 );
 async function selectKit(event: Event) {
   const target = event.target;
@@ -356,6 +398,7 @@ async function logout() {
     lockVault();
     state.account = undefined;
     state.memberships = [];
+    entry.value = 'choices';
   } catch (cause) {
     error.value = friendlyError(cause);
   } finally {
@@ -710,15 +753,38 @@ function backup() {
     </section>
   </div>
   <div v-else class="account-access">
-    <nav class="account-shortcuts" aria-label="Account options">
-      <a href="#new-account" @click="newAccount = true"
-        >{{ saved ? 'Create another account' : 'Create an account' }}
-        <ArrowUpRight aria-hidden="true"
-      /></a>
-      <a href="#recover-account">Recovery options <ArrowUpRight aria-hidden="true" /></a>
-    </nav>
-    <div class="account-entry">
+    <div
+      v-if="entry === 'choices'"
+      class="account-choices"
+      role="group"
+      aria-label="Account options"
+    >
+      <button
+        v-for="choice in entryChoices"
+        :id="'entry-' + choice.id"
+        :key="choice.id"
+        type="button"
+        class="account-choice"
+        :aria-label="choice.label"
+        :disabled="busy || providerBusy || quickBusy"
+        @click="openEntry(choice.id)"
+      >
+        <component :is="choice.icon" aria-hidden="true" />
+        <span class="choice-title">{{ choice.label }}<ChevronRight aria-hidden="true" /></span>
+        <span class="choice-description">{{ choice.description }}</span>
+      </button>
+    </div>
+    <div v-else class="account-entry">
+      <button
+        class="text-button account-back"
+        :disabled="busy || providerBusy || quickBusy"
+        @click="backToChoices"
+      >
+        <ArrowLeft aria-hidden="true" /> Back
+      </button>
+
       <section
+        v-if="entry === 'login'"
         class="panel account-returning"
         aria-labelledby="returning-title"
         :inert="busy || quickBusy"
@@ -726,7 +792,7 @@ function backup() {
         <div class="account-section-title">
           <KeyRound aria-hidden="true" />
           <div>
-            <h2 id="returning-title">Welcome back</h2>
+            <h2 id="returning-title" tabindex="-1">Welcome back</h2>
             <p>Sign in to continue to your communities.</p>
           </div>
         </div>
@@ -753,11 +819,11 @@ function backup() {
           mode="enter"
           @authenticated="onSignedIn"
           @busy="providerBusy = $event"
-          @create-account="newAccount = true"
+          @create-account="openEntry('new')"
         />
       </section>
       <section
-        v-if="!saved || newAccount || typeof route.query.signup === 'string'"
+        v-else-if="entry === 'new'"
         id="new-account"
         class="panel account-new"
         aria-labelledby="new-title"
@@ -766,7 +832,7 @@ function backup() {
         <div class="account-section-title">
           <ShieldCheck aria-hidden="true" />
           <div>
-            <h2 id="new-title">New to Daclify?</h2>
+            <h2 id="new-title" tabindex="-1">New to Daclify?</h2>
             <p>Create your identity, then join or start a DAO.</p>
           </div>
         </div>
@@ -775,10 +841,9 @@ function backup() {
           :pending-id="typeof route.query.signup === 'string' ? route.query.signup : undefined"
           @authenticated="onSignedIn"
           @busy="quickBusy = $event"
-          @available="quickReady = $event"
+          @own-keys="ownKeys = $event"
         />
-        <details class="own-vault" :open="!quickReady" :inert="quickBusy">
-          <summary>Create with your own keys</summary>
+        <section v-if="ownKeys" class="own-vault" :inert="quickBusy">
           <span class="pill success">User-controlled</span>
           <h3>You hold the keys</h3>
           <p>
@@ -837,46 +902,9 @@ function backup() {
               {{ busy ? 'Encrypting vault…' : 'Create encrypted vault' }}
             </button>
           </form>
-        </details>
+        </section>
       </section>
-      <aside v-else class="panel account-key-guide" aria-labelledby="key-guide-title">
-        <ShieldCheck aria-hidden="true" />
-        <h2 id="key-guide-title">Your keys stay with you</h2>
-        <p>
-          Paired methods open your account. A method enabled for full access also unlocks your
-          signing and private-document keys.
-        </p>
-        <p>
-          A linked blockchain wallet can authorize supported DAO actions. Encrypted documents still
-          need your granted decryption keys.
-        </p>
-        <p>
-          Keep your recovery kit and its separate recovery code. The kit restores your original keys
-          on a new device using that code or the vault password saved with the kit.
-        </p>
-        <RouterLink class="help-link" to="/docs/accounts"
-          >Account and key guide <ArrowUpRight aria-hidden="true"
-        /></RouterLink>
-      </aside>
     </div>
-    <aside class="account-recovery" aria-labelledby="recovery-choice-title">
-      <LifeBuoy aria-hidden="true" />
-      <div>
-        <h2 id="recovery-choice-title">Moving devices or restoring access?</h2>
-        <p>
-          Restore your existing keys with your encrypted kit and its vault password or recovery
-          code.
-        </p>
-      </div>
-      <button
-        id="recover-account"
-        class="secondary"
-        :disabled="busy || providerBusy || quickBusy"
-        @click="restoring = true"
-      >
-        Recover from an encrypted kit
-      </button>
-    </aside>
     <p class="account-access-note">
       An account gets you into Daclify. Each DAO controls membership, voting rights and permissions
       separately. <RouterLink to="/docs/accounts">How access works</RouterLink>
@@ -1001,29 +1029,77 @@ function backup() {
   display: grid;
   gap: 24px;
 }
-.account-shortcuts {
+.account-choices {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  max-width: 900px;
+}
+.account-choice {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px 24px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  min-height: 140px;
+  padding: 22px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  text-align: left;
+  box-shadow: none;
 }
-.account-shortcuts a {
-  display: inline-flex;
+.account-choice:hover {
+  border-color: var(--border-warm);
+  background: var(--surface-raised);
+}
+.account-choice > svg {
+  width: 24px;
+  height: 24px;
+  color: var(--accent-amber);
+}
+.choice-title {
+  display: flex;
   align-items: center;
-  gap: 6px;
-  min-height: 44px;
-  font-size: 0.875rem;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  font-weight: 700;
+  font-size: 1rem;
 }
-.account-shortcuts svg {
+.choice-title svg {
   width: 16px;
   height: 16px;
+  color: var(--accent-amber);
 }
-#new-account,
-#recover-account {
-  scroll-margin-top: 24px;
+.choice-description {
+  font-size: 0.8125rem;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+.account-back {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.account-back svg {
+  width: 18px;
+  height: 18px;
+}
+@media (max-width: 640px) {
+  .account-choices {
+    grid-template-columns: 1fr;
+  }
+  .account-choice {
+    min-height: 120px;
+  }
 }
 .account-entry {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr));
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 680px;
   gap: 24px;
   align-items: start;
 }
@@ -1049,8 +1125,7 @@ function backup() {
   align-items: flex-start;
   margin-bottom: 24px;
 }
-.account-section-title > svg,
-.account-key-guide > svg {
+.account-section-title > svg {
   width: 24px;
   height: 24px;
   flex: none;
@@ -1116,35 +1191,6 @@ function backup() {
   min-height: 44px;
   font-size: 0.875rem;
 }
-.account-recovery {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  align-items: center;
-  padding: 20px;
-  border: 1px solid var(--border-warm);
-  border-radius: var(--radius-lg);
-  background: var(--surface-panel);
-}
-.account-recovery > svg {
-  width: 24px;
-  height: 24px;
-  color: var(--accent-amber);
-  flex: none;
-}
-.account-recovery > div {
-  flex: 1;
-  min-width: min(100%, 18rem);
-}
-.account-recovery h2 {
-  font-size: 1rem;
-  margin: 0 0 6px;
-}
-.account-recovery p {
-  margin: 0;
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-}
 .account-access-note {
   color: var(--text-muted);
   font-size: 0.875rem;
@@ -1168,9 +1214,6 @@ function backup() {
 @media (max-width: 440px) {
   .account-entry > .panel {
     padding: 20px;
-  }
-  .account-recovery > button {
-    width: 100%;
   }
 }
 </style>
