@@ -192,7 +192,7 @@ onUnmounted(() => {
     </p>
     <p v-if="loading" role="status">Checking quick signup…</p>
     <p v-if="error" class="alert" role="alert">{{ error }}</p>
-    <p v-if="options?.assisted.reason" class="notice" role="status">
+    <p v-if="options?.assisted.reason && !options.assisted.available" class="notice" role="status">
       {{ options.assisted.reason }}
     </p>
     <p class="field-help">

@@ -437,7 +437,6 @@ function backup() {
         }}
       </p>
     </div>
-    <RouterLink class="help-link" to="/docs/accounts">Account help ↗</RouterLink>
   </div>
   <p v-if="route.query.telegram === 'failed'" class="alert" role="alert">
     Telegram verification could not be completed. Try again from this browser, or use email.
@@ -775,14 +774,6 @@ function backup() {
       </button>
     </div>
     <div v-else class="account-entry">
-      <button
-        class="text-button account-back"
-        :disabled="busy || providerBusy || quickBusy"
-        @click="backToChoices"
-      >
-        <ArrowLeft aria-hidden="true" /> Back
-      </button>
-
       <section
         v-if="entry === 'login'"
         class="panel account-returning"
@@ -795,6 +786,14 @@ function backup() {
             <h2 id="returning-title" tabindex="-1">Welcome back</h2>
             <p>Sign in to continue to your communities.</p>
           </div>
+          <button
+            type="button"
+            class="text-button account-back"
+            :disabled="busy || providerBusy || quickBusy"
+            @click="backToChoices"
+          >
+            <ArrowLeft aria-hidden="true" /> Back
+          </button>
         </div>
         <div v-if="saved" class="local-vault">
           <span class="pill success">Saved on this device</span>
@@ -835,6 +834,14 @@ function backup() {
             <h2 id="new-title" tabindex="-1">New to Daclify?</h2>
             <p>Create your identity, then join or start a DAO.</p>
           </div>
+          <button
+            type="button"
+            class="text-button account-back"
+            :disabled="busy || providerBusy || quickBusy"
+            @click="backToChoices"
+          >
+            <ArrowLeft aria-hidden="true" /> Back
+          </button>
         </div>
         <QuickSignup
           :disabled="busy || providerBusy"
@@ -1001,12 +1008,6 @@ function backup() {
   .settings-heading .lead {
     font-size: 0.875rem;
   }
-  .settings-heading .help-link {
-    display: inline-flex;
-    align-items: center;
-    min-height: 44px;
-    font-size: 0.8125rem;
-  }
   .access-grid {
     grid-template-columns: 1fr;
     gap: 20px;
@@ -1079,9 +1080,10 @@ function backup() {
   color: var(--text-secondary);
 }
 .account-back {
-  justify-self: start;
   display: inline-flex;
   align-items: center;
+  flex: none;
+  margin-left: auto;
   gap: 8px;
 }
 .account-back svg {

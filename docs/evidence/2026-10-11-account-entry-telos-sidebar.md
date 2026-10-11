@@ -46,3 +46,15 @@ Decide signing pins remain unqualified, so the public Telos entry remains read-o
 - Live testnet ballot history and the selected ballot `1cw3rwrjq2no` loaded from the actual API. The existing Status resource/permission and Daclify DAO checks also passed. Required API responses were JSON from the configured API origin; no page errors, misplaced API requests or server-error responses were recorded.
 - Public Account/New Account/Telos screenshots and hashed logs are retained privately under `/data/daclify-runtime/releases/20261011-account-entry-telos-sidebar/` with the source archive and rollback index. The runtime smoke helper was also updated to enter Login/New Account explicitly.
 - API was not restarted, and contracts, authority, balances, recovery qualification and provider configuration were not changed. The owned browser API fixture was stopped after verification.
+
+## Later account card cleanup (source only)
+
+Removed Account help from the page heading and moved Back into the top-right corner of both Login and New Account cards. Quick signup shows the assisted-recovery reason only when assisted signup is unavailable, removing the testnet development notice while preserving unavailable-service explanations and recovery consent.
+
+- `npm run build`, `npm run lint`, formatting checks for both changed Vue files and `git diff --check` passed. The build retained its existing large-chunk warning.
+- `npm test`: 44 files / 280 tests passed.
+- `DACLIFY_TEST_UI_PORT=5258 LD_LIBRARY_PATH=/data/daclify-runtime/browser-libs/usr/lib/x86_64-linux-gnu npx playwright test tests/e2e/account-entry-experience.spec.ts --config playwright.config.ts --output .artifacts/account-card-browser`: 34 desktop/mobile cases passed, including recovery, enlarged text, pending-request controls and focus.
+- Direct browser checks at 1280, 390 and 320 pixels verified Back's placement inside each card, removal of the requested copy, focus restoration, no horizontal overflow and no Axe violations. Unavailable-signup explanations remained visible. Desktop/mobile screenshots are retained under `/data/daclify-runtime/account-card-{1280,390}-20261011.png`.
+- Initial browser attempts encountered a missing Chromium library path and then a shared development server shutdown; the complete passing run used the documented libraries and a separate owned server on port 5258. A temporary Axe check also needed an explicit browser context before succeeding.
+
+These edits have not been published to the live testnet. No new tests, dependencies or backend changes were added for this presentation-only change.
