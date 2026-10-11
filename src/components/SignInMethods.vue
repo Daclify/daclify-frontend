@@ -10,6 +10,8 @@ import { useWorkspace } from '../state/workspace';
 import { accountDestination } from '../auth/destination';
 import NativeWalletPanel from './NativeWalletPanel.vue';
 import LinkedAccounts from './LinkedAccounts.vue';
+import telosZeroWordmark from '../assets/telos/telos-zero-light.png';
+import telosEvmWordmark from '../assets/telos/telos-evm-light.png';
 import {
   assertionProof,
   creationOptions,
@@ -37,8 +39,8 @@ const choices = [
   { id: 'passkey', name: 'Passkey', icon: FingerprintPattern },
   { id: 'telegram', name: 'Telegram', icon: Send },
   { id: 'email', name: 'E-Mail', icon: Mail },
-  { id: 'native', name: 'Telos Zero', icon: Anchor },
-  { id: 'evm', name: 'Telos EVM', icon: Gem },
+  { id: 'native', name: 'Telos Zero', wordmark: telosZeroWordmark },
+  { id: 'evm', name: 'Telos EVM', wordmark: telosEvmWordmark },
 ] as const;
 const selected = ref<(typeof choices)[number]['id']>();
 function choose(id: (typeof choices)[number]['id']) {
@@ -401,7 +403,15 @@ onUnmounted(() => {
         :disabled="working"
         @click="choose(choice.id)"
       >
-        <component :is="choice.icon" aria-hidden="true" /><span>{{ choice.name }}</span>
+        <span
+          v-if="'wordmark' in choice"
+          class="telos-wordmark"
+          :style="{ maskImage: `url(${choice.wordmark})` }"
+          aria-hidden="true"
+        ></span>
+        <template v-else>
+          <component :is="choice.icon" aria-hidden="true" /><span>{{ choice.name }}</span>
+        </template>
       </button>
     </div>
     <p v-if="mode === 'enter' && !selected" class="sign-in-hint">Select a method to continue.</p>
@@ -777,6 +787,7 @@ onUnmounted(() => {
   text-align: left;
   border-radius: var(--radius-md);
   padding: 16px;
+  min-height: 62px;
   color: var(--text-primary);
   background: var(--surface-panel);
   border-color: var(--border-default);
@@ -791,6 +802,15 @@ onUnmounted(() => {
 .sign-in-choice > span {
   min-width: 0;
   font-size: 0.875rem;
+}
+.telos-wordmark {
+  width: 128px;
+  max-width: 100%;
+  height: 28px;
+  background-color: var(--accent-amber);
+  mask-repeat: no-repeat;
+  mask-position: left center;
+  mask-size: contain;
 }
 .sign-in-choice[aria-pressed='true'] {
   border-color: var(--accent-amber);

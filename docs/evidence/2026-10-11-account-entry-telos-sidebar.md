@@ -96,3 +96,15 @@ Login choices now contain one icon and only Passkey, Telegram, E-Mail, Telos Zer
 Committed source `9048aaa65902b326cfa2829600708537d5d60cf3` was archived and installed from its pinned lockfile, then published with the existing testnet frontend helper. Public and served indexes matched SHA-256 `9338ad922626fb0600fa083cd1b0fb080dd6d93159d1c41e5bf29bddb24f3cea`; previous assets and the rollback index were retained.
 
 Both the standard public site check and the dedicated login-button check passed at 1440×1000 and 390×844. The latter verified all five exact labels, one icon each, distinct Telos icons, no secondary text or chevrons, compact accessible targets, E-Mail form selection and Back focus restoration. Axe and overflow checks passed without browser errors. Source, snapshots, logs, hashes and the release manifest are retained under `/data/daclify-runtime/releases/20261011-login-method-buttons/`. This frontend publication did not restart the API or change contracts, provider configuration or recovery behavior.
+
+## Amber Telos product wordmarks
+
+At the user's request, the Login card now uses the Telos EVM Light and Telos Zero Light product wordmarks from the [official brand kit](https://telos.net/branding). Original transparent PNGs are bundled locally, with source URLs and hashes recorded in `src/assets/telos/README.md`. CSS masks apply the portal's existing amber accent while preserving aspect ratios and transparent badge lettering. This requested color treatment differs from the supplied brand colors. Each Telos button shows its wordmark once and retains its accessible method name. All five choices have equal 62-pixel targets; the other three choices retain their icons and text.
+
+- `npm run build` passed, including strict Vue/TypeScript checks. The existing large-chunk advisory remains.
+- Lint policy passed all five checks; changed Vue formatting and `git diff --check` passed.
+- Eight existing desktop/mobile account-entry cases passed: journey focus restoration, selected-provider selection, phone/tablet/landscape/enlarged-text accessibility and pending-wallet controls.
+- Dedicated browser checks passed at 1440, 390 and 320 pixels: five accessible names, loaded distinct source images, exact amber color, retained transparent letter cutouts, no duplicate text, readable targets, Zero/EVM/E-Mail selection, destination retention, Back focus, zero Axe violations and no overflow or browser errors. Desktop and phone screenshots were reviewed.
+- No dependencies, provider configuration or authentication behavior changed. The full unit, signup, native-wallet and authenticated-management suites were not rerun for this visual change.
+
+Local build/check logs, the additional browser checker, original images and screenshots are retained under `/data/daclify-runtime/releases/20261011-telos-wordmark-buttons/`.

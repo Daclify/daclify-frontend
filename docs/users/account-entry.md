@@ -2,7 +2,7 @@
 
 Start at Account with one of three cards:
 
-- **Login** opens Welcome back. Unlock a vault saved on this device or choose an already paired method: Passkey, Telegram, E-Mail, Telos Zero or Telos EVM. The buttons show one icon and the method name; Telos Zero uses an anchor icon and Telos EVM uses a gem icon. Back returns to the three cards.
+- **Login** opens Welcome back. Unlock a vault saved on this device or choose an already paired method: Passkey, Telegram, E-Mail, Telos Zero or Telos EVM. Passkey, Telegram and E-Mail show an icon and the method name. The Telos buttons show their product wordmarks in the portal's amber accent. Back returns to the three cards.
 - **New Account** opens New to Daclify? Choose E-Mail, Telegram, Telos Zero or Own Keys under Create with:.
 - **Restore Account** opens recovery from an encrypted kit. Supply the kit, its original vault password or separate recovery code, and a new vault password, then select Restore. Cancel returns to the three cards.
 
