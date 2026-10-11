@@ -82,6 +82,7 @@ import {
 import { AuthChallengePaths, validateAuthChallenge } from '../auth/audience';
 import {
   HostingRoutes,
+  ModuleFeeRoutes,
   PaymentRoutes,
   DirectoryRoutes,
   StorageBillingRoutes,
@@ -420,6 +421,42 @@ export const api = {
     }
     all.next = null;
     return all;
+  },
+  moduleFeePricing: () =>
+    request(ModuleFeeRoutes.moduleFeePricing.path, ModuleFeeRoutes.moduleFeePricing.response),
+  moduleFeeStatus: async (dao: DaoRef) => {
+    const value = await request(
+      ModuleFeeRoutes.moduleFeeStatus.path + '?dao=' + encodeURIComponent(JSON.stringify(dao)),
+      ModuleFeeRoutes.moduleFeeStatus.response,
+    );
+    if (daoPaymentKey(value.dao) !== daoPaymentKey(dao)) throw new ApiFailure('DAO_REFERENCE');
+    return value;
+  },
+  moduleFeeCheckout: async (input: z.infer<typeof ModuleFeeRoutes.moduleFeeCheckout.input>) => {
+    const approval = ModuleFeeRoutes.moduleFeeCheckout.input.parse(input);
+    const value = await request(
+      ModuleFeeRoutes.moduleFeeCheckout.path,
+      ModuleFeeRoutes.moduleFeeCheckout.response,
+      approval,
+      60000,
+    );
+    if (
+      value.id !== approval.requestId ||
+      JSON.stringify(value.approval) !== JSON.stringify(approval)
+    )
+      throw new ApiFailure('MODULE_ORDER_CONFLICT');
+    return value;
+  },
+  moduleFeeOrder: async (id: string, dao: DaoRef) => {
+    const value = await request(
+      ModuleFeeRoutes.moduleFeeOrder.path.replace(':id', z.uuid().parse(id)),
+      ModuleFeeRoutes.moduleFeeOrder.response,
+      undefined,
+      60000,
+    );
+    if (value.id !== id || daoPaymentKey(value.approval.dao) !== daoPaymentKey(dao))
+      throw new ApiFailure('MODULE_ORDER_CONFLICT');
+    return value;
   },
   hostingStatus: (dao: DaoRef) =>
     request(
@@ -1116,6 +1153,21 @@ export const api = {
 export function friendlyError(error: unknown): string {
   if (error instanceof ApiFailure) {
     const messages: Record<string, string> = {
+      MODULE_BILLING_UNCONFIGURED: 'Module access payments are not configured on this service.',
+      MODULE_PRICING_UNAVAILABLE:
+        'Current module prices could not be verified. Refresh to try again.',
+      MODULE_APPROVAL_CHANGED:
+        'Module pricing or eligibility changed. Refresh access before approving a payment.',
+      MODULE_ORDER_CONFLICT:
+        'This payment does not match the selected DAO and approved module price.',
+      MODULE_ORDER_PENDING:
+        'This module already has an unfinished payment. Continue that checkout or contact support.',
+      MODULE_RENEWAL_EARLY:
+        'Module access can be renewed during the final seven days of the paid month.',
+      MODULE_ACCESS_FREE: 'This DAO has free module access. No payment is needed.',
+      MODULE_CHECKOUT_REVIEW:
+        'An earlier checkout needs payment review. Contact support before starting another payment.',
+      MODULE_NOT_INSTALLED: 'Enable this module in DAO settings before buying access.',
       RECOVERY_UNAVAILABLE:
         'Fast sign-in backups are not available on this service yet. You can still use another unlocked device or your encrypted kit.',
       RECOVERY_METHOD_UNAVAILABLE:

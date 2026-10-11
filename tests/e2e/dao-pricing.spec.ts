@@ -1,6 +1,12 @@
 import { expect, test } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import { ApiRoutes, NetworkSchema, VERSION, STORAGE_GRACE_SECONDS } from '@daclify/core-protocol';
+import {
+  ApiRoutes,
+  NetworkSchema,
+  VERSION,
+  STORAGE_GRACE_SECONDS,
+  ModuleFeePricingSchema,
+} from '@daclify/core-protocol';
 const network = NetworkSchema.parse({
   chainId: 'ab'.repeat(32),
   rpcUrl: 'https://rpc.example',
@@ -100,6 +106,24 @@ const status = ApiRoutes.status.response.parse({
   },
   defaults: { sharedUsdCents: 0, independentUsdCents: 5000, tlosPremiumBps: 2000 },
 });
+const modulePricing = ModuleFeePricingSchema.parse({
+  chainId: network.chainId,
+  runtime: network.runtime,
+  interfaceVersion: 1,
+  freeMembers: 10,
+  plans: [
+    {
+      pricing: {
+        account: 'decide',
+        revision: '1',
+        monthlyUsdCents: 200,
+        actions: ['open', 'newelect'],
+      },
+      title: 'Decide',
+      codeHash: 'ab'.repeat(32),
+    },
+  ],
+});
 test.beforeEach(async ({ page }) => {
   await page.route('**/v1/**', (route) => {
     const path = new URL(route.request().url()).pathname;
@@ -110,9 +134,11 @@ test.beforeEach(async ({ page }) => {
           ? network
           : path === '/v1/platform/status'
             ? status
-            : path === '/v1/daos'
-              ? { daos: [] }
-              : { code: 'AUTH_REQUIRED', message: 'Sign in to continue.' },
+            : path === '/v1/modules/pricing'
+              ? modulePricing
+              : path === '/v1/daos'
+                ? { daos: [] }
+                : { code: 'AUTH_REQUIRED', message: 'Sign in to continue.' },
     });
   });
 });
@@ -142,6 +168,12 @@ test('opens all current DAO prices from Create a DAO without requiring an accoun
   ])
     await expect(main).toContainText(text);
   await expect(main).toContainText('Contact for pricing');
+  await expect(main.getByRole('region', { name: 'Module prices' })).toContainText(
+    'All existing modules free through 10 active members',
+  );
+  await expect(main.getByRole('region', { name: 'Module prices' })).toContainText(
+    '$2.00 / DAO / month',
+  );
   await expect(main).toContainText('stale');
   await expect(main).not.toContainText('$1.00');
   expect((await new AxeBuilder({ page }).include('#main').analyze()).violations).toEqual([]);

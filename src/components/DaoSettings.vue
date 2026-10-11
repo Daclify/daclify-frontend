@@ -157,8 +157,8 @@ async function rename() {
       <div>
         <h3>Hosting and payments</h3>
         <p class="settings-description">
-          Hosting pays for approved Daclify capacity. Module payments go to your DAO’s merchant
-          account; resource funding is separate.
+          Member capacity, module access and storage have separate prices. Your DAO’s merchant
+          payments are managed separately.
         </p>
       </div>
       <div class="settings-services">
@@ -170,6 +170,18 @@ async function rename() {
             class="button secondary"
             :to="{ path: '/hosting', query: { dao: JSON.stringify(dao.reference) } }"
             >Manage member capacity</RouterLink
+          >
+        </section>
+        <section v-if="admin && !currentOperator()" class="panel">
+          <h3>Module access</h3>
+          <p>
+            Free through 10 active members. Review monthly prices and buy access for larger
+            communities.
+          </p>
+          <RouterLink
+            class="button secondary"
+            :to="{ path: '/module-access', query: { dao: JSON.stringify(dao.reference) } }"
+            >Manage module access</RouterLink
           >
         </section>
         <section class="panel">

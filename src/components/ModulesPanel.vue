@@ -717,6 +717,11 @@ const selectedProject = computed(() =>
   <template v-if="section === 'modules'"
     ><div v-if="!focusAccount" class="section-toolbar">
       <h2>DAO modules</h2>
+      <RouterLink
+        v-if="member?.admin"
+        :to="{ path: '/module-access', query: { dao: JSON.stringify(dao.reference) } }"
+        >Module access &amp; prices ↗</RouterLink
+      >
       <RouterLink :to="helpLink('modules')">Permissions &amp; versions ↗</RouterLink>
     </div>
     <div class="dao-grid">
