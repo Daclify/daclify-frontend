@@ -66,3 +66,12 @@ After the user requested the live update, committed frontend source `8bcab8e4025
 - The committed `npm run test:testnet-public` check passed against public HTTPS at 1440×1000 and 390×844, including account journeys, Telos history, Hub, Status and Daclify DAO. No browser errors, misplaced API requests or server-error responses were found.
 - Additional read-only public browser checks verified all three requested changes in Login and New Account: Account help absent, Back inside the top-right of the card, and the testnet development notice absent. Assisted signup remained available. Focus restoration, Axe and overflow checks passed on both viewports.
 - Source archive, rollback index, public screenshots, build/check logs and their hashes are retained under `/data/daclify-runtime/releases/20261011-account-card-cleanup/`, with `release-manifest.json` recording the source and verification results. Publication did not restart the API or change contracts, provider configuration or account recovery.
+
+## Restore and Cancel buttons
+
+The recovery form now ends with equally sized Restore and Cancel buttons in a spaced, responsive row. Restore uses the existing amber primary style; Cancel uses the existing bordered secondary style. Submit validation, the pending state, saved-vault replacement consent and Cancel focus restoration retain their existing behavior. Browser callers and the public check use the new labels.
+
+- `npm run build` passed with the existing large-chunk warning; formatting and diff checks passed.
+- Eight existing desktop/mobile account-entry cases passed, including real key restoration with both the kit password and recovery code, cancellation and focus restoration.
+- Browser layout checks at 1280, 390 and 320 pixels verified equal button dimensions, at least a 44-pixel height, a 12-pixel gap, no horizontal overflow and no Axe violations. Restore stayed disabled without a kit; Cancel returned focus to Restore Account and retained the return destination.
+- No new dependencies or tests were added for this presentation change. The broader unit and native-workspace suites were not rerun; the affected recovery cases were run.

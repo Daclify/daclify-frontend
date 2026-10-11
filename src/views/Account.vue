@@ -480,11 +480,15 @@ function backup() {
       /><label v-if="saved" class="checkbox"
         ><input v-model="replacementAcknowledged" type="checkbox" required />I have backed up the
         account currently on this device</label
-      ><button :disabled="busy || !kitText">
-        {{ busy ? 'Restoring…' : 'Restore and sign in' }}</button
-      ><button type="button" class="text-button" :disabled="busy" @click="restoring = false">
-        Cancel recovery
-      </button>
+      >
+      <div class="button-row recovery-actions">
+        <button type="submit" :disabled="busy || !kitText">
+          {{ busy ? 'Restoring…' : 'Restore' }}
+        </button>
+        <button type="button" class="secondary" :disabled="busy" @click="restoring = false">
+          Cancel
+        </button>
+      </div>
     </form>
   </section>
   <section v-else-if="created" class="panel narrow account-flow">
@@ -1212,6 +1216,12 @@ function backup() {
 }
 .account-flow form > button {
   margin-top: 16px;
+}
+.recovery-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  max-width: 20rem;
+  margin-top: 20px;
 }
 @media (max-width: 440px) {
   .account-entry > .panel {

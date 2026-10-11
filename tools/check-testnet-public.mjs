@@ -91,7 +91,7 @@ try {
       await main.getByRole('button', { name: 'Restore Account', exact: true }).click();
       await expect(main.getByLabel('Encrypted recovery kit', { exact: true })).toBeFocused();
       await checkLayout();
-      await main.getByRole('button', { name: 'Cancel recovery', exact: true }).click();
+      await main.getByRole('button', { name: 'Cancel', exact: true }).click();
       await expect(
         main.getByRole('button', { name: 'Restore Account', exact: true }),
       ).toBeFocused();
@@ -130,11 +130,24 @@ try {
       await expect(main.locator('.ballot-list li').first()).toBeVisible({ timeout: 30000 });
       await main.locator('.ballot-list button').first().click();
       await expect(main.getByRole('region', { name: 'Recorded voting totals' })).toBeVisible();
+      const electionTitle = main
+        .getByRole('article', { name: 'Selected ballot' })
+        .getByRole('heading', { level: 2 });
+      await expect(electionTitle).toBeFocused();
+      assert.equal(
+        await electionTitle.evaluate((node) => {
+          const box = node.getBoundingClientRect();
+          return box.top >= 0 && box.bottom <= innerHeight;
+        }),
+        true,
+      );
       await checkLayout();
       await page.screenshot({
         path: `.artifacts/public/telos-elections-${viewport.width}.png`,
         fullPage: true,
       });
+      await main.getByRole('button', { name: 'Back to records', exact: true }).click();
+      await expect(main.locator('.ballot-list button').first()).toBeFocused();
       await main.getByRole('button', { name: 'Block Producers', exact: true }).click();
       const producers = main.getByRole('region', { name: 'Block producer standings' });
       await expect(producers.locator('.producer-list li').first()).toBeVisible({ timeout: 25000 });

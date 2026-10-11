@@ -80,7 +80,7 @@ test('starts with three compact account choices and returns focus from each jour
   await expect(main(page).getByRole('button', { name: 'Login', exact: true })).toBeFocused();
   await main(page).getByRole('button', { name: 'Restore Account', exact: true }).click();
   await expect(main(page).getByLabel('Encrypted recovery kit', { exact: true })).toBeFocused();
-  await main(page).getByRole('button', { name: 'Cancel recovery', exact: true }).click();
+  await main(page).getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(
     main(page).getByRole('button', { name: 'Restore Account', exact: true }),
   ).toBeFocused();
@@ -257,7 +257,7 @@ test('keeps the independent vault available when quick signup is unavailable and
     main(page).getByLabel('Vault password or recovery code', { exact: true }),
   ).toBeVisible();
   await expect(main(page).getByLabel('Encrypted recovery kit', { exact: true })).toBeFocused();
-  await main(page).getByRole('button', { name: 'Cancel recovery', exact: true }).click();
+  await main(page).getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(
     main(page).getByRole('button', { name: 'Restore Account', exact: true }),
   ).toBeFocused();
@@ -566,9 +566,7 @@ for (const recoveryMethod of ['recovery code', 'vault password']) {
       await main(recovered)
         .getByLabel('New vault password', { exact: true })
         .fill('replacement disposable password');
-      await main(recovered)
-        .getByRole('button', { name: 'Restore and sign in', exact: true })
-        .click();
+      await main(recovered).getByRole('button', { name: 'Restore', exact: true }).click();
       await main(recovered).getByText('Public join identity', { exact: true }).click();
       await expect(main(recovered).getByText(original.id, { exact: true })).toBeVisible();
       await expect(recovered.getByText('Vault unlocked', { exact: true })).toBeVisible();
