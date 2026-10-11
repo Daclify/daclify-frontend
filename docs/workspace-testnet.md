@@ -36,3 +36,5 @@ login, payments, provider writes or an on-chain ownership migration.
 To check build isolation, record the published `index.html` checksum, run ordinary
 `npm run build`, then verify the published checksum is unchanged and rerun the
 public browser check. Repository `dist/` may change; the served folder must not.
+
+For the current audit update, publish this bundle together with the matching API and approved runtime/Names/service-account rollout. Its strict Names response schema adds inventory cursors; the scoped operator also requires a coordinated API permission switch. Use [the reviewed cutover guide](../../daclify-backend-core/docs/operations/project-audit-remediation.md), rather than treating an ordinary build as authorization to change live services.

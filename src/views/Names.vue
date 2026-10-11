@@ -47,6 +47,35 @@ async function reloadService() {
     if (id === serviceSequence) serviceBusy.value = false;
   }
 }
+async function loadMore(kind: 'listings' | 'suffixes') {
+  const current = service.value;
+  if (!current || serviceBusy.value) return;
+  const cursor = kind === 'listings' ? current.listingsNext : current.suffixesNext;
+  if (!cursor) return;
+  const sequence = serviceSequence;
+  serviceBusy.value = true;
+  loadError.value = '';
+  try {
+    const page = await api.names(
+      kind === 'listings' ? { listingsCursor: cursor } : { suffixesCursor: cursor },
+    );
+    if (sequence !== serviceSequence || !service.value || page.contract !== current.contract)
+      return;
+    if (kind === 'listings') {
+      const rows = new Map(
+        [...current.listings, ...page.listings].map((row) => [row.accountName, row]),
+      );
+      service.value = { ...current, listings: [...rows.values()], listingsNext: page.listingsNext };
+    } else {
+      const rows = new Map([...current.suffixes, ...page.suffixes].map((row) => [row.suffix, row]));
+      service.value = { ...current, suffixes: [...rows.values()], suffixesNext: page.suffixesNext };
+    }
+  } catch (cause) {
+    if (sequence === serviceSequence) loadError.value = friendlyError(cause);
+  } finally {
+    if (sequence === serviceSequence) serviceBusy.value = false;
+  }
+}
 
 const route = useRoute();
 const state = useWorkspace();
@@ -599,6 +628,15 @@ async function pay() {
                   <span>{{ suffix.sales }} sales</span>
                 </li>
               </ul>
+              <button
+                v-if="service.suffixesNext"
+                type="button"
+                class="secondary"
+                :disabled="serviceBusy"
+                @click="loadMore('suffixes')"
+              >
+                Load more suffixes
+              </button>
             </article>
           </div>
           <h2>Listed names</h2>
@@ -620,6 +658,15 @@ async function pay() {
               </button>
             </li>
           </ul>
+          <button
+            v-if="service.listingsNext"
+            type="button"
+            class="secondary"
+            :disabled="serviceBusy"
+            @click="loadMore('listings')"
+          >
+            Load more listed names
+          </button>
           <p class="field-help">{{ nameFee }}</p>
           <p v-if="service.cardPayments === false">
             Card payments are not configured on this service.

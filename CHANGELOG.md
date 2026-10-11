@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.13.0-alpha.3 development
+
+Browse paged Names inventory without losing earlier entries, reject ordinary seller listings through the producer SDK, and distinguish Relay/Fees service accounts from deployed contracts. Preserve permission trees, configured relationships and RAM/CPU/NET details. Consume core 0.13.0-alpha.3 and modules 0.9.0-alpha.19.
+
 ## 0.13.0-alpha.2 development
 
 Consume matching core/module SDK and help artifacts for the restricted Names oracle permission and updated Names code verification. Existing contract account details display the new on-chain permission and action links.

@@ -21,6 +21,8 @@ import {
   EvmLinksSchema,
   MarketplaceSchema,
   NamesServiceSchema,
+  NamesInventoryQuerySchema,
+  type NamesInventoryQuery,
   NameQuoteSchema,
   DocsAgentStatusSchema,
   DocsAnswerSchema,
@@ -989,7 +991,13 @@ export const api = {
     request('/v1/relay/evm', ApiRoutes.relay.response, EvmRelaySchema.parse(input)),
   unlinkEvm: (chainId: 40 | 41) => request('/v1/account/evm/unlink', z.null(), { chainId }),
   marketplace: () => request('/v1/marketplace', MarketplaceSchema),
-  names: () => request('/v1/names', NamesServiceSchema),
+  names: (input: NamesInventoryQuery = {}) => {
+    const query = NamesInventoryQuerySchema.parse(input),
+      params = new URLSearchParams();
+    if (query.listingsCursor !== undefined) params.set('listingsCursor', query.listingsCursor);
+    if (query.suffixesCursor !== undefined) params.set('suffixesCursor', query.suffixesCursor);
+    return request('/v1/names' + (params.size ? '?' + params.toString() : ''), NamesServiceSchema);
+  },
   nameQuote: (accountName: string) =>
     request(`/v1/names/quote?name=${encodeURIComponent(accountName)}`, NameQuoteSchema),
   nameCheckout: (input: { accountName: string; ownerKey: string; activeKey: string }) =>

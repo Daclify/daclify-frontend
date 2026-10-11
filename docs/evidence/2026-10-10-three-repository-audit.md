@@ -1,5 +1,7 @@
 # Frontend audit — 2026-10-10
 
+This is the initial dated audit checkpoint. Its confirmed source findings are addressed in [the remediation and verification record](../../../daclify-backend-core/docs/operations/project-audit-remediation-verification.md); remaining provider/release gates and the pending live rollout are recorded there. Preserve the results below as evidence of this earlier review.
+
 The [complete cross-repository report](https://github.com/Daclify/daclify-backend-core/blob/dev/docs/evidence/2026-10-10-three-repository-audit.md) contains findings and the login finding and its subsequent approved fix.
 
 Reviewed workspace refresh/account guards, vault/private-content context, sign-in/pairing controls, member/profile presentation, module/fee screens, handbook/help and deployment tooling. The frontend continues to consume canonical core/module schemas and to rely on backend/contract authorization.

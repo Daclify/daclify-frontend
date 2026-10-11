@@ -9,6 +9,7 @@ import {
   permissionGraph,
   releaseState,
   resourceReading,
+  accountRole,
 } from '../content/contract-map';
 
 import PermissionMap from './PermissionMap.vue';
@@ -192,8 +193,8 @@ onUnmounted(cancelResources);
   <section class="contract-explorer" aria-label="Contract explorer">
     <div class="explorer-heading">
       <div>
-        <h2>Contracts and authorities</h2>
-        <p>Explore how contract accounts connect and who can authorize them.</p>
+        <h2>Contracts and service accounts</h2>
+        <p>Explore how accounts connect and who can authorize them.</p>
       </div>
       <RouterLink to="/docs/contract-permissions"
         >Permission guide <ArrowRight :size="16" aria-hidden="true"
@@ -212,15 +213,29 @@ onUnmounted(cancelResources);
         v-if="selected && accountDetails"
         id="contract-account-details"
         class="account-details"
-        aria-label="Contract Account Details"
+        :aria-label="
+          selected.codeHash === '00'.repeat(32)
+            ? 'Service Account Details'
+            : 'Contract Account Details'
+        "
       >
         <div class="account-heading">
           <div>
-            <p class="eyebrow">Contract Account Details</p>
+            <p class="eyebrow">
+              {{
+                selected.codeHash === '00'.repeat(32)
+                  ? 'Service Account Details'
+                  : 'Contract Account Details'
+              }}
+            </p>
             <h3>{{ selected.account }}</h3>
             <p class="account-module">
-              {{ selected.moduleId ?? 'Runtime / platform' }} ·
+              {{ accountRole(selected, chain ?? undefined) }} ·
               {{ chain?.network.environment }} network
+            </p>
+            <p v-if="selected.codeHash === '00'.repeat(32)" class="field-help">
+              This account has no deployed contract code. Its permissions control who can submit
+              actions or spend its funds.
             </p>
           </div>
           <span class="release-state" :data-state="accountDetails.state">{{

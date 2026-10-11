@@ -322,6 +322,8 @@ async function removeListing(value: string, suffix: boolean) {
             <p class="field-help">
               The native account must not exist yet. Dotted names must end in your seller account.
               Short undotted names require a closed native auction won by your seller account.
+              Ordinary 12-character names are first-party offers and cannot be listed by sellers.
+              New listings use the seller's RAM.
             </p></template
           ><label for="seller-tlos">Price in TLOS</label
           ><input

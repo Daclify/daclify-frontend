@@ -7,6 +7,8 @@ import {
   permissionActionLinks,
   permissionGraph,
   resourceReading,
+  releaseState,
+  accountRole,
   type ContractReading,
 } from '../../src/content/contract-map';
 
@@ -45,6 +47,19 @@ const contract: ContractReading = {
     },
   ],
 };
+it('identifies zero-code Relay and Fees service accounts without inventing deployed contracts', () => {
+  const relay = { ...contract, account: 'relay', codeHash: '00'.repeat(32), permissions: [] };
+  const fees = { ...relay, account: 'fees' };
+  const configuration = {
+    network: { runtime: 'core', hub: 'hub' },
+    creation: { settler: 'relay' },
+    fees: { treasury: 'fees', names: 'names' },
+  };
+  expect(releaseState(relay)).toBe('No contract code');
+  expect(accountRole(relay, configuration)).toBe('Creation settler');
+  expect(accountRole(fees, configuration)).toBe('Fee treasury');
+  expect(releaseState({ ...relay, expectedHash: 'ab'.repeat(32) })).toBe('Hash mismatch');
+});
 describe('observed permission relationships', () => {
   it('keeps descendants under their own parent and retains detached or cyclic permissions', () => {
     const p = (name: string, parent: string) => ({

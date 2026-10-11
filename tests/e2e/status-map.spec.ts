@@ -284,8 +284,14 @@ test('configured accounts connect to the runtime with a distinct role descriptio
     await page.keyboard.press('Enter');
     await expect(
       page
-        .getByRole('region', { name: 'Contract Account Details', exact: true })
+        .getByRole('region', { name: 'Service Account Details', exact: true })
         .getByRole('heading', { name, exact: true }),
+    ).toBeVisible();
+    const details = page.getByRole('region', { name: 'Service Account Details', exact: true });
+    await expect(details).toContainText(role);
+    await expect(details).toContainText('No contract code');
+    await expect(
+      details.getByRole('region', { name: 'Permission map', exact: true }),
     ).toBeVisible();
   }
   await page.setViewportSize({ width: 390, height: 844 });

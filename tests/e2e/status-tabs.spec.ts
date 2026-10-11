@@ -195,7 +195,7 @@ test('organises status into accessible tabs and keeps migrations out of the UI',
   ).toBeVisible();
   await tabs.getByRole('tab', { name: 'Contracts', exact: true }).click();
   await expect(
-    page.getByRole('heading', { name: 'Contracts and authorities', exact: true }),
+    page.getByRole('heading', { name: 'Contracts and service accounts', exact: true }),
   ).toBeVisible();
   await page.getByText('Release details', { exact: true }).click();
   await expect(

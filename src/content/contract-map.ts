@@ -254,8 +254,35 @@ export function releaseState(contract: ContractReading) {
   return !contract.codeHash
     ? 'Not read'
     : !contract.expectedHash
-      ? 'No release pin'
+      ? contract.codeHash === '00'.repeat(32)
+        ? 'No contract code'
+        : 'No release pin'
       : contract.verified
         ? 'Verified'
         : 'Hash mismatch';
+}
+
+export function accountRole(
+  contract: ContractReading,
+  configuration?: {
+    network: Pick<NonNullable<PlatformStatus['chain']>['network'], 'runtime' | 'hub'>;
+    creation?: Pick<
+      NonNullable<NonNullable<PlatformStatus['chain']>['creation']>,
+      'settler'
+    > | null;
+    fees?: Pick<
+      NonNullable<NonNullable<PlatformStatus['chain']>['fees']>,
+      'treasury' | 'names'
+    > | null;
+  },
+) {
+  if (contract.account === configuration?.network.runtime) return 'Runtime contract';
+  if (contract.account === configuration?.network.hub) return 'Hub registry';
+  if (contract.account === configuration?.fees?.treasury) return 'Fee treasury';
+  if (contract.account === configuration?.creation?.settler) return 'Creation settler';
+  if (contract.account === configuration?.fees?.names) return 'Name service';
+  return (
+    contract.moduleId ??
+    (contract.codeHash === '00'.repeat(32) ? 'Service account' : 'Contract account')
+  );
 }

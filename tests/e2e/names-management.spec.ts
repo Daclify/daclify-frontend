@@ -57,6 +57,40 @@ const priceQuote = NameQuoteSchema.parse({
   priceFromOracle: false,
   nextUsdCents: null,
 });
+test('loads later catalogue pages without replacing earlier listings', async ({ page }) => {
+  await page.route('**/v1/names*', (route) => {
+    const url = new URL(route.request().url());
+    return route.fulfill({
+      json: url.searchParams.has('listingsCursor')
+        ? {
+            ...names,
+            listings: [
+              {
+                accountName: 'later.bob',
+                seller: 'bob',
+                price: '2.0000 TLOS',
+                usdCents: 0,
+                sold: false,
+              },
+            ],
+            listingsNext: null,
+          }
+        : { ...names, listingsNext: '123' },
+    });
+  });
+  await page.goto('/names');
+  await page.getByText('Browse prices and listed names', { exact: true }).click();
+  const catalog = page
+    .locator('details')
+    .filter({ has: page.getByRole('heading', { name: 'Listed names', exact: true }) });
+  await expect(catalog.getByText('nice.bob', { exact: true })).toBeVisible();
+  await catalog.getByRole('button', { name: 'Load more listed names', exact: true }).click();
+  await expect(catalog.getByText('nice.bob', { exact: true })).toBeVisible();
+  await expect(catalog.getByText('later.bob', { exact: true })).toBeVisible();
+  await expect(
+    catalog.getByRole('button', { name: 'Load more listed names', exact: true }),
+  ).toHaveCount(0);
+});
 test('name discovery recovers from a failed configuration read', async ({ page }) => {
   let reads = 0;
   await page.route('**/v1/names', (route) =>

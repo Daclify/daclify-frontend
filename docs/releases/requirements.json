@@ -152,6 +152,18 @@
         "tests/e2e/fast-sign-in.spec.ts",
         "tests/e2e/device-recovery.spec.ts"
       ]
+    },
+    {
+      "id": "AUDIT-SERVICE-ACCOUNT-EXPLORER",
+      "tests": [
+        "tests/unit/contract-map.test.ts",
+        "tests/e2e/status-map.spec.ts",
+        "tests/e2e/status-tabs.spec.ts"
+      ]
+    },
+    {
+      "id": "AUDIT-NAMES-INVENTORY-PAGING",
+      "tests": ["tests/e2e/names-management.spec.ts"]
     }
   ]
 }

@@ -38,7 +38,7 @@ try {
 
       await page.goto(origin + '/status');
       await page.getByRole('tab', { name: 'Contracts', exact: true }).click();
-      await expect(page.getByRole('heading', { name: 'Contracts and authorities' })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Contracts and service accounts' })).toBeVisible();
       const details = page.getByRole('region', { name: 'Contract Account Details' });
       await expect(
         details.getByRole('heading', { name: 'daclifycore1', exact: true }),
