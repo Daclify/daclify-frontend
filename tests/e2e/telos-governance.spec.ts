@@ -529,6 +529,46 @@ test('first native vote verifies signup and casts the external vote without DAO 
   expect(flow.counts()).toEqual({ signupCount: 1, broadcasts: 1 });
   await expect(page.getByRole('link', { name: 'Explore other DAOs' })).toBeVisible();
 });
+test('vote options keep compact checkboxes beside their clickable labels', async ({
+  page,
+}, testInfo) => {
+  await fixture(page);
+  await page.goto('/telos?ballot=election1');
+  const checkbox = page.getByRole('checkbox', { name: 'yes', exact: true });
+  await expect(checkbox).toBeVisible();
+  const geometry = await checkbox.evaluate((input) => {
+    const label = input.closest('label');
+    if (!label) throw new Error('Vote checkbox has no label');
+    const text = Array.from(label.childNodes).find(
+      (node) => node.nodeType === Node.TEXT_NODE && node.textContent?.trim(),
+    );
+    if (!text) throw new Error('Vote option has no label text');
+    const range = document.createRange();
+    range.selectNode(text);
+    const box = input.getBoundingClientRect(),
+      textBox = range.getBoundingClientRect();
+    return {
+      width: box.width,
+      height: box.height,
+      gap: textBox.left - box.right,
+      labelHeight: label.getBoundingClientRect().height,
+    };
+  });
+  expect(geometry.width).toBeGreaterThan(0);
+  expect(geometry.width).toBeLessThanOrEqual(24);
+  expect(geometry.height).toBeLessThanOrEqual(24);
+  expect(geometry.gap).toBeGreaterThanOrEqual(4);
+  expect(geometry.gap).toBeLessThanOrEqual(16);
+  expect(geometry.labelHeight).toBeGreaterThanOrEqual(44);
+  await page.locator('label').filter({ has: checkbox }).click();
+  await expect(checkbox).toBeChecked();
+  await expect(
+    page.getByRole('button', { name: 'Vote with Telos Zero', exact: true }),
+  ).toBeEnabled();
+  await page
+    .getByRole('group', { name: 'Choose your vote' })
+    .screenshot({ path: testInfo.outputPath('vote-controls.png') });
+});
 test('read-only connections keep history available without offering a vote', async ({ page }) => {
   const flow = await fixture(page, false);
   await page.goto('/telos?section=elections&publisher=all');
@@ -552,6 +592,24 @@ test('an uncertain broadcast survives reload and blocks resubmission', async ({ 
   await expect(
     page.getByRole('button', { name: 'Vote with Telos Zero', exact: true }),
   ).toBeDisabled();
+  expect(flow.counts().broadcasts).toBe(1);
+  await page.route('**/v1/telos/ballots/election1', (route) =>
+    route.fulfill({
+      json: {
+        source,
+        ballot: { ...active, end_time: '2020-02-01T00:00:00' },
+        signingAvailable: true,
+        observedAt: new Date().toISOString(),
+      },
+    }),
+  );
+  await page.reload();
+  await expect(
+    page.getByText('These recorded totals await ballot closure.', { exact: false }),
+  ).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Pending vote' }).locator('code')).toHaveText(id);
+  await page.getByRole('button', { name: 'Check confirmation', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Pending vote' }).locator('code')).toHaveText(id);
   expect(flow.counts().broadcasts).toBe(1);
 });
 test('navigation during broadcast retains the reference for its original ballot', async ({
@@ -582,9 +640,9 @@ test('navigation during broadcast retains the reference for its original ballot'
   expect(flow.counts().broadcasts).toBe(1);
 });
 
-test('an ended voting period is provisional history with no enabled vote', async ({ page }) => {
+test('an ended voting period shows provisional history without vote controls', async ({ page }) => {
   const ended = { ...active, title: '', end_time: '2020-02-01T00:00:00' };
-  await fixture(page);
+  const flow = await fixture(page);
   await page.route('**/v1/telos/ballots/election1', (route) =>
     route.fulfill({
       json: { source, ballot: ended, signingAvailable: true, observedAt: new Date().toISOString() },
@@ -595,9 +653,38 @@ test('an ended voting period is provisional history with no enabled vote', async
   await expect(
     page.getByText('These recorded totals await ballot closure.', { exact: false }),
   ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Vote with Telos Zero', exact: true })).toHaveCount(
+    0,
+  );
+  await expect(page.getByRole('group', { name: 'Choose your vote' })).toHaveCount(0);
   await expect(
-    page.getByRole('button', { name: 'Vote with Telos Zero', exact: true }),
-  ).toBeDisabled();
+    page.getByText('Continuing creates or opens your Daclify account', { exact: false }),
+  ).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'Recorded voting totals' })).toBeVisible();
+  expect(flow.counts()).toEqual({ signupCount: 0, broadcasts: 0 });
+});
+
+test('a scheduled ballot has no vote controls before its voting period', async ({ page }) => {
+  const flow = await fixture(page);
+  await page.route('**/v1/telos/ballots/election1', (route) =>
+    route.fulfill({
+      json: {
+        source,
+        ballot: { ...active, begin_time: '2089-01-01T00:00:00' },
+        signingAvailable: true,
+        observedAt: new Date().toISOString(),
+      },
+    }),
+  );
+  await page.goto('/telos?ballot=election1');
+  await expect(
+    page.getByRole('article', { name: 'Selected ballot' }).getByText('Scheduled', { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Choose your vote' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Vote with Telos Zero', exact: true })).toHaveCount(
+    0,
+  );
+  expect(flow.counts()).toEqual({ signupCount: 0, broadcasts: 0 });
 });
 
 test('account switching during signup stops the vote journey', async ({ page }) => {

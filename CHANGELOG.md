@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.14.0-alpha.5 development
+
+Keep Telos vote checkboxes compact and next to their labels, with 44-pixel clickable rows. Show vote controls only during an open voting period; retain recorded totals and pending-transaction confirmation after the period ends.
+
 ## 0.14.0-alpha.4 development
 
 Bring selected election details into view, restore focus to the selected card on Back, and display compact producer vote weights with exact values available on hover. Preserve the verified ballot signing and pagination flows.

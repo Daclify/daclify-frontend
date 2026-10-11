@@ -654,10 +654,13 @@ async function vote() {
             Content reference: {{ detail.ballot.content }}
           </p>
         </details>
-        <form v-if="detail.ballot.status === 'voting'" @submit.prevent="vote">
+        <form v-if="status(detail.ballot) === 'Open'" @submit.prevent="vote">
           <fieldset :disabled="busy || !canVote">
             <legend>Choose your vote</legend>
-            <label v-for="option in detail.ballot.options" :key="option.key" class="vote-option"
+            <label
+              v-for="option in detail.ballot.options"
+              :key="option.key"
+              class="checkbox vote-option"
               ><input v-model="options" type="checkbox" :value="option.key" />{{
                 option.key
               }}</label
@@ -1160,6 +1163,7 @@ code {
   align-items: center;
   gap: 0.7rem;
   margin: 0.7rem 0;
+  min-height: 44px;
 }
 .button-row {
   display: flex;

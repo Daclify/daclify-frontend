@@ -118,6 +118,14 @@ try {
       await expect(main.locator('.ballot-list li').first()).toBeVisible();
       await main.locator('.ballot-list button').first().click();
       await expect(main.getByRole('article', { name: 'Selected ballot' })).toBeVisible();
+      await expect(main.getByRole('region', { name: 'Recorded voting totals' })).toBeVisible();
+      await expect(main.getByRole('group', { name: 'Choose your vote' })).toHaveCount(0);
+      await expect(
+        main.getByRole('button', { name: 'Vote with Telos Zero', exact: true }),
+      ).toHaveCount(0);
+      await expect(
+        main.getByText('Continuing creates or opens your Daclify account', { exact: false }),
+      ).toHaveCount(0);
       await checkLayout();
       await page.screenshot({
         path: `.artifacts/public/telos-dao-${viewport.width}.png`,
