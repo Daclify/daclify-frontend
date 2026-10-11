@@ -75,3 +75,9 @@ The recovery form now ends with equally sized Restore and Cancel buttons in a sp
 - Eight existing desktop/mobile account-entry cases passed, including real key restoration with both the kit password and recovery code, cancellation and focus restoration.
 - Browser layout checks at 1280, 390 and 320 pixels verified equal button dimensions, at least a 44-pixel height, a 12-pixel gap, no horizontal overflow and no Axe violations. Restore stayed disabled without a kit; Cancel returned focus to Restore Account and retained the return destination.
 - No new dependencies or tests were added for this presentation change. The broader unit and native-workspace suites were not rerun; the affected recovery cases were run.
+
+### Restore button publication
+
+Committed source `85abf4fcd331c38081db14e551de3652d7bb4fdf` was archived, installed from its pinned lockfile and published in testnet mode using the existing frontend helper. Its public index matched the served index with SHA-256 `549e8d0f02cbefcfb324d1d082b775ce5116109cce8122a7f8ec87ba23419dfc`. Existing hashed assets and the prior index were retained. This publication did not restart the API or change contracts or recovery configuration.
+
+The additional public recovery-button checks passed at 1440×1000 and 390×844: exact Restore/Cancel labels, equal dimensions, spacing, disabled Restore without a kit, Cancel focus restoration, Axe and overflow. The first broader public check failed a Telos election heading viewport assertion; the public index changed during verification, and rerunning the unchanged public check against the latest build passed on both viewports. No recovery-button failure occurred. Source, snapshots, build/check logs, their hashes and `release-manifest.json` are retained under `/data/daclify-runtime/releases/20261011-restore-cancel-buttons/`.
