@@ -47,7 +47,7 @@ Decide signing pins remain unqualified, so the public Telos entry remains read-o
 - Public Account/New Account/Telos screenshots and hashed logs are retained privately under `/data/daclify-runtime/releases/20261011-account-entry-telos-sidebar/` with the source archive and rollback index. The runtime smoke helper was also updated to enter Login/New Account explicitly.
 - API was not restarted, and contracts, authority, balances, recovery qualification and provider configuration were not changed. The owned browser API fixture was stopped after verification.
 
-## Later account card cleanup (source only)
+## Later account card cleanup
 
 Removed Account help from the page heading and moved Back into the top-right corner of both Login and New Account cards. Quick signup shows the assisted-recovery reason only when assisted signup is unavailable, removing the testnet development notice while preserving unavailable-service explanations and recovery consent.
 
@@ -57,4 +57,12 @@ Removed Account help from the page heading and moved Back into the top-right cor
 - Direct browser checks at 1280, 390 and 320 pixels verified Back's placement inside each card, removal of the requested copy, focus restoration, no horizontal overflow and no Axe violations. Unavailable-signup explanations remained visible. Desktop/mobile screenshots are retained under `/data/daclify-runtime/account-card-{1280,390}-20261011.png`.
 - Initial browser attempts encountered a missing Chromium library path and then a shared development server shutdown; the complete passing run used the documented libraries and a separate owned server on port 5258. A temporary Axe check also needed an explicit browser context before succeeding.
 
-These edits have not been published to the live testnet. No new tests, dependencies or backend changes were added for this presentation-only change.
+No new repository tests, dependencies or backend changes were added for this presentation-only change.
+
+### Account card cleanup publication
+
+After the user requested the live update, committed frontend source `8bcab8e40253d7723bb888075fc6e13eb01b7a34` was archived into a separate release directory, installed with `npm ci --ignore-scripts` and published using the existing frontend rebuild helper in testnet mode. The public index matched the served index with SHA-256 `01b9bf7a93257e252ea94bdfa2be18650a3969f94611e4dff1d594f59eeb3bfc`. The previous index and hashed assets were retained.
+
+- The committed `npm run test:testnet-public` check passed against public HTTPS at 1440×1000 and 390×844, including account journeys, Telos history, Hub, Status and Daclify DAO. No browser errors, misplaced API requests or server-error responses were found.
+- Additional read-only public browser checks verified all three requested changes in Login and New Account: Account help absent, Back inside the top-right of the card, and the testnet development notice absent. Assisted signup remained available. Focus restoration, Axe and overflow checks passed on both viewports.
+- Source archive, rollback index, public screenshots, build/check logs and their hashes are retained under `/data/daclify-runtime/releases/20261011-account-card-cleanup/`, with `release-manifest.json` recording the source and verification results. Publication did not restart the API or change contracts, provider configuration or account recovery.
