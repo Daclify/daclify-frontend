@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { Coins, Boxes, SlidersHorizontal, ShieldCheck, Search } from '@lucide/vue';
 import {
   parseUnits,
   formatUnits,
@@ -21,10 +22,59 @@ import { canSignMember } from '../auth/action-signer';
 const signerReady = computed(() => canSignMember(member.value));
 import { useWorkspace } from '../state/workspace';
 const workspace = useWorkspace();
+const tabs = [
+  { id: 'pricing', label: 'Pricing', icon: Coins },
+  { id: 'catalogue', label: 'Catalogue', icon: Boxes },
+  { id: 'policies', label: 'Policies', icon: SlidersHorizontal },
+] as const;
+const tab = ref<(typeof tabs)[number]['id']>('pricing'),
+  search = ref('');
+function navigateTabs(event: KeyboardEvent) {
+  const current = tabs.findIndex((item) => item.id === tab.value);
+  const index =
+    event.key === 'ArrowRight'
+      ? (current + 1) % tabs.length
+      : event.key === 'ArrowLeft'
+        ? (current + tabs.length - 1) % tabs.length
+        : event.key === 'Home'
+          ? 0
+          : event.key === 'End'
+            ? tabs.length - 1
+            : undefined;
+  const item = index === undefined ? undefined : tabs[index];
+  if (!item) return;
+  event.preventDefault();
+  tab.value = item.id;
+  void nextTick(() => document.getElementById('platform-tab-' + item.id)?.focus());
+}
 const status = ref<PlatformStatus>(),
   catalogue = ref<Awaited<ReturnType<typeof api.marketplace>>>();
 const modulePricing = ref<ModuleFeePricing>(),
   monthlyRates = ref<Record<string, string>>({});
+const filteredModules = computed(() => {
+  const query = search.value.trim().toLowerCase();
+  return (
+    catalogue.value?.modules.filter((module) =>
+      (module.title + ' ' + module.account).toLowerCase().includes(query),
+    ) ?? []
+  );
+});
+function editModule(module: NonNullable<typeof catalogue.value>['modules'][number]) {
+  account.value = module.account;
+  title.value = module.title;
+  price.value = module.price;
+  codeHash.value = module.codeHash;
+  summary.value = module.summary;
+  detail.value = module.detail;
+  void nextTick(() => document.getElementById('module-account')?.focus());
+}
+const money = (cents: number) =>
+  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
+const totalModulePrice = computed(() =>
+  modulePricing.value
+    ? money(modulePricing.value.plans.reduce((sum, plan) => sum + plan.pricing.monthlyUsdCents, 0))
+    : '—',
+);
 const error = ref(''),
   success = ref(''),
   busy = ref(false);
@@ -330,253 +380,796 @@ async function describe() {
 }
 </script>
 <template>
-  <div class="page-heading">
-    <div>
-      <p class="eyebrow">PLATFORM GOVERNANCE</p>
-      <h2>Platform controls</h2>
-      <p class="lead">Manage platform fees and the module catalogue.</p>
+  <div class="platform-manager">
+    <div class="page-heading platform-heading">
+      <div>
+        <p class="eyebrow">PLATFORM GOVERNANCE</p>
+        <h2>Platform controls</h2>
+        <p class="lead">Pricing, modules and platform policies in one place.</p>
+      </div>
+      <div class="button-row">
+        <RouterLink to="/pricing" class="button secondary">View pricing</RouterLink>
+        <RouterLink to="/status" class="help-link">Platform status ↗</RouterLink>
+      </div>
     </div>
-    <RouterLink to="/status" class="help-link">Platform status ↗</RouterLink>
+    <p v-if="error" class="alert" role="alert">{{ error }}</p>
+    <p v-if="success" class="notice" role="status">{{ success }}</p>
+    <div class="platform-access">
+      <ShieldCheck :size="18" aria-hidden="true" />
+      <template v-if="dao">
+        <strong>{{ member ? 'Platform administrator' : 'Read-only access' }}</strong>
+        <span v-if="!member">An active platform administrator can sign changes.</span>
+        <span v-else-if="!signerReady">Unlock or choose an authorized signer.</span>
+        <span v-else>Changes require your signature.</span>
+        <span class="platform-reference">DAO {{ dao.daoId }} · {{ dao.contract }}</span>
+      </template>
+      <span v-else-if="!status && !error">Checking platform settings…</span>
+      <span v-else
+        >No linked platform DAO. A native operator must create, enroll and link it before
+        administration is available.</span
+      >
+    </div>
+    <dl class="platform-summary" aria-label="Configured platform pricing">
+      <div>
+        <dt>Included members</dt>
+        <dd>{{ status?.chain?.hosting?.free_members ?? '—' }}<small>Per hosted DAO</small></dd>
+      </div>
+      <div>
+        <dt>Included storage</dt>
+        <dd>
+          {{
+            status?.chain?.resourcePolicy
+              ? formatUnits(BigInt(status.chain.resourcePolicy.storage.freeBytes), 6).replace(
+                  /\.0+$/,
+                  '',
+                ) + ' MB'
+              : '—'
+          }}
+          <small>Per hosted DAO</small>
+        </dd>
+      </div>
+      <div>
+        <dt>Monthly modules</dt>
+        <dd>{{ totalModulePrice }}<small>All listed modules above 10 members</small></dd>
+      </div>
+      <div>
+        <dt>Registered modules</dt>
+        <dd>{{ catalogue?.modules.length ?? '—' }}<small>Available in the catalogue</small></dd>
+      </div>
+    </dl>
+    <p v-if="status && !newPoliciesReady" class="notice">
+      New hosting, resource and Connect controls require the matching reviewed runtime deployment.
+    </p>
+    <div
+      class="account-tabs platform-tabs"
+      role="tablist"
+      aria-label="Platform sections"
+      @keydown="navigateTabs"
+    >
+      <button
+        v-for="item in tabs"
+        :id="'platform-tab-' + item.id"
+        :key="item.id"
+        type="button"
+        role="tab"
+        :aria-selected="tab === item.id"
+        :aria-controls="'platform-panel-' + item.id"
+        :tabindex="tab === item.id ? 0 : -1"
+        @click="tab = item.id"
+      >
+        <component :is="item.icon" :size="16" aria-hidden="true" />{{ item.label }}
+      </button>
+    </div>
+    <div
+      v-show="tab === 'pricing'"
+      id="platform-panel-pricing"
+      role="tabpanel"
+      aria-labelledby="platform-tab-pricing"
+      tabindex="0"
+    >
+      <section class="panel settings-card" aria-labelledby="monthly-module-fees">
+        <div class="panel-heading">
+          <h2 id="monthly-module-fees">Monthly module access prices</h2>
+          <span class="platform-tag">Free through 10 members</span>
+        </div>
+        <p>Separate monthly prices per DAO above ten active members, including managers.</p>
+        <p v-if="!modulePricing" role="status">Monthly module pricing is unavailable.</p>
+        <p v-else-if="!modulePricing.plans.length">Monthly module fees have not been configured.</p>
+        <div class="module-price-list">
+          <form
+            v-for="plan in modulePricing?.plans"
+            :key="plan.pricing.account"
+            class="module-price-form"
+            @submit.prevent="monthlyFee(plan)"
+          >
+            <fieldset :disabled="!canSign || !newPoliciesReady">
+              <label :for="'monthly-module-' + plan.pricing.account"
+                ><span>{{ plan.title }}<span class="sr-only"> (USD / DAO / month)</span></span
+                ><small>{{ plan.pricing.account }}</small></label
+              >
+              <div class="module-price-input">
+                <span aria-hidden="true">$</span
+                ><input
+                  :id="'monthly-module-' + plan.pricing.account"
+                  :aria-label="plan.title + ' (USD / DAO / month)'"
+                  v-model="monthlyRates[plan.pricing.account]"
+                  inputmode="decimal"
+                  required
+                  pattern="[0-9]+(\.[0-9]{1,2})?"
+                />
+              </div>
+              <button :aria-label="'Sign ' + plan.title + ' monthly price'">Sign price</button>
+            </fieldset>
+          </form>
+        </div>
+        <p class="field-help">
+          USD / DAO / month. Set zero for free access, or at least $0.50. Existing paid intervals
+          keep their expiry; completion and payouts remain available.
+        </p>
+      </section>
+      <div class="platform-grid">
+        <form
+          class="panel settings-card"
+          aria-labelledby="platform-hostingPrices"
+          @submit.prevent="hostingPrices"
+        >
+          <h2 id="platform-hostingPrices">Graduated monthly capacity prices</h2>
+          <p>
+            Rates apply to new subscriptions or an explicit administrator-approved switch. Existing
+            agreements retain their accepted schedule. Each lower rate applies only to slots in that
+            band.
+          </p>
+          <fieldset :disabled="!canSign || !newPoliciesReady">
+            <div class="setting-fields">
+              <div class="setting-field">
+                <label for="rate-first">First 40 paid slots · USD per slot/month</label
+                ><input id="rate-first" v-model="firstRate" inputmode="decimal" required />
+              </div>
+              <div class="setting-field">
+                <label for="rate-next">Next 200 paid slots · USD per slot/month</label
+                ><input id="rate-next" v-model="nextRate" inputmode="decimal" required />
+              </div>
+              <div class="setting-field">
+                <label for="rate-rest">Further paid slots · USD per slot/month</label
+                ><input id="rate-rest" v-model="restRate" inputmode="decimal" required />
+              </div>
+            </div>
+            <button>Sign new subscription pricing</button>
+          </fieldset>
+        </form>
+        <form
+          class="panel settings-card"
+          aria-labelledby="platform-resources"
+          @submit.prevent="resources"
+        >
+          <h2 id="platform-resources">RAM fees and pinned storage policy</h2>
+          <p>
+            Set prices for new agreements. Existing subscriptions keep their accepted pricing. RAM
+            purchases use one rail-specific markup; the two percentages are not added together.
+          </p>
+          <fieldset :disabled="!canSign || !newPoliciesReady">
+            <div class="setting-fields">
+              <div class="setting-field">
+                <label for="ram-native-fee">TLOS RAM purchase fee (%)</label>
+                <input
+                  id="ram-native-fee"
+                  v-model="nativeRamPercent"
+                  type="text"
+                  inputmode="decimal"
+                  required
+                />
+              </div>
+              <div class="setting-field">
+                <label for="ram-card-fee">Card RAM operational markup (%)</label>
+                <input
+                  id="ram-card-fee"
+                  v-model="cardRamPercent"
+                  type="text"
+                  inputmode="decimal"
+                  required
+                />
+              </div>
+              <div class="setting-field">
+                <label for="storage-free">Free pinned storage per DAO (MB)</label>
+                <input
+                  id="storage-free"
+                  v-model="storageFreeMb"
+                  type="text"
+                  inputmode="decimal"
+                  required
+                />
+              </div>
+              <div class="setting-field">
+                <label for="storage-unit">Additional storage unit (GB)</label>
+                <input
+                  id="storage-unit"
+                  v-model="storageUnitGb"
+                  type="text"
+                  inputmode="decimal"
+                  required
+                />
+              </div>
+              <div class="setting-field">
+                <label for="storage-price">Monthly price per additional unit (USD)</label>
+                <input
+                  id="storage-price"
+                  v-model="storageUnitUsd"
+                  type="text"
+                  inputmode="decimal"
+                  required
+                />
+              </div>
+            </div>
+            <button>Sign resource policy update</button>
+          </fieldset>
+          <p class="field-help">
+            1 MB = 1,000,000 bytes; 1 GB = 1,000,000,000 bytes. Archives and old versions use the
+            same storage rate. Pricing changes do not buy provider capacity or allocate RAM. Storage
+            purchases and subscriptions are managed separately.
+          </p>
+          <RouterLink to="/docs/platform">Resource policy and authority guide ↗</RouterLink>
+        </form>
+      </div>
+    </div>
+    <div
+      v-show="tab === 'catalogue'"
+      id="platform-panel-catalogue"
+      role="tabpanel"
+      aria-labelledby="platform-tab-catalogue"
+      tabindex="0"
+    >
+      <section class="panel settings-card" aria-labelledby="registered-modules">
+        <div class="panel-heading">
+          <h2 id="registered-modules">Registered modules</h2>
+          <span class="platform-tag">{{ catalogue?.modules.length ?? 0 }} entries</span>
+        </div>
+        <label for="catalogue-search" class="sr-only">Search registered modules</label>
+        <div class="catalogue-search">
+          <Search :size="18" aria-hidden="true" /><input
+            id="catalogue-search"
+            v-model="search"
+            type="search"
+            placeholder="Search by module name or account"
+          />
+        </div>
+        <p v-if="!catalogue?.modules.length">No catalogue entries are available.</p>
+        <p v-else-if="!filteredModules.length">No modules match your search.</p>
+        <ul v-else class="catalogue-list">
+          <li v-for="module in filteredModules" :key="module.account">
+            <div class="catalogue-name">
+              <strong>{{ module.title }}</strong
+              ><small>{{ module.account }} · {{ module.party }}</small>
+            </div>
+            <span class="catalogue-price">{{ module.price }}<small>Native usage price</small></span>
+            <div class="catalogue-actions">
+              <button
+                type="button"
+                class="button secondary"
+                :aria-label="'Edit ' + module.title"
+                @click="editModule(module)"
+              >
+                Edit</button
+              ><button
+                type="button"
+                class="text-button"
+                :aria-label="'Remove ' + module.account + ' from catalogue'"
+                :disabled="!canSign"
+                @click="remove(module.account)"
+              >
+                Remove
+              </button>
+            </div>
+          </li>
+        </ul>
+        <p class="field-help">
+          Removal blocks new installations. Existing installations, obligations and withdrawals
+          remain intact. Publishers control third-party prices.
+        </p>
+      </section>
+      <div class="platform-grid">
+        <form
+          class="panel settings-card"
+          aria-labelledby="platform-register"
+          @submit.prevent="register"
+        >
+          <h2 id="platform-register">Register or update a Daclify module</h2>
+          <fieldset :disabled="!canSign">
+            <div class="setting-fields">
+              <div class="setting-field">
+                <label for="module-account">Native module account</label
+                ><input id="module-account" v-model="account" required maxlength="13" />
+              </div>
+              <div class="setting-field">
+                <label for="module-title">Title</label
+                ><input id="module-title" v-model="title" required maxlength="64" />
+              </div>
+              <div class="setting-field">
+                <label for="module-price">Usage price (native asset)</label
+                ><input id="module-price" v-model="price" required maxlength="64" />
+              </div>
+              <div class="setting-field">
+                <label for="module-hash">Verified deployed WASM hash</label
+                ><input id="module-hash" v-model="codeHash" required pattern="[0-9a-f]{64}" />
+              </div>
+              <p class="field-help">
+                The contract verifies this hash and the platform fee rule. First-party publisher is
+                the configured fee treasury. Registration does not install it in every DAO.
+              </p>
+            </div>
+            <button>Sign module registration</button>
+          </fieldset>
+        </form>
+        <form
+          class="panel settings-card"
+          aria-labelledby="platform-describe"
+          @submit.prevent="describe"
+        >
+          <h2 id="platform-describe">Daclify module description</h2>
+          <fieldset :disabled="!canSign">
+            <div class="setting-fields">
+              <div class="setting-field">
+                <label for="copy-account">Native module account</label
+                ><input id="copy-account" v-model="account" required maxlength="13" />
+              </div>
+              <div class="setting-field">
+                <label for="module-summary">Summary</label
+                ><textarea id="module-summary" v-model="summary" required maxlength="160" />
+              </div>
+              <div class="setting-field">
+                <label for="module-detail">Details</label
+                ><textarea id="module-detail" v-model="detail" required maxlength="2000" />
+              </div>
+            </div>
+            <button>Sign description update</button>
+          </fieldset>
+        </form>
+      </div>
+    </div>
+    <div
+      v-show="tab === 'policies'"
+      id="platform-panel-policies"
+      role="tabpanel"
+      aria-labelledby="platform-tab-policies"
+      tabindex="0"
+    >
+      <div class="platform-grid">
+        <form class="panel settings-card" aria-labelledby="platform-fees" @submit.prevent="fees">
+          <h2 id="platform-fees">Shared hosting policy</h2>
+          <p>
+            DAO creation is free. Existing members retain their rights when paid capacity expires.
+            Changing the settler requires matching server configuration.
+          </p>
+          <fieldset :disabled="!canSign || !newPoliciesReady">
+            <div class="setting-fields">
+              <div class="setting-field">
+                <label for="free-slots">Included active member slots</label
+                ><input
+                  id="free-slots"
+                  v-model.number="freeSlots"
+                  type="number"
+                  min="1"
+                  max="5000"
+                  required
+                />
+              </div>
+              <div class="setting-field">
+                <label for="hosting-settler">Trusted payment settler account</label
+                ><input id="hosting-settler" v-model="settler" required maxlength="13" />
+              </div>
+            </div>
+            <button>Sign hosting policy update</button>
+          </fieldset>
+          <RouterLink to="/docs/shared-hosting">Hosting guide ↗</RouterLink>
+        </form>
+        <form
+          class="panel settings-card"
+          aria-labelledby="platform-connectFees"
+          @submit.prevent="connectFees"
+        >
+          <h2 id="platform-connectFees">Daclify Connect commission</h2>
+          <p>
+            Default 5%. Applies only to eligible DAO module card checkouts processed through
+            Connect. Existing orders retain their captured fee; Stripe processing fees are separate.
+          </p>
+          <fieldset :disabled="!canSign || !newPoliciesReady">
+            <div class="setting-fields">
+              <div class="setting-field">
+                <label for="connect-percent">Connect commission (%)</label
+                ><input
+                  id="connect-percent"
+                  v-model.number="connectPercent"
+                  type="number"
+                  min="0"
+                  max="99.99"
+                  step="0.01"
+                  required
+                />
+              </div>
+            </div>
+            <button>Sign Connect commission update</button>
+          </fieldset>
+          <RouterLink to="/docs/payments">Payment guide ↗</RouterLink>
+        </form>
+        <form
+          class="panel settings-card"
+          aria-labelledby="platform-commissions"
+          @submit.prevent="commissions"
+        >
+          <h2 id="platform-commissions">Module commissions and names</h2>
+          <fieldset :disabled="!canSign">
+            <div class="setting-fields">
+              <div class="setting-field">
+                <label for="fee-third">Third-party platform cut (basis points)</label
+                ><input
+                  id="fee-third"
+                  v-model.number="thirdParty"
+                  type="number"
+                  min="0"
+                  max="10000"
+                  required
+                />
+              </div>
+              <div class="setting-field">
+                <label for="fee-first">Daclify module platform cut (basis points)</label
+                ><input
+                  id="fee-first"
+                  v-model.number="firstParty"
+                  type="number"
+                  min="0"
+                  max="10000"
+                  required
+                />
+              </div>
+              <div class="setting-field">
+                <label for="fee-bump">Name resale price increase (basis points)</label
+                ><input
+                  id="fee-bump"
+                  v-model.number="bump"
+                  type="number"
+                  min="0"
+                  max="10000"
+                  required
+                />
+              </div>
+              <div class="setting-field">
+                <label for="name-premium">Name TLOS conversion premium (basis points)</label
+                ><input
+                  id="name-premium"
+                  v-model.number="namePremium"
+                  type="number"
+                  min="0"
+                  max="10000"
+                  required
+                />
+              </div>
+            </div>
+            <button>Sign commission policy</button>
+          </fieldset>
+          <RouterLink to="/modules">View modules ↗</RouterLink>
+          <RouterLink to="/names">View name offerings ↗</RouterLink>
+        </form>
+      </div>
+      <details class="platform-authority">
+        <summary>Authority and operator controls</summary>
+        <p>
+          These controls use administrator authority. They do not automatically execute member
+          ballots. Native contract upgrades, fee treasury and conversion observations remain
+          operator-controlled. <RouterLink to="/docs/platform">Authority guide ↗</RouterLink>
+        </p>
+      </details>
+    </div>
   </div>
-  <p v-if="error" class="alert" role="alert">{{ error }}</p>
-  <p v-if="success" role="status">{{ success }}</p>
-  <section class="panel" aria-labelledby="monthly-module-fees">
-    <h2 id="monthly-module-fees">Monthly module access prices</h2>
-    <p>
-      All existing modules are free through 10 active members. These rates apply per DAO above that
-      threshold.
-    </p>
-    <form
-      v-for="plan in modulePricing?.plans"
-      :key="plan.pricing.account"
-      class="form-panel"
-      @submit.prevent="monthlyFee(plan)"
-    >
-      <fieldset :disabled="!canSign || !newPoliciesReady">
-        <label :for="'monthly-module-' + plan.pricing.account"
-          >{{ plan.title }} (USD / DAO / month)</label
-        ><input
-          :id="'monthly-module-' + plan.pricing.account"
-          v-model="monthlyRates[plan.pricing.account]"
-          inputmode="decimal"
-          required
-          pattern="[0-9]+(\.[0-9]{1,2})?"
-        /><button>Sign {{ plan.title }} monthly price</button>
-      </fieldset>
-    </form>
-    <p class="field-help">
-      Set zero for free access, or at least $0.50. Existing paid intervals keep their expiry.
-      Completion and payout actions remain available.
-    </p>
-  </section>
-  <section class="panel">
-    <h2>Platform workspace</h2>
-    <template v-if="dao"
-      ><p>DAO {{ dao.daoId }} · {{ dao.contract }}</p>
-      <p>
-        {{
-          member
-            ? 'You are an active platform administrator.'
-            : 'Fee and catalogue changes require an active administrator of this linked DAO.'
-        }}
-        {{ signerReady ? '' : 'Choose an authorized signer.' }}
-      </p></template
-    >
-    <p v-else>
-      The runtime has no linked Daclify DAO. A native operator must create and enroll the platform
-      DAO and link its ID with setgov before these controls can be used.
-    </p>
-    <p class="field-help">
-      These controls use administrator authority. They do not automatically execute member ballots.
-      Native contract upgrades, fee treasury and conversion observations remain operator-controlled.
-      <RouterLink to="/docs/platform">Authority guide ↗</RouterLink>
-    </p>
-  </section>
-  <p v-if="!newPoliciesReady" class="notice">
-    New hosting, resource and Connect controls require the matching reviewed runtime deployment.
-  </p>
-  <form class="panel form-panel" @submit.prevent="fees">
-    <h2>Shared hosting policy</h2>
-    <p>
-      DAO creation is free. Existing members retain their rights when paid capacity expires.
-      Changing the settler requires matching server configuration.
-    </p>
-    <fieldset :disabled="!canSign || !newPoliciesReady">
-      <label for="free-slots">Included active member slots</label
-      ><input
-        id="free-slots"
-        v-model.number="freeSlots"
-        type="number"
-        min="1"
-        max="5000"
-        required
-      /><label for="hosting-settler">Trusted payment settler account</label
-      ><input id="hosting-settler" v-model="settler" required maxlength="13" /><button>
-        Sign hosting policy update
-      </button>
-    </fieldset>
-    <RouterLink to="/docs/shared-hosting">Hosting guide ↗</RouterLink>
-  </form>
-  <form class="panel form-panel" @submit.prevent="resources">
-    <h2>RAM fees and pinned storage policy</h2>
-    <p>
-      Set prices for new agreements. Existing subscriptions keep their accepted pricing. RAM
-      purchases use one rail-specific markup; the two percentages are not added together.
-    </p>
-    <fieldset :disabled="!canSign || !newPoliciesReady">
-      <label for="ram-native-fee">TLOS RAM purchase fee (%)</label>
-      <input
-        id="ram-native-fee"
-        v-model="nativeRamPercent"
-        type="text"
-        inputmode="decimal"
-        required
-      />
-      <label for="ram-card-fee">Card RAM operational markup (%)</label>
-      <input id="ram-card-fee" v-model="cardRamPercent" type="text" inputmode="decimal" required />
-      <label for="storage-free">Free pinned storage per DAO (MB)</label>
-      <input id="storage-free" v-model="storageFreeMb" type="text" inputmode="decimal" required />
-      <label for="storage-unit">Additional storage unit (GB)</label>
-      <input id="storage-unit" v-model="storageUnitGb" type="text" inputmode="decimal" required />
-      <label for="storage-price">Monthly price per additional unit (USD)</label>
-      <input id="storage-price" v-model="storageUnitUsd" type="text" inputmode="decimal" required />
-      <button>Sign resource policy update</button>
-    </fieldset>
-    <p class="field-help">
-      1 MB = 1,000,000 bytes; 1 GB = 1,000,000,000 bytes. Archives and old versions use the same
-      storage rate. This policy does not allocate RAM or activate paid storage. Purchases,
-      subscriptions and automatic cleanup remain under implementation.
-    </p>
-    <RouterLink to="/docs/platform">Resource policy and authority guide ↗</RouterLink>
-  </form>
-  <form class="panel form-panel" @submit.prevent="hostingPrices">
-    <h2>Graduated monthly capacity prices</h2>
-    <p>
-      Rates apply to new subscriptions or an explicit administrator-approved switch. Existing
-      agreements retain their accepted schedule. Each lower rate applies only to slots in that band.
-    </p>
-    <fieldset :disabled="!canSign || !newPoliciesReady">
-      <label for="rate-first">First 40 paid slots · USD per slot/month</label
-      ><input id="rate-first" v-model="firstRate" inputmode="decimal" required /><label
-        for="rate-next"
-        >Next 200 paid slots · USD per slot/month</label
-      ><input id="rate-next" v-model="nextRate" inputmode="decimal" required /><label
-        for="rate-rest"
-        >Further paid slots · USD per slot/month</label
-      ><input id="rate-rest" v-model="restRate" inputmode="decimal" required /><button>
-        Sign new subscription pricing
-      </button>
-    </fieldset>
-  </form>
-  <form class="panel form-panel" @submit.prevent="connectFees">
-    <h2>Daclify Connect commission</h2>
-    <p>
-      Default 5%. Applies only to eligible DAO module card checkouts processed through Connect.
-      Existing orders retain their captured fee; Stripe processing fees are separate.
-    </p>
-    <fieldset :disabled="!canSign || !newPoliciesReady">
-      <label for="connect-percent">Connect commission (%)</label
-      ><input
-        id="connect-percent"
-        v-model.number="connectPercent"
-        type="number"
-        min="0"
-        max="99.99"
-        step="0.01"
-        required
-      /><button>Sign Connect commission update</button>
-    </fieldset>
-    <RouterLink to="/docs/payments">Payment guide ↗</RouterLink>
-  </form>
-  <form class="panel form-panel" @submit.prevent="commissions">
-    <h2>Module commissions and names</h2>
-    <fieldset :disabled="!canSign">
-      <label for="fee-third">Third-party platform cut (basis points)</label
-      ><input
-        id="fee-third"
-        v-model.number="thirdParty"
-        type="number"
-        min="0"
-        max="10000"
-        required
-      /><label for="fee-first">Daclify module platform cut (basis points)</label
-      ><input
-        id="fee-first"
-        v-model.number="firstParty"
-        type="number"
-        min="0"
-        max="10000"
-        required
-      /><label for="fee-bump">Name resale price increase (basis points)</label
-      ><input
-        id="fee-bump"
-        v-model.number="bump"
-        type="number"
-        min="0"
-        max="10000"
-        required
-      /><label for="name-premium">Name TLOS conversion premium (basis points)</label
-      ><input
-        id="name-premium"
-        v-model.number="namePremium"
-        type="number"
-        min="0"
-        max="10000"
-        required
-      /><button>Sign commission policy</button>
-    </fieldset>
-    <RouterLink to="/modules">View modules ↗</RouterLink>
-    <RouterLink to="/names">View name offerings ↗</RouterLink>
-  </form>
-  <section class="panel">
-    <h2>Registered modules</h2>
-    <p v-if="!catalogue?.modules.length">No catalogue entries are available.</p>
-    <ul v-else>
-      <li v-for="module in catalogue.modules" :key="module.account">
-        <strong>{{ module.title }}</strong> · {{ module.account }} · {{ module.party }} ·
-        {{ module.price
-        }}<button class="text-button" :disabled="!canSign" @click="remove(module.account)">
-          Remove {{ module.account }} from catalogue
-        </button>
-      </li>
-    </ul>
-    <p class="field-help">
-      Removal blocks new installations. Existing installations, obligations and withdrawals remain
-      intact. Publishers control their third-party prices.
-    </p>
-  </section>
-  <form class="panel form-panel" @submit.prevent="register">
-    <h2>Register or update a Daclify module</h2>
-    <fieldset :disabled="!canSign">
-      <label for="module-account">Native module account</label
-      ><input id="module-account" v-model="account" required maxlength="13" /><label
-        for="module-title"
-        >Title</label
-      ><input id="module-title" v-model="title" required maxlength="64" /><label for="module-price"
-        >Usage price (native asset)</label
-      ><input id="module-price" v-model="price" required maxlength="64" /><label for="module-hash"
-        >Verified deployed WASM hash</label
-      ><input id="module-hash" v-model="codeHash" required pattern="[0-9a-f]{64}" />
-      <p class="field-help">
-        The contract verifies this hash and the platform fee rule. First-party publisher is the
-        configured fee treasury. Registration does not install it in every DAO.
-      </p>
-      <button>Sign module registration</button>
-    </fieldset>
-  </form>
-  <form class="panel form-panel" @submit.prevent="describe">
-    <h2>Daclify module description</h2>
-    <fieldset :disabled="!canSign">
-      <label for="copy-account">Native module account</label
-      ><input id="copy-account" v-model="account" required maxlength="13" /><label
-        for="module-summary"
-        >Summary</label
-      ><textarea id="module-summary" v-model="summary" required maxlength="160" /><label
-        for="module-detail"
-        >Details</label
-      ><textarea id="module-detail" v-model="detail" required maxlength="2000" /><button>
-        Sign description update
-      </button>
-    </fieldset>
-  </form>
 </template>
+<style scoped>
+.platform-manager {
+  min-width: 0;
+}
+.platform-heading {
+  margin-bottom: 20px;
+  gap: 16px;
+}
+.platform-heading h2 {
+  margin-bottom: 6px;
+  font-size: 24px;
+}
+.platform-access {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 12px;
+  margin-bottom: 16px;
+}
+.platform-access svg {
+  color: var(--accent-amber);
+  flex: none;
+}
+.platform-access strong {
+  color: var(--text-primary);
+}
+.platform-reference {
+  margin-left: auto;
+  overflow-wrap: anywhere;
+}
+.platform-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin: 0 0 24px;
+}
+.platform-summary > div {
+  border-left: 2px solid var(--line);
+  padding-left: 14px;
+  min-width: 0;
+}
+.platform-summary dt {
+  color: var(--muted);
+  font-size: 11px;
+}
+.platform-summary dd {
+  margin: 4px 0;
+  font-size: 22px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.platform-summary small {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+.platform-tabs {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 14px;
+  margin-bottom: 18px;
+}
+.platform-tabs button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 44px;
+}
+.platform-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.settings-card {
+  max-width: none;
+  padding: 20px;
+  margin-bottom: 16px;
+  min-width: 0;
+}
+.platform-grid > .settings-card {
+  margin-bottom: 0;
+}
+.settings-card h2 {
+  font-size: 16px;
+  margin-bottom: 8px;
+}
+.settings-card .panel-heading h2 {
+  margin: 0;
+}
+.settings-card p {
+  font-size: 12px;
+  line-height: 1.6;
+}
+.settings-card fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.settings-card button {
+  font-size: 12px;
+  min-height: 44px;
+  padding: 9px 14px;
+}
+.settings-card > a {
+  display: inline-block;
+  font-size: 12px;
+  margin: 12px 12px 0 0;
+}
+.platform-tag {
+  font-size: 11px;
+  color: var(--accent-amber);
+  background: var(--accent-soft);
+  padding: 5px 9px;
+  border-radius: var(--radius-pill);
+}
+.setting-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.setting-field {
+  min-width: 0;
+}
+.setting-field label {
+  margin: 0 0 6px;
+  font-size: 12px;
+}
+.setting-field input,
+.setting-field textarea {
+  font-size: 13px;
+  padding: 10px;
+}
+.setting-field:has(textarea),
+.setting-field:has(#module-hash),
+.setting-field:has(#hosting-settler) {
+  grid-column: 1/-1;
+}
+.setting-fields > p {
+  grid-column: 1/-1;
+  margin: 0;
+}
+.module-price-form + .module-price-form {
+  border-top: 1px solid var(--line);
+}
+.module-price-form fieldset {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 110px 100px;
+  gap: 16px;
+  align-items: center;
+  padding: 10px 0;
+}
+.module-price-form label {
+  font-size: 13px;
+  margin: 0;
+}
+.module-price-form small,
+.catalogue-list small {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 400;
+  overflow-wrap: anywhere;
+  margin-top: 3px;
+}
+.module-price-form button {
+  white-space: nowrap;
+}
+.module-price-input {
+  position: relative;
+}
+.module-price-input > span {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 13px;
+  color: var(--muted);
+  pointer-events: none;
+}
+.module-price-input input {
+  padding: 10px 10px 10px 26px;
+  font-size: 13px;
+}
+.catalogue-search {
+  position: relative;
+  margin: 16px 0;
+}
+.catalogue-search svg {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+}
+.catalogue-search input {
+  padding-left: 38px;
+  font-size: 13px;
+}
+.catalogue-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.catalogue-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, auto) auto;
+  gap: 16px;
+  align-items: center;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+.catalogue-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.catalogue-price {
+  font-size: 12px;
+}
+.catalogue-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.catalogue-actions .text-button {
+  padding: 8px;
+  color: var(--text-secondary);
+}
+.platform-authority {
+  margin-top: 20px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+}
+.platform-authority p {
+  color: var(--text-secondary);
+  margin: 12px 0 0;
+  line-height: 1.6;
+}
+@media (max-width: 900px) {
+  .platform-grid {
+    grid-template-columns: 1fr;
+  }
+  .platform-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 560px) {
+  .platform-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .platform-heading .button-row {
+    flex-wrap: wrap;
+  }
+  .platform-reference {
+    margin-left: 0;
+    width: 100%;
+  }
+  .platform-summary {
+    gap: 16px 10px;
+  }
+  .platform-summary dd {
+    font-size: 19px;
+  }
+  .platform-tabs {
+    gap: 6px;
+  }
+  .platform-tabs button {
+    padding: 8px 12px;
+    flex: 1;
+  }
+  .settings-card {
+    padding: 16px;
+  }
+  .settings-card .panel-heading {
+    flex-wrap: wrap;
+  }
+  .setting-fields {
+    grid-template-columns: 1fr;
+  }
+  .module-price-form fieldset {
+    grid-template-columns: minmax(0, 1fr) 86px;
+    gap: 10px;
+  }
+  .module-price-form button {
+    grid-column: 1/-1;
+    justify-self: end;
+  }
+  .catalogue-list li {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+  }
+  .catalogue-price {
+    grid-column: 1;
+  }
+  .catalogue-actions {
+    grid-column: 2;
+    grid-row: 1/3;
+    flex-direction: column;
+    gap: 2px;
+  }
+}
+</style>

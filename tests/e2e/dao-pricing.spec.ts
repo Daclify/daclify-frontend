@@ -148,8 +148,10 @@ test('opens all current DAO prices from Create a DAO without requiring an accoun
   await page.goto('/create');
   const link = page.getByRole('main').getByRole('link', { name: /Pricing/ });
   await expect(link).toHaveAttribute('href', '/pricing');
-  await expect(link).toHaveAttribute('target', '_blank');
-  await page.goto('/pricing');
+  await expect(link).not.toHaveAttribute('target', '_blank');
+  await link.click();
+  await expect(page).toHaveURL('/pricing');
+  expect(page.context().pages()).toHaveLength(1);
   await expect(page.getByRole('heading', { name: 'DAO pricing', exact: true })).toBeVisible();
   const main = page.getByRole('main');
   for (const text of [
@@ -180,6 +182,8 @@ test('opens all current DAO prices from Create a DAO without requiring an accoun
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   );
+  await page.goBack();
+  await expect(page.getByRole('heading', { name: 'Create a DAO', exact: true })).toBeVisible();
 });
 test('uses total member numbers and adds tier prices in monthly examples', async ({ page }) => {
   await page.goto('/pricing');

@@ -1,6 +1,6 @@
 # Frontend documentation
 
-Current development application: **0.13.0-alpha.4**, consuming core **0.13.0-alpha.4** and modules **0.9.0-alpha.20** SDK/help packages. Development uses `dev`. See the [repository README](../README.md) for routes, local development, account recovery and test phases, and the [Netlify dev guide](netlify-dev.md) for the separate testnet site.
+Current development application: **0.13.0-alpha.10**, consuming core **0.13.0-alpha.7** and modules **0.9.0-alpha.23** SDK/help packages. Development uses `dev`. See the [repository README](../README.md) for routes, local development, account recovery and test phases, and the [Netlify dev guide](netlify-dev.md) for the separate testnet site.
 
 ## Help inside the application
 
@@ -11,6 +11,8 @@ with Hub filters redirect with their query and hash preserved.
 The [Hub experience](evidence/2026-10-10-hub-experience.md) groups its browsing controls, uses readable community cards and distinguishes loading, failed listings, no matches and sign-in requirements. Loaded runtime cards remain usable when independent listings fail. Counts include independent registrations without duplicating the runtime's full DAO references. Operator review explains service separation before connecting; external portals disclose their destination. No directory listing constitutes an operator security audit.
 
 The [DAO workspace experience](evidence/2026-10-10-dao-workspace-experience.md) separates everyday work from setup. Overview offers real balances and installed tools, with readable access/privacy states and retry when tool discovery fails. Signing & wallets preserves authorization and decryption boundaries. Settings has Identity, Governance and Services; direct Governance bookmarks use `/dao/:id/settings?settings=governance`. Members, documents, treasury, module and executive controls reuse existing action panels. Read-only exploration never grants administrative or voting rights.
+
+Platform controls now group administration into **Pricing**, **Catalogue** and **Policies**. Pricing shows module fees in compact rows alongside membership, RAM and storage settings. Catalogue search and Edit fill the selected module's registration and description fields. Switching sections preserves drafts; administrator authority and an authorized signer are still required to submit changes. Create → Pricing navigates in the current tab. The [verification report](evidence/2026-10-11-platform-controls.md) and [execution ledger](superpowers/plans/2026-10-11-platform-controls.md) record actual checks and testnet delivery.
 
 `/docs` is a guide index with six expandable collections: Getting started,
 Members & governance, Modules & treasury, Costs & storage, Privacy & recovery,
