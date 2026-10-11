@@ -24,6 +24,7 @@ import {
   type instruction,
 } from '@daclify/core-protocol/sdk';
 import { api } from '../api/client';
+import { resolveApiUrl } from '../api/networks';
 import { useWorkspace } from '../state/workspace';
 import {
   ResourcePurchaseSchema,
@@ -34,6 +35,7 @@ import {
 export const nativeWallet = shallowRef<Session>();
 let kit: SessionKit | undefined;
 let configuredChain = '';
+let connectionRevision = 0;
 function walletKit(network: Network): SessionKit {
   const configuration = JSON.stringify([network.chainId, network.rpcUrl]);
   if (!kit || configuredChain !== configuration) {
@@ -52,15 +54,38 @@ function walletKit(network: Network): SessionKit {
   return kit;
 }
 export async function connectNative(): Promise<Session> {
-  const network = await api.network(),
-    current = walletKit(network);
+  const revision = ++connectionRevision,
+    workspace = useWorkspace(),
+    accountId = workspace.account?.id,
+    scope = resolveApiUrl('/');
+  const networkScope = () =>
+    JSON.stringify([
+      workspace.network?.chainId,
+      workspace.network?.runtime,
+      workspace.network?.rpcUrl,
+    ]);
+  const expectedNetwork = networkScope();
+  const check = () => {
+    if (
+      revision !== connectionRevision ||
+      workspace.account?.id !== accountId ||
+      networkScope() !== expectedNetwork ||
+      resolveApiUrl('/') !== scope
+    )
+      throw new Error('WALLET_CONTEXT_CHANGED');
+  };
+  const network = await api.network();
+  check();
+  const current = walletKit(network);
   const { session } = await current.login();
+  check();
   if (session.chain.id.toString() !== network.chainId || session.permission.toString() !== 'active')
     throw new Error('NATIVE_AUTHORITY_UNSUPPORTED');
   nativeWallet.value = session;
   return session;
 }
 export async function disconnectNative(): Promise<void> {
+  connectionRevision++;
   const previous = nativeWallet.value;
   nativeWallet.value = undefined;
   if (previous && kit) await kit.logout(previous);

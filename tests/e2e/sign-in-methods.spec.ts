@@ -39,6 +39,7 @@ test('pairs a passkey and email with an existing vault', async ({ page }) => {
   await page.getByLabel('Email code').fill(code);
   await page.getByRole('button', { name: 'Confirm email' }).click();
   await expect(page.getByText('Email paired.', { exact: true })).toBeVisible();
+  await page.locator('summary').filter({ hasText: 'Email' }).click();
   await expect(page.locator('.method-row').getByText(mailbox, { exact: true })).toBeVisible();
   await page.locator('summary').filter({ hasText: 'Telegram' }).click();
   await expect(
