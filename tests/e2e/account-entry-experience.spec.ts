@@ -200,9 +200,9 @@ test('separates returning sign-in from creation and reveals only the selected pr
   ).toHaveCount(0);
   await expect(main(page).getByLabel('Sign-in email', { exact: true })).toHaveCount(0);
   await expect(main(page).getByLabel('Telos EVM network', { exact: true })).toHaveCount(0);
-  await main(page).getByRole('button', { name: 'Email', exact: true }).focus();
+  await main(page).getByRole('button', { name: 'E-Mail', exact: true }).focus();
   await page.keyboard.press('Enter');
-  await expect(main(page).getByRole('button', { name: 'Email', exact: true })).toHaveAttribute(
+  await expect(main(page).getByRole('button', { name: 'E-Mail', exact: true })).toHaveAttribute(
     'aria-pressed',
     'true',
   );
@@ -289,7 +289,7 @@ test('does not load the legacy Telegram widget until selected and cleans it up w
       ),
     )
     .toBe(1);
-  await main(page).getByRole('button', { name: 'Email', exact: true }).click();
+  await main(page).getByRole('button', { name: 'E-Mail', exact: true }).click();
   await expect(main(page).locator('.telegram-host script')).toHaveCount(0);
   await expect
     .poll(() =>
@@ -321,7 +321,7 @@ test('honors unavailable provider flags and explains local email and passkey lim
     main(page).getByText('Telegram is not configured on this server.', { exact: true }),
   ).toBeVisible();
   await expect(main(page).locator('.telegram-host')).toHaveCount(0);
-  await main(page).getByRole('button', { name: 'Email', exact: true }).click();
+  await main(page).getByRole('button', { name: 'E-Mail', exact: true }).click();
   await expect(main(page).getByRole('button', { name: 'Send code', exact: true })).toHaveCount(0);
   await expect(
     main(page).getByText(/Email sign-in from this screen needs mail delivery/),
@@ -405,7 +405,7 @@ test('email code steps preserve the recipient, prevent duplicate sends and allow
   });
   await page.goto('/account');
   await main(page).getByRole('button', { name: 'Login', exact: true }).click();
-  await main(page).getByRole('button', { name: 'Email', exact: true }).click();
+  await main(page).getByRole('button', { name: 'E-Mail', exact: true }).click();
   await main(page).getByLabel('Sign-in email', { exact: true }).fill('member@example.test');
   await main(page).getByRole('button', { name: 'Send code', exact: true }).click();
   await expect.poll(() => sends).toBe(1);
@@ -468,7 +468,7 @@ test('email opens a session without unlocking keys and returns to the complete d
   });
   await page.goto('/account?returnTo=' + encodeURIComponent('/hub?q=ocean#communities'));
   await main(page).getByRole('button', { name: 'Login', exact: true }).click();
-  await main(page).getByRole('button', { name: 'Email', exact: true }).click();
+  await main(page).getByRole('button', { name: 'E-Mail', exact: true }).click();
   await main(page).getByLabel('Sign-in email', { exact: true }).fill('member@example.test');
   await main(page).getByRole('button', { name: 'Send code', exact: true }).click();
   await main(page).getByLabel('Email code', { exact: true }).fill('12345678');
@@ -685,11 +685,11 @@ test('a pending wallet request prevents another account flow and cancellation re
   await expect(
     main(page).getByRole('button', { name: 'Waiting for wallet…', exact: true }),
   ).toBeDisabled();
-  await expect(main(page).getByRole('button', { name: 'Email', exact: true })).toBeDisabled();
+  await expect(main(page).getByRole('button', { name: 'E-Mail', exact: true })).toBeDisabled();
   await expect(main(page).getByRole('button', { name: 'Back', exact: true })).toBeDisabled();
   await page.evaluate(() => window.dispatchEvent(new Event('daclify-fixture-cancel-wallet')));
   await expect(main(page).getByRole('button', { name: 'Back', exact: true })).toBeEnabled();
-  await main(page).getByRole('button', { name: 'Email', exact: true }).click();
+  await main(page).getByRole('button', { name: 'E-Mail', exact: true }).click();
   await expect(main(page).getByLabel('Sign-in email', { exact: true })).toBeVisible();
 });
 test('authenticated account tabs retain all paired-method management and key controls', async ({

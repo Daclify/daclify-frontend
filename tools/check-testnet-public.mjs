@@ -58,7 +58,7 @@ try {
       });
       await main.getByRole('button', { name: 'Login', exact: true }).click();
       await expect(main.getByRole('heading', { name: 'Welcome back', exact: true })).toBeVisible();
-      await expect(main.getByRole('button', { name: 'Email', exact: true })).toBeVisible();
+      await expect(main.getByRole('button', { name: 'E-Mail', exact: true })).toBeVisible();
       await checkLayout();
       await main.getByRole('button', { name: 'Back', exact: true }).click();
       await expect(main.getByRole('button', { name: 'Login', exact: true })).toBeFocused();

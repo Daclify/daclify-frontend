@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { FingerprintPattern, Mail, Send, Wallet, RefreshCw, ChevronRight } from '@lucide/vue';
+import { FingerprintPattern, Mail, Send, Anchor, Gem, RefreshCw, ChevronRight } from '@lucide/vue';
 import type { Account } from '@daclify/core-protocol';
 import { api, friendlyError, type SignInMethods, type SignInOptions } from '../api/client';
 import { acceptProviderSession, vaultUnlocked, lockVault } from '../auth/session';
@@ -36,9 +36,9 @@ const optionsLoading = ref(true),
 const choices = [
   { id: 'passkey', name: 'Passkey', icon: FingerprintPattern },
   { id: 'telegram', name: 'Telegram', icon: Send },
-  { id: 'email', name: 'Email', icon: Mail },
-  { id: 'native', name: 'Telos Zero', icon: Wallet },
-  { id: 'evm', name: 'Telos EVM', icon: Wallet },
+  { id: 'email', name: 'E-Mail', icon: Mail },
+  { id: 'native', name: 'Telos Zero', icon: Anchor },
+  { id: 'evm', name: 'Telos EVM', icon: Gem },
 ] as const;
 const selected = ref<(typeof choices)[number]['id']>();
 function choose(id: (typeof choices)[number]['id']) {
@@ -79,27 +79,6 @@ const passkeyHost = computed(() => {
   if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(host) || host.includes(':')) return '';
   return host;
 });
-function availability(id: (typeof choices)[number]['id']): string {
-  if (id === 'native') return 'Use Anchor';
-  if (id === 'evm') return 'Use your EVM wallet';
-  if (optionsLoading.value) return 'Checking availability…';
-  if (!options.value) return 'Could not be checked';
-  if (id === 'passkey')
-    return passkeysAvailable.value && passkeyHost.value
-      ? 'Device or password manager'
-      : 'Unavailable in this browser';
-  if (id === 'telegram')
-    return miniAppAvailable.value
-      ? 'Use this Mini App identity'
-      : options.value.telegram.configured
-        ? 'Use your paired Telegram'
-        : 'Not configured';
-  return delivery.value === 'mail'
-    ? 'Receive a sign-in code'
-    : delivery.value === 'local'
-      ? 'Mail delivery needed'
-      : 'Not configured';
-}
 function problem(cause: unknown): string {
   if (cause instanceof DOMException && cause.name === 'NotAllowedError') {
     return 'The passkey prompt was cancelled.';
@@ -418,17 +397,11 @@ onUnmounted(() => {
         type="button"
         class="secondary sign-in-choice"
         :aria-label="choice.name"
-        :aria-describedby="`signin-${choice.id}-description`"
         :aria-pressed="selected === choice.id"
         :disabled="working"
         @click="choose(choice.id)"
       >
-        <component :is="choice.icon" aria-hidden="true" /><span
-          ><strong>{{ choice.name }}</strong
-          ><small :id="`signin-${choice.id}-description`">{{
-            availability(choice.id)
-          }}</small></span
-        ><ChevronRight aria-hidden="true" />
+        <component :is="choice.icon" aria-hidden="true" /><span>{{ choice.name }}</span>
       </button>
     </div>
     <p v-if="mode === 'enter' && !selected" class="sign-in-hint">Select a method to continue.</p>
@@ -438,7 +411,7 @@ onUnmounted(() => {
       :class="mode === 'manage' ? 'method-settings-row' : 'sign-in-detail'"
     >
       <summary v-if="mode === 'manage'">
-        <Wallet aria-hidden="true" /><span
+        <Anchor aria-hidden="true" /><span
           ><strong>Telos Zero</strong><small>Pair or manage an Anchor wallet</small></span
         ><ChevronRight aria-hidden="true" />
       </summary>
@@ -455,7 +428,7 @@ onUnmounted(() => {
       :class="mode === 'manage' ? 'method-settings-row' : 'sign-in-detail'"
     >
       <summary v-if="mode === 'manage'">
-        <Wallet aria-hidden="true" /><span
+        <Gem aria-hidden="true" /><span
           ><strong>Telos EVM</strong><small>Pair or manage an EVM wallet</small></span
         ><ChevronRight aria-hidden="true" />
       </summary>
@@ -815,25 +788,9 @@ onUnmounted(() => {
   flex: none;
   color: var(--accent-amber);
 }
-.sign-in-choice > svg:last-child {
-  margin-left: auto;
-  width: 16px;
-  height: 16px;
-}
 .sign-in-choice > span {
   min-width: 0;
-}
-.sign-in-choice strong {
-  display: block;
   font-size: 0.875rem;
-}
-.sign-in-choice small {
-  display: block;
-  font-size: 0.8125rem;
-  color: var(--text-secondary);
-  font-weight: 400;
-  line-height: 1.5;
-  margin-top: 6px;
 }
 .sign-in-choice[aria-pressed='true'] {
   border-color: var(--accent-amber);

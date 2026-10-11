@@ -68,7 +68,7 @@ test('quick email signup opens usable original keys without storing plaintext or
     await fresh.goto(new URL('/account', page.url()).href);
     await fresh.getByRole('button', { name: 'Login', exact: true }).click();
     const returning = fresh.locator('.account-returning');
-    await returning.getByRole('button', { name: 'Email', exact: true }).click();
+    await returning.getByRole('button', { name: 'E-Mail', exact: true }).click();
     await returning.getByLabel('Sign-in email', { exact: true }).fill(email);
     await returning.getByRole('button', { name: 'Send code', exact: true }).click();
     await expect(returning.getByLabel('Email code', { exact: true })).toBeVisible();
