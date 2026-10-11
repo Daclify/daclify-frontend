@@ -28,10 +28,21 @@ Telos DAO is directly below Daclify DAO in the sidebar and opens `/telos`. My DA
 
 Additional authenticated-caller checks passed for signed rename, module activation, original-key device transfer and keyboard forms on desktop/mobile (8 cases). Their first attempt incorrectly selected Login in fixtures that already had a session; those unnecessary test edits were removed. The monthly-consent caller initially failed its fixture's fixed port/audience check; binding the fixture to the actual page origin retained the application guard and both cases then passed. This establishes 104 distinct passing browser cases across the selected suites. An interrupted caller run is retained in private logs; it is not counted as passing.
 
-Other native-fixture browser suites were updated to enter the new cards but were not rerun as part of this frontend-only change. No new live provider or native contract qualification is claimed. Actual public publication results are recorded below after completion.
+Other native-fixture browser suites were updated to enter the new cards but were not rerun as part of this frontend-only change. No new live provider or native contract qualification is claimed. Actual public publication results are recorded below.
 
 ## Publication
 
 Publication targets the existing authorized workspace testnet at `https://testnet.app.daclify.com`. Build from committed dev source, retain old hashed assets and install the new entry point last. The API and native contracts continue using their current rollout. The reproducible read-only public check is `npm run test:testnet-public`; it now covers all three account journeys, four creation methods, focus, Axe/viewport checks, My DAO separation and live Telos contract history in addition to its existing platform checks.
 
 Decide signing pins remain unqualified, so the public Telos entry remains read-only. Actual Anchor approval and a mainnet vote have not been qualified by this frontend change. Recovery remains the existing same-VM testnet development mode.
+
+
+### Deployed and checked
+
+- Deployed frontend source: `e98990a177eab73775f432327a79c39b9a208c54` on dev, pushed to origin. The later documentation-only commit does not change the frontend bundle.
+- `npm ci --ignore-scripts` from the committed standalone archive installed all dependencies successfully (0 reported vulnerabilities). The existing frontend rebuild helper then built in testnet mode and published successfully, retaining old hashed assets and replacing `index.html` last.
+- Published index SHA-256: `7ec9cf19bf6c4697580b52afdf1fcbf2476233ca22d43040eb2ff3e02f2e2426`.
+- `LD_LIBRARY_PATH=/data/daclify-runtime/browser-libs/usr/lib/x86_64-linux-gnu npm run test:testnet-public` passed against actual public HTTPS at 1440×1000 and 390×844. All three journeys, four buttons, consent gates, Back/Cancel focus, unchanged return destination, Telos menu order and My DAO separation were checked. Axe reported no violations and no horizontal overflow was found in the checked screens.
+- Live testnet ballot history and the selected ballot `1cw3rwrjq2no` loaded from the actual API. The existing Status resource/permission and Daclify DAO checks also passed. Required API responses were JSON from the configured API origin; no page errors, misplaced API requests or server-error responses were recorded.
+- Public Account/New Account/Telos screenshots and hashed logs are retained privately under `/data/daclify-runtime/releases/20261011-account-entry-telos-sidebar/` with the source archive and rollback index. The runtime smoke helper was also updated to enter Login/New Account explicitly.
+- API was not restarted, and contracts, authority, balances, recovery qualification and provider configuration were not changed. The owned browser API fixture was stopped after verification.

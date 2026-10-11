@@ -37,7 +37,7 @@
 - [x] Implement the smallest view-state change and reuse guarded native signup; preserve all existing ceremony functions.
 - [x] Update affected browser journeys to select Login/New Account/Own Keys/Restore Account explicitly; verify consent, callbacks, saved vault, cancellation and restore cases.
 - [x] Run relevant desktop/mobile browser checks and the complete frontend unit suite.
-- [ ] Commit the reviewed implementation.
+- [x] Commit the reviewed implementation.
 
 ## Task 2: Telos navigation and testnet delivery
 
@@ -47,6 +47,11 @@
 
 - [x] Add failing exact-order/sidebar assertions and assert My DAO contains no Telos governance shortcut.
 - [x] Add the sidebar link below Daclify DAO and remove the Hub shortcut.
-- [ ] Verify keyboard/mobile/folded navigation, live contract-history reads and all new account screens with Axe and viewport checks.
-- [ ] Run lint/types/build, review the complete diff inline, update explanatory evidence and push dev.
-- [ ] Build a committed-source testnet frontend candidate, publish its entry last with old assets retained, and verify actual public desktop/mobile flows.
+- [x] Verify keyboard/mobile/folded navigation, live contract-history reads and all new account screens with Axe and viewport checks.
+- [x] Run lint/types/build, review the complete diff inline, update explanatory evidence and push dev.
+- [x] Build a committed-source testnet frontend candidate, publish its entry last with old assets retained, and verify actual public desktop/mobile flows.
+
+
+## Execution record
+
+Completed inline. Implementation/source commit: `e98990a177eab73775f432327a79c39b9a208c54`. Unit/type/lint checks, 104 selected browser cases and actual public desktop/mobile checks passed. Build/publish used the committed standalone source. Detailed failed/corrected/unrun checks and runtime limits: [execution evidence](../../evidence/2026-10-11-account-entry-telos-sidebar.md).
