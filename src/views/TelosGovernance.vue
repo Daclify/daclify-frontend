@@ -44,6 +44,7 @@ const loading = ref(false),
   options = ref<string[]>([]);
 const search = ref(''),
   detailHeading = ref<HTMLHeadingElement>();
+const recordButtons = ref<HTMLButtonElement[]>([]);
 const section = computed(() =>
   route.query.section === 'elections'
     ? 'elections'
@@ -76,6 +77,12 @@ function navigate(value: 'ballots' | 'elections' | 'producers') {
 }
 function selectBallot(name: string) {
   void router.replace({ query: { ...route.query, ballot: name } });
+}
+async function closeDetails() {
+  const name = detail.value?.ballot.ballot_name;
+  await router.replace({ query: { ...route.query, ballot: undefined } });
+  await nextTick();
+  recordButtons.value.find((button) => button.dataset.ballot === name)?.focus();
 }
 function publisher(ballot: TelosBallot) {
   return ballot.publisher === 'tf' && ['election', 'leaderboard'].includes(ballot.category)
@@ -213,7 +220,7 @@ async function open(name: unknown) {
     detail.value = result;
     await nextTick();
     if (disposed || revision !== voteRevision) return;
-    detailHeading.value?.focus({ preventScroll: true });
+    detailHeading.value?.focus();
     try {
       const raw = sessionStorage.getItem(pendingKey(result));
       if (raw) {
@@ -522,7 +529,13 @@ async function vote() {
                 status(ballot)
               }}</span>
             </div>
-            <button class="record-title" :disabled="busy" @click="selectBallot(ballot.ballot_name)">
+            <button
+              ref="recordButtons"
+              :data-ballot="ballot.ballot_name"
+              class="record-title"
+              :disabled="busy"
+              @click="selectBallot(ballot.ballot_name)"
+            >
               {{ ballot.title || ballot.ballot_name }}
             </button>
             <p class="record-description">
@@ -555,11 +568,7 @@ async function vote() {
       </section>
       <article v-if="detail" class="ballot-detail" aria-label="Selected ballot">
         <div class="detail-topline">
-          <button
-            class="secondary"
-            :disabled="busy"
-            @click="router.replace({ query: { ...route.query, ballot: undefined } })"
-          >
+          <button class="secondary" :disabled="busy" @click="closeDetails">
             <ArrowLeft :size="15" aria-hidden="true" /> Back to records</button
           ><span class="record-status">{{ status(detail.ballot) }}</span>
         </div>

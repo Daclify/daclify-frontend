@@ -475,6 +475,42 @@ test('returning from producers starts one election read', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'TF Board Election', exact: true })).toBeVisible();
   expect(reads).toBe(before + 1);
 });
+test('opens election details in view and returns focus to its record', async ({ page }) => {
+  await fixture(page, false);
+  await page.route('**/v1/telos/ballots?*', (route) =>
+    route.fulfill({
+      json: {
+        source,
+        ballots: [
+          foundation,
+          ...['1', '3', '4', '5', 'a', 'b', 'c'].map((name) => ({
+            ...foundation,
+            ballot_name: 'tfvt........' + name,
+            title: 'Other election ' + name,
+          })),
+        ],
+        nextCursor: null,
+        observedAt: new Date().toISOString(),
+        signingAvailable: false,
+      },
+    }),
+  );
+  await page.goto('/telos?section=elections');
+  const record = page.getByRole('button', { name: 'TF Board Election', exact: true });
+  await record.click();
+  const title = page
+    .getByRole('article', { name: 'Selected ballot' })
+    .getByRole('heading', { name: 'TF Board Election', exact: true });
+  await expect(title).toBeFocused();
+  expect(
+    await title.evaluate((node) => {
+      const box = node.getBoundingClientRect();
+      return box.top >= 0 && box.bottom <= innerHeight;
+    }),
+  ).toBe(true);
+  await page.getByRole('button', { name: 'Back to records', exact: true }).click();
+  await expect(record).toBeFocused();
+});
 test('first native vote verifies signup and casts the external vote without DAO membership', async ({
   page,
 }) => {

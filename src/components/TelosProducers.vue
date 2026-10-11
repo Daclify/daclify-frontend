@@ -6,6 +6,10 @@ import { api, friendlyError } from '../api/client';
 import { resolveApiUrl } from '../api/networks';
 import { useWorkspace } from '../state/workspace';
 const state = useWorkspace();
+const voteFormat = new Intl.NumberFormat(undefined, {
+  notation: 'compact',
+  maximumFractionDigits: 2,
+});
 const page = ref<TelosProducerPage>(),
   loading = ref(false),
   error = ref(''),
@@ -112,7 +116,8 @@ onBeforeUnmount(() => {
           >
         </div>
         <div class="producer-weight">
-          <strong>{{ producer.total_votes }}</strong
+          <strong :title="producer.total_votes"
+            >≈ {{ voteFormat.format(Number(producer.total_votes)) }}</strong
           ><small>Weighted votes</small>
         </div>
         <a

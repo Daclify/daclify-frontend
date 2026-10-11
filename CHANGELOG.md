@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.14.0-alpha.4 development
+
+Bring selected election details into view, restore focus to the selected card on Back, and display compact producer vote weights with exact values available on hover. Preserve the verified ballot signing and pagination flows.
+
 ## 0.14.0-alpha.3 development
 
 Redesign Telos DAO with separate Ballots, Foundation/network Elections and Block Producers views, responsive cards, candidate totals and retained history. Append loaded records and guard stale requests. Consume modules 0.10.0-alpha.2 and core protocol 0.14.0-alpha.2; preserve the native wallet and pending-vote flow.
