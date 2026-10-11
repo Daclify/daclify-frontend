@@ -168,18 +168,15 @@ test('offers retry when provider configuration fails rather than pretending it i
   ).toBeVisible();
   expect(reads).toBe(2);
 });
-test('keeps unavailable managed signup secondary and recovery immediately discoverable', async ({
+test('keeps the independent vault available when quick signup is unavailable and recovery discoverable', async ({
   page,
 }) => {
   await fixture(page);
   await page.goto('/account');
+  await expect(main(page).getByText(/Quick signup is unavailable/)).toBeVisible();
   await expect(
-    main(page).getByRole('heading', { name: 'Recovery through a service', exact: true }),
-  ).toHaveCount(0);
-  await main(page).getByText('Managed recovery option', { exact: true }).click();
-  await expect(
-    main(page).getByRole('button', { name: 'Managed signup unavailable', exact: true }),
-  ).toBeDisabled();
+    main(page).getByRole('button', { name: 'Create encrypted vault', exact: true }),
+  ).toBeVisible();
   await main(page)
     .getByRole('button', { name: 'Recover from an encrypted kit', exact: true })
     .click();

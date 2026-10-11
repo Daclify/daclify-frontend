@@ -68,6 +68,7 @@ import {
   CredentialHistorySchema,
   type EvmRelay,
   RecoveryRoutes,
+  SignupRoutes,
   RecoveryGrantSchema,
 } from '@daclify/core-protocol';
 import type { instruction } from '@daclify/core-protocol/sdk';
@@ -242,6 +243,66 @@ export function verifiedModuleRelease(state: ModuleState): ModuleState {
   };
 }
 export const api = {
+  signupOptions: () =>
+    request(SignupRoutes.signupOptions.path, SignupRoutes.signupOptions.response),
+  signupEmailStart: (email: string) =>
+    request(
+      SignupRoutes.signupEmailStart.path,
+      SignupRoutes.signupEmailStart.response,
+      SignupRoutes.signupEmailStart.input.parse({ email }),
+    ),
+  signupEmailVerify: (email: string, code: string) =>
+    request(
+      SignupRoutes.signupEmailVerify.path,
+      SignupRoutes.signupEmailVerify.response,
+      SignupRoutes.signupEmailVerify.input.parse({ email, code }),
+    ),
+  signupTelegram: (proof: string) =>
+    request(
+      SignupRoutes.signupTelegramVerify.path,
+      SignupRoutes.signupTelegramVerify.response,
+      SignupRoutes.signupTelegramVerify.input.parse({ proof }),
+    ),
+  startSignupTelegram: (returnTo?: string) =>
+    request(
+      SignupRoutes.signupTelegramStart.path,
+      SignupRoutes.signupTelegramStart.response,
+      SignupRoutes.signupTelegramStart.input.parse(returnTo ? { returnTo } : {}),
+    ),
+  signupPending: (id: string) =>
+    request(
+      SignupRoutes.signupPending.path.replace(':id', z.uuid().parse(id)),
+      SignupRoutes.signupPending.response,
+    ),
+  signupPrepare: (input: z.infer<typeof SignupRoutes.signupPrepare.input>) =>
+    request(
+      SignupRoutes.signupPrepare.path,
+      SignupRoutes.signupPrepare.response,
+      SignupRoutes.signupPrepare.input.parse(input),
+    ),
+  signupAuthorize: (input: z.infer<typeof SignupRoutes.signupAuthorize.input>) =>
+    request(
+      SignupRoutes.signupAuthorize.path,
+      SignupRoutes.signupAuthorize.response,
+      SignupRoutes.signupAuthorize.input.parse(input),
+    ),
+  signupFinish: (input: z.infer<typeof SignupRoutes.signupFinish.input>) =>
+    request(
+      SignupRoutes.signupFinish.path,
+      SignupRoutes.signupFinish.response,
+      SignupRoutes.signupFinish.input.parse(input),
+    ),
+  optOutAssisted: (input: z.infer<typeof RecoveryRoutes.recoveryOptOut.input>) =>
+    request(
+      RecoveryRoutes.recoveryOptOut.path,
+      RecoveryRoutes.recoveryOptOut.response,
+      RecoveryRoutes.recoveryOptOut.input.parse(input),
+    ),
+  recoveryAssistedRevision: () =>
+    request(
+      RecoveryRoutes.recoveryAssistedRevision.path,
+      RecoveryRoutes.recoveryAssistedRevision.response,
+    ),
   beginDeviceRecovery: (input: z.infer<typeof RecoveryRoutes.deviceRecoveryBegin.input>) =>
     request(
       RecoveryRoutes.deviceRecoveryBegin.path,
@@ -1199,6 +1260,16 @@ export function friendlyError(error: unknown): string {
       PROVIDER_INVALID: 'The login proof was rejected.',
       PROVIDER_REPLAY: 'That login proof was already used. Try again.',
       PROVIDER_UNKNOWN: 'That sign-in method is not paired with an account.',
+      SIGNUP_ATTEMPT_INVALID:
+        'Account setup expired or belongs to another browser. Start over and verify your email or Telegram again.',
+      SIGNUP_INCOMPLETE:
+        'This account’s encrypted setup is still pending. Return to its setup tab and retry.',
+      SIGNUP_ALREADY_COMPLETE:
+        'Account setup is already complete. Sign in with your paired method.',
+      SIGNUP_IDENTITY_CHANGED:
+        'The keys for this setup changed. Start over and verify your email or Telegram again.',
+      RECOVERY_AUTHORITY_CHANGED:
+        'Assisted recovery changed after this request started. Refresh and review consent again.',
       EMAIL_UNAVAILABLE: 'Email delivery is not configured on this server.',
       EMAIL_DELIVERY_FAILED: 'The email could not be sent. Try again or use another paired method.',
       EMAIL_INVALID: 'That email code is not valid anymore.',

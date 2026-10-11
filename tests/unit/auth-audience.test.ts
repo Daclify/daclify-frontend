@@ -18,6 +18,41 @@ const encryptionKey = EncryptionPublicKeySchema.parse({
   y: jwk.y,
 });
 const identity = { signingKey: key, encryptionKey };
+it('rejects a signup ceremony for another API or substituted original keys', () => {
+  const request = { ...identity, id, assistedConsent: true };
+  const message = {
+    ...request,
+    domain: 'daclify.signup.v1',
+    accountId: id,
+    origin,
+    audience,
+    expires,
+  };
+  const context = {
+    version: 1,
+    id,
+    accountId: id,
+    origin,
+    credentialKey: 'email:alice@example.test',
+    mode: 'daclify-assisted',
+    signingPublicKey: key,
+    encryptionPublicKey: encryptionKey,
+    salt: btoa('x'.repeat(32)),
+  };
+  const body = { id, expires, message: JSON.stringify(message), context };
+  expect(() =>
+    validateAuthChallenge('/v1/sign-up/prepare', body, request, origin, 'https://other.example'),
+  ).toThrow('AUTH_AUDIENCE');
+  expect(() =>
+    validateAuthChallenge(
+      '/v1/sign-up/prepare',
+      { ...body, context: { ...context, accountId: '00000000-0000-4000-8000-000000000002' } },
+      request,
+      origin,
+      audience,
+    ),
+  ).toThrow('AUTH_AUDIENCE');
+});
 it('refuses legacy login challenges before signing', () => {
   const message = {
     domain: 'daclify.login.v2',

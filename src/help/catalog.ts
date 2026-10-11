@@ -38,6 +38,7 @@ const guideGroups = [
     topicIds: [
       'modules',
       'marketplace',
+      'activity',
       'decide',
       'works',
       'governed-funding',

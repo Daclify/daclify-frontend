@@ -85,6 +85,7 @@ const showOngoing = ref(true);
 const draftLabel = ref<Record<string, string>>({});
 const draftPaused = ref<Record<string, boolean>>({});
 const names = {
+  activity: 'Community Activity',
   decide: 'Decide',
   works: 'Works',
   payroll: 'Payroll',

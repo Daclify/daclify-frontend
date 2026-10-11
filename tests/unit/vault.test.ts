@@ -13,9 +13,23 @@ import {
   openEpochGrant,
   restoreRecoveryKit,
   openCommittedEpoch,
+  generateVaultSecrets,
+  createVaultBackup,
 } from '../../src/auth/vault.js';
 const password = 'long disposable fixture password';
 describe('user-controlled signing and encryption vault', () => {
+  it('creates a verified password and recovery-code fallback without changing original keys', async () => {
+    const original = await generateVaultSecrets(),
+      backup = await createVaultBackup(original, password);
+    expect(await unlockVault(backup.localEnvelope, password)).toEqual(original);
+    expect(await recoverVault(backup.recoveryEnvelope, backup.recoveryCredential)).toEqual(
+      original,
+    );
+    expect(backup.signingPublicKey).toBe(
+      PrivateKey.from(original.signingKey).toPublic().toString(),
+    );
+    expect(JSON.stringify(backup)).not.toContain(original.signingKey);
+  });
   it('keeps signing and encryption keys separate and stores only authenticated ciphertext', async () => {
     const vault = await createVault(password);
     expect(vault.signingPublicKey).toMatch(/^PUB_K1_/);

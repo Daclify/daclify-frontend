@@ -101,6 +101,7 @@ export async function enableFastSignIn(
   method: RecoveryMethod,
   mode: RecoveryContext['mode'],
   consent: boolean,
+  assistedRevision = 0,
 ) {
   const check = recoveryContextGuard(account);
   const context = RecoveryContextSchema.parse({
@@ -151,7 +152,11 @@ export async function enableFastSignIn(
   return withUnlockedVault(account, async (secrets) => {
     if (mode === 'daclify-assisted') {
       if (!consent) throw new Error('RECOVERY_CONSENT_REQUIRED');
-      const handoff = await api.recoveryAssistedOptions({ context, assistedConsent: true });
+      const handoff = await api.recoveryAssistedOptions({
+        context,
+        assistedConsent: true,
+        assistedRevision,
+      });
       check();
       const payload = await createRecoveryPayload(secrets, context);
       try {

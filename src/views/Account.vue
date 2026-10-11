@@ -35,6 +35,8 @@ import ProfilePanel from '../components/ProfilePanel.vue';
 import SignInMethods from '../components/SignInMethods.vue';
 import FastSignInMethods from '../components/FastSignInMethods.vue';
 import DeviceApproval from '../components/DeviceApproval.vue';
+import QuickSignup from '../components/QuickSignup.vue';
+import AssistedRecoveryOptOut from '../components/AssistedRecoveryOptOut.vue';
 import { restoreFastSignIn } from '../auth/fast-sign-in';
 const props = defineProps<{
   embedded?: boolean;
@@ -159,6 +161,9 @@ watch(
   },
 );
 const saved = ref(savedVault());
+const newAccount = ref(false),
+  quickReady = ref(false),
+  quickBusy = ref(false);
 const accountKit = computed(() => {
   const record = saved.value,
     account = state.account;
@@ -240,6 +245,7 @@ async function selectKit(event: Event) {
   kitText.value = await file.text();
 }
 async function restore() {
+  if (providerBusy.value || quickBusy.value) return;
   busy.value = true;
   error.value = '';
   try {
@@ -282,7 +288,7 @@ async function copyPassword() {
   }
 }
 async function create() {
-  if (busy.value || providerBusy.value) return;
+  if (busy.value || providerBusy.value || quickBusy.value) return;
   busy.value = true;
   error.value = '';
   try {
@@ -308,14 +314,15 @@ async function copyRecovery() {
   }
 }
 async function finish() {
-  if (!created.value || !acknowledged.value) return;
+  if (!created.value || !acknowledged.value || (saved.value && !replacementAcknowledged.value))
+    return;
   saveVault(created.value);
   saved.value = savedVault();
   await unlock();
   created.value = undefined;
 }
 async function unlock() {
-  if (providerBusy.value) return;
+  if (providerBusy.value || quickBusy.value) return;
   busy.value = true;
   error.value = '';
   try {
@@ -333,6 +340,7 @@ async function onSignedIn(account: Account) {
   state.account = account;
   password.value = '';
   error.value = '';
+  if (route.query.signup) await router.replace({ query: { ...route.query, signup: undefined } });
   try {
     await restoreFastSignIn(account);
   } catch (cause) {
@@ -389,8 +397,7 @@ function backup() {
     <RouterLink class="help-link" to="/docs/accounts">Account help ↗</RouterLink>
   </div>
   <p v-if="route.query.telegram === 'failed'" class="alert" role="alert">
-    Telegram sign-in could not be completed. Try again from this browser. New Telegram identities
-    must first be paired from an existing account.
+    Telegram verification could not be completed. Try again from this browser, or use email.
   </p>
   <p v-if="route.query.notice === 'signin-removed'" class="notice" role="status">
     Sign-in method removed. Its sessions were revoked; sign in with a remaining method.
@@ -466,7 +473,14 @@ function backup() {
     <label class="checkbox"
       ><input v-model="acknowledged" type="checkbox" />I have saved my recovery kit and
       credential</label
-    ><button :disabled="!acknowledged || busy" @click="finish">
+    ><label v-if="saved" class="checkbox"
+      ><input v-model="replacementAcknowledged" type="checkbox" />I backed up the other account
+      currently saved on this device before replacing its local vault.</label
+    >
+    <button
+      :disabled="!acknowledged || busy || (saved && !replacementAcknowledged)"
+      @click="finish"
+    >
       {{ busy ? 'Finishing…' : 'Finish account setup' }}
     </button>
   </section>
@@ -480,7 +494,10 @@ function backup() {
               ? 'Recovery status unavailable'
               : 'Checking recovery…'
             : recoveryInfo.assistedEver
-              ? 'Assisted recovery'
+              ? (recoveryInfo.assistedEnabled ??
+                recoveryInfo.methods.some((method) => method.mode === 'daclify-assisted'))
+                ? 'Assisted recovery'
+                : 'Assisted recovery off'
               : state.account.custody === 'user-controlled'
                 ? 'You hold the keys'
                 : 'Managed account'
@@ -488,9 +505,8 @@ function backup() {
       <button class="text-button danger" :disabled="busy" @click="logout">Sign out</button>
     </div>
     <p v-if="recoveryInfo?.assistedEver" class="notice" role="status">
-      This vault authorized Daclify-assisted recovery. Daclify may hold a spare unlocking key for
-      its signing and private-document keys. Your selected sign-in methods control when recovery is
-      available.
+      This vault previously authorized Daclify-assisted recovery. Recovery status below shows
+      whether assisted methods are still enabled. Its history remains part of DAO admission.
     </p>
     <div class="account-tabs" role="tablist" @keydown="navigateTabs" aria-label="Account sections">
       <button
@@ -574,6 +590,12 @@ function backup() {
           "
         />
       </div>
+      <AssistedRecoveryOptOut
+        :account="state.account"
+        :methods="recoveryInfo"
+        @changed="recoveryInfo = $event"
+        @kit-saved="saved = savedVault()"
+      />
       <details class="identity-details">
         <summary>
           {{ state.account.signingKey === null ? 'Account details' : 'Public join identity' }}
@@ -681,11 +703,18 @@ function backup() {
   </div>
   <div v-else class="account-access">
     <nav class="account-shortcuts" aria-label="Account options">
-      <a v-if="!saved" href="#new-account">Create an account <ArrowUpRight aria-hidden="true" /></a>
+      <a href="#new-account" @click="newAccount = true"
+        >{{ saved ? 'Create another account' : 'Create an account' }}
+        <ArrowUpRight aria-hidden="true"
+      /></a>
       <a href="#recover-account">Recovery options <ArrowUpRight aria-hidden="true" /></a>
     </nav>
     <div class="account-entry">
-      <section class="panel account-returning" aria-labelledby="returning-title" :inert="busy">
+      <section
+        class="panel account-returning"
+        aria-labelledby="returning-title"
+        :inert="busy || quickBusy"
+      >
         <div class="account-section-title">
           <KeyRound aria-hidden="true" />
           <div>
@@ -712,10 +741,15 @@ function backup() {
             </button>
           </form>
         </div>
-        <SignInMethods mode="enter" @authenticated="onSignedIn" @busy="providerBusy = $event" />
+        <SignInMethods
+          mode="enter"
+          @authenticated="onSignedIn"
+          @busy="providerBusy = $event"
+          @create-account="newAccount = true"
+        />
       </section>
       <section
-        v-if="!saved"
+        v-if="!saved || newAccount || typeof route.query.signup === 'string'"
         id="new-account"
         class="panel account-new"
         aria-labelledby="new-title"
@@ -728,85 +762,81 @@ function backup() {
             <p>Create your identity, then join or start a DAO.</p>
           </div>
         </div>
-        <span class="pill success">User-controlled</span>
-        <h3>You hold the keys</h3>
-        <p>
-          Your keys are encrypted in this browser. You’ll save a recovery kit before finishing
-          setup. No blockchain account is needed.
-        </p>
-        <form @submit.prevent="create">
-          <label for="password">Vault password</label>
-          <div class="password-field">
-            <input
-              id="password"
-              v-model="password"
-              :type="passwordVisible ? 'text' : 'password'"
-              minlength="12"
-              autocomplete="new-password"
-              spellcheck="false"
-              required
-              :disabled="busy || providerBusy"
-              @input="passwordCopied = false"
-            />
-            <div class="field-actions">
-              <button
-                type="button"
-                aria-label="Generate vault password"
+        <QuickSignup
+          :disabled="busy || providerBusy"
+          :pending-id="typeof route.query.signup === 'string' ? route.query.signup : undefined"
+          @authenticated="onSignedIn"
+          @busy="quickBusy = $event"
+          @available="quickReady = $event"
+        />
+        <details class="own-vault" :open="!quickReady" :inert="quickBusy">
+          <summary>Create with your own keys</summary>
+          <span class="pill success">User-controlled</span>
+          <h3>You hold the keys</h3>
+          <p>
+            Your keys are encrypted in this browser. You’ll save a recovery kit before finishing
+            setup. No blockchain account is needed.
+          </p>
+          <form @submit.prevent="create">
+            <label for="password">Vault password</label>
+            <div class="password-field">
+              <input
+                id="password"
+                v-model="password"
+                :type="passwordVisible ? 'text' : 'password'"
+                minlength="12"
+                autocomplete="new-password"
+                spellcheck="false"
+                required
                 :disabled="busy || providerBusy"
-                @click="generatePassword"
-              >
-                Generate
-              </button>
+                @input="passwordCopied = false"
+              />
+              <div class="field-actions">
+                <button
+                  type="button"
+                  aria-label="Generate vault password"
+                  :disabled="busy || providerBusy"
+                  @click="generatePassword"
+                >
+                  Generate
+                </button>
+                <button
+                  type="button"
+                  aria-label="Copy vault password"
+                  :disabled="busy || providerBusy || password.length === 0"
+                  @click="copyPassword"
+                >
+                  {{ passwordCopied ? 'Copied' : 'Copy' }}
+                </button>
+              </div>
+            </div>
+            <div class="account-password-help">
+              <p class="field-help">
+                At least 12 characters. Generate one or use your password manager.
+              </p>
               <button
                 type="button"
-                aria-label="Copy vault password"
-                :disabled="busy || providerBusy || password.length === 0"
-                @click="copyPassword"
+                class="text-button"
+                :aria-label="passwordVisible ? 'Hide vault password' : 'Show vault password'"
+                :aria-pressed="passwordVisible"
+                :disabled="busy || providerBusy"
+                @click="passwordVisible = !passwordVisible"
               >
-                {{ passwordCopied ? 'Copied' : 'Copy' }}
+                {{ passwordVisible ? 'Hide' : 'Show' }}
               </button>
             </div>
-          </div>
-          <div class="account-password-help">
-            <p class="field-help">
-              At least 12 characters. Generate one or use your password manager.
-            </p>
-            <button
-              type="button"
-              class="text-button"
-              :aria-label="passwordVisible ? 'Hide vault password' : 'Show vault password'"
-              :aria-pressed="passwordVisible"
-              :disabled="busy || providerBusy"
-              @click="passwordVisible = !passwordVisible"
-            >
-              {{ passwordVisible ? 'Hide' : 'Show' }}
+            <button :disabled="busy || providerBusy">
+              {{ busy ? 'Encrypting vault…' : 'Create encrypted vault' }}
             </button>
-          </div>
-          <button :disabled="busy || providerBusy">
-            {{ busy ? 'Encrypting vault…' : 'Create encrypted vault' }}
-          </button>
-        </form>
-        <details class="managed-recovery">
-          <summary>Managed recovery option</summary>
-          <span class="pill">Managed recovery</span>
-          <h3>Recovery through a service</h3>
-          <p>
-            An operator can recover managed signing and decryption access. This is a different trust
-            model and is excluded from DAOs that require user-controlled keys.
-          </p>
-          <p class="notice">Provider setup is required before managed accounts can be offered.</p>
-          <button disabled>Managed signup unavailable</button
-          ><RouterLink class="help-link" to="/docs/accounts"
-            >Compare account modes <ArrowUpRight aria-hidden="true"
-          /></RouterLink>
+          </form>
         </details>
       </section>
       <aside v-else class="panel account-key-guide" aria-labelledby="key-guide-title">
         <ShieldCheck aria-hidden="true" />
         <h2 id="key-guide-title">Your keys stay with you</h2>
         <p>
-          Signing in with email, Telegram or a passkey opens your account without unlocking this
-          device’s vault.
+          Paired methods open your account. A method enabled for full access also unlocks your
+          signing and private-document keys.
         </p>
         <p>
           A linked blockchain wallet can authorize supported DAO actions. Encrypted documents still
@@ -833,7 +863,7 @@ function backup() {
       <button
         id="recover-account"
         class="secondary"
-        :disabled="busy || providerBusy"
+        :disabled="busy || providerBusy || quickBusy"
         @click="restoring = true"
       >
         Recover from an encrypted kit

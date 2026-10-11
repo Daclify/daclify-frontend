@@ -13,9 +13,13 @@ import {
   EvmSignInChallengeSchema,
   canonicalEvmSignInMessage,
   ApiOriginSchema,
+  SignupRoutes,
+  SignupPreparedSchema,
+  SignupMessageSchema,
 } from '@daclify/core-protocol';
 export const AuthChallengePaths = [
   ApiRoutes.challenge.path,
+  SignupRoutes.signupPrepare.path,
   '/v1/account/control',
   ApiRoutes.vaultAttachChallenge.path,
   '/v1/account/native/challenge',
@@ -63,7 +67,27 @@ export function validateAuthChallenge(
     return;
   }
   const raw: unknown = JSON.parse(challenge.message);
-  if (path === ApiRoutes.challenge.path) {
+  if (path === SignupRoutes.signupPrepare.path) {
+    const message = SignupMessageSchema.parse(raw),
+      request = SignupRoutes.signupPrepare.input.parse(input),
+      response = SignupPreparedSchema.parse(body),
+      context = response.context;
+    if (
+      message.origin !== origin ||
+      message.audience !== audience ||
+      message.id !== request.id ||
+      message.id !== response.id ||
+      message.expires !== response.expires ||
+      message.signingKey !== request.signingKey ||
+      JSON.stringify(message.encryptionKey) !== JSON.stringify(request.encryptionKey) ||
+      context.accountId !== message.accountId ||
+      context.origin !== origin ||
+      context.mode !== 'daclify-assisted' ||
+      context.signingPublicKey !== request.signingKey ||
+      JSON.stringify(context.encryptionPublicKey) !== JSON.stringify(request.encryptionKey)
+    )
+      throw new Error('AUTH_AUDIENCE');
+  } else if (path === ApiRoutes.challenge.path) {
     const context = LoginMessageSchema.parse(raw),
       request = ApiRoutes.challenge.input.parse(input);
     if (

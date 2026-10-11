@@ -95,6 +95,7 @@ async function change(method: RecoveryMethod, disable: boolean) {
           method,
           chosen ?? 'daclify-assisted',
           consent.value[method.credentialKey] ?? false,
+          methods.value?.assistedRevision ?? 0,
         );
     if (current === revision && id === props.account.id) {
       methods.value = response;

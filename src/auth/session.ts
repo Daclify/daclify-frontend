@@ -230,6 +230,28 @@ export async function installRecoveredVault(
   vaultUnlocked.value = true;
   touch();
 }
+export async function installCreatedVault(
+  account: Account,
+  input: VaultSecrets,
+  context: RecoveryContext,
+  check: () => void,
+): Promise<void> {
+  check();
+  if (
+    context.origin !== window.location.origin ||
+    context.accountId !== account.id ||
+    context.signingPublicKey !== account.signingKey ||
+    JSON.stringify(context.encryptionPublicKey) !== JSON.stringify(account.encryptionKey)
+  )
+    throw new Error('ACCOUNT_KEY_MISMATCH');
+  const opened = await verifyRecoveryIdentity(input, context),
+    signer = await import('./action-signer');
+  check();
+  secrets = opened;
+  signer.selectedSigner.value = 'vault';
+  vaultUnlocked.value = true;
+  touch();
+}
 export async function unlockAndLogin(password: string, current?: Account): Promise<Account> {
   const started = generation;
   const vault = savedVault();

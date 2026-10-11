@@ -1,4 +1,5 @@
 import { PrivateKey } from '@wharfkit/antelope';
+import { verifyRecoveryIdentity } from '@daclify/core-protocol/sdk';
 import {
   RecoveryKitSchema,
   type RecoveryKit,
@@ -89,26 +90,43 @@ async function protect(secrets: VaultSecrets, password: string): Promise<VaultEn
     ciphertext: base64(new Uint8Array(ciphertext)),
   };
 }
-export async function createVault(password: string): Promise<CreatedVault> {
-  if (password.length < 12) throw new Error('Use at least 12 characters');
+export async function generateVaultSecrets(): Promise<VaultSecrets> {
   const signing = PrivateKey.generate('K1');
   const encryption = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, [
     'deriveBits',
   ]);
-  const encryptionPublicKey = await publicCoordinates(encryption.publicKey);
   const encryptionPrivateKey = await privateCoordinates(encryption.privateKey);
-  const secrets = VaultSecretsSchema.parse({
+  return VaultSecretsSchema.parse({
     signingKey: signing.toString(),
     encryptionPrivateKey,
   });
+}
+export async function createVaultBackup(
+  input: VaultSecrets,
+  password: string,
+): Promise<CreatedVault> {
+  if (password.length < 12) throw new Error('Use at least 12 characters');
+  const parsed = VaultSecretsSchema.parse(input);
+  const signingPublicKey = PrivateKey.from(parsed.signingKey).toPublic().toString();
+  const encryptionPublicKey = EncryptionPublicKeySchema.parse({
+    kty: parsed.encryptionPrivateKey.kty,
+    crv: parsed.encryptionPrivateKey.crv,
+    x: parsed.encryptionPrivateKey.x,
+    y: parsed.encryptionPrivateKey.y,
+  });
+  const secrets = await verifyRecoveryIdentity(parsed, { signingPublicKey, encryptionPublicKey });
   const recoveryCredential = base64(crypto.getRandomValues(new Uint8Array(32)));
   return {
     localEnvelope: await protect(secrets, password),
     recoveryEnvelope: await protect(secrets, recoveryCredential),
     recoveryCredential,
-    signingPublicKey: signing.toPublic().toString(),
+    signingPublicKey,
     encryptionPublicKey,
   };
+}
+export async function createVault(password: string): Promise<CreatedVault> {
+  if (password.length < 12) throw new Error('Use at least 12 characters');
+  return createVaultBackup(await generateVaultSecrets(), password);
 }
 export async function unlockVault(
   envelope: VaultEnvelope,

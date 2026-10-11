@@ -25,7 +25,11 @@ const pendingTelegram = ref<Awaited<ReturnType<typeof api.telegramPendingPair>>>
 const oidcAvailable = computed(
   () => linked.value?.telegram.oidc ?? options.value?.telegram.oidc ?? false,
 );
-const emit = defineEmits<{ authenticated: [account: Account]; busy: [active: boolean] }>();
+const emit = defineEmits<{
+  authenticated: [account: Account];
+  busy: [active: boolean];
+  createAccount: [];
+}>();
 const options = ref<SignInOptions>();
 const optionsLoading = ref(true),
   optionsError = ref('');
@@ -385,6 +389,12 @@ onUnmounted(() => {
       or use a paired wallet.
     </p>
     <p v-if="error" class="alert" role="alert">{{ error }}</p>
+    <a
+      v-if="mode === 'enter' && error === 'That sign-in method is not paired with an account.'"
+      href="#new-account"
+      @click="emit('createAccount')"
+      >Create an account with Telegram or email</a
+    >
     <p v-if="notice" class="notice" role="status">{{ notice }}</p>
     <p v-if="optionsLoading" class="muted" role="status">Checking sign-in options…</p>
     <div v-else-if="optionsError" class="sign-in-options-error" role="alert">
