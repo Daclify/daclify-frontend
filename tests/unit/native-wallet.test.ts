@@ -23,7 +23,10 @@ import {
   nativeRamPurchase,
   nativeTokenPreparation,
   nativeNamesTransaction,
+  nativeResourcePurchase,
 } from '../../src/auth/telos-zero';
+import { ResourcePurchaseSchema } from '../../src/content/contract-resources';
+import { resourceAbi, resourceRawAbi, resourceInfo } from '../fixtures/resource-rpc';
 import {
   makeInstruction,
   encodeAction,
@@ -32,7 +35,7 @@ import {
   nameSellerAction,
   NamesCodeHash,
 } from '@daclify/core-protocol/sdk';
-import { API } from '@wharfkit/antelope';
+import { API, Asset } from '@wharfkit/antelope';
 const chainId = 'ab'.repeat(32),
   key = PrivateKey.generate('K1');
 const wallet = new Session({
@@ -102,7 +105,11 @@ beforeEach(() => {
       {
         abiProvider: {
           getAbi: async (account) =>
-            account.toString() === 'eosio.token' ? tokenAbi : ABI.from(runtimeAbi),
+            account.toString() === 'eosio'
+              ? resourceAbi
+              : account.toString() === 'eosio.token'
+                ? tokenAbi
+                : ABI.from(runtimeAbi),
         },
       },
     );
@@ -110,6 +117,7 @@ beforeEach(() => {
       new Map([
         ['daclifycore', ABI.from(runtimeAbi)],
         ['eosio.token', tokenAbi],
+        ['eosio', resourceAbi],
       ]),
       wallet.permissionLevel,
       { chainId },
@@ -138,6 +146,137 @@ afterEach(() => {
 async function pending() {
   await vi.waitFor(() => expect(started).toBe(true), { timeout: 1000, interval: 1 });
 }
+function resourcePurchase(kind: 'RAM' | 'CPU' | 'NET' = 'RAM') {
+  payoutNetwork();
+  const network = useWorkspace().network;
+  if (!network) throw new Error('EXPECTED_NETWORK');
+  vi.spyOn(wallet.client.v1.chain, 'get_info').mockResolvedValue(
+    API.v1.GetInfoResponse.from(resourceInfo),
+  );
+  vi.spyOn(wallet.client.v1.chain, 'get_raw_abi').mockResolvedValue(resourceRawAbi);
+  vi.spyOn(wallet.client.v1.chain, 'get_currency_balance').mockResolvedValue([
+    Asset.from('20.0000 TLOS'),
+  ]);
+  return ResourcePurchaseSchema.parse({
+    network,
+    receiver: 'daclifycore',
+    kind,
+    units: '12345',
+    systemCodeHash: resourceRawAbi.code_hash.toString(),
+    systemAbiHash: resourceRawAbi.abi_hash.toString(),
+    expires: Math.floor(Date.now() / 1000) + 60,
+  });
+}
+it.each(['RAM', 'CPU', 'NET'] as const)(
+  'broadcasts only the reviewed fixed %s spend from the Anchor payer',
+  async (kind) => {
+    const purchase = resourcePurchase(kind);
+    let sent: SignedTransaction | undefined;
+    vi.spyOn(wallet.client.v1.chain, 'push_transaction').mockImplementation(async (value) => {
+      const transaction =
+        value instanceof PackedTransaction
+          ? value.getSignedTransaction()
+          : SignedTransaction.from(value);
+      sent = transaction;
+      return {
+        transaction_id: transaction.id.toString(),
+        processed: {
+          id: transaction.id.toString(),
+          block_num: 1,
+          block_time: '2026-10-11T12:00:00',
+          receipt: { status: 'executed', cpu_usage_us: 1, net_usage_words: 1 },
+          elapsed: 1,
+          net_usage: 1,
+          scheduled: false,
+          action_traces: [],
+          account_ram_delta: null,
+        },
+      };
+    });
+    const operation = nativeResourcePurchase(purchase, () => {});
+    await pending();
+    resolveApproval();
+    expect(await operation).toMatch(/^[0-9a-f]{64}$/);
+    if (!sent) throw new Error('EXPECTED_TRANSACTION');
+    expect(sent.actions).toHaveLength(1);
+    const action = sent.actions[0];
+    if (!action) throw new Error('EXPECTED_ACTION');
+    expect(action.account.toString()).toBe('eosio');
+    expect(action.authorization.map((level) => level.toString())).toEqual(['alice@active']);
+    expect(
+      Serializer.objectify(
+        Serializer.decode({ abi: resourceAbi, type: action.name.toString(), data: action.data }),
+      ),
+    ).toEqual(
+      kind === 'RAM'
+        ? { payer: 'alice', receiver: 'daclifycore', quant: '1.2345 TLOS' }
+        : {
+            from: 'alice',
+            receiver: 'daclifycore',
+            stake_net_quantity: kind === 'NET' ? '1.2345 TLOS' : '0.0000 TLOS',
+            stake_cpu_quantity: kind === 'CPU' ? '1.2345 TLOS' : '0.0000 TLOS',
+            transfer: false,
+          },
+    );
+  },
+);
+it.each(['disconnect', 'route', 'receiver', 'amount', 'system', 'expiry', 'extra-action'] as const)(
+  'does not broadcast a resource purchase after %s changes during wallet approval',
+  async (change) => {
+    const purchase = resourcePurchase();
+    let unchanged = true;
+    extra = change === 'extra-action';
+    const push = vi.spyOn(wallet.client.v1.chain, 'push_transaction');
+    const operation = nativeResourcePurchase(purchase, () => {
+      if (!unchanged) throw new Error('WALLET_CONTEXT_CHANGED');
+    });
+    await pending();
+    if (change === 'disconnect') nativeWallet.value = undefined;
+    if (change === 'route') globalThis.location.href += '/other';
+    if (change === 'receiver' || change === 'amount') unchanged = false;
+    if (change === 'system')
+      vi.spyOn(wallet.client.v1.chain, 'get_raw_abi').mockResolvedValue(
+        API.v1.GetRawAbiResponse.from({ ...resourceRawAbi, code_hash: 'ef'.repeat(32) }),
+      );
+    if (change === 'expiry') vi.spyOn(Date, 'now').mockReturnValue((purchase.expires + 1) * 1000);
+    resolveApproval();
+    await expect(operation).rejects.toThrow();
+    expect(push).not.toHaveBeenCalled();
+  },
+);
+it('rejects insufficient liquid balance before requesting a resource signature', async () => {
+  const purchase = resourcePurchase();
+  vi.spyOn(wallet.client.v1.chain, 'get_currency_balance').mockResolvedValue([
+    Asset.from('0.0001 TLOS'),
+  ]);
+  await expect(nativeResourcePurchase(purchase, () => {})).rejects.toThrow('RESOURCE_BALANCE');
+  expect(wallet.transact).not.toHaveBeenCalled();
+});
+it('rechecks context after an asynchronous final resource validation', async () => {
+  const purchase = resourcePurchase();
+  let reads = 0;
+  vi.spyOn(wallet.client.v1.chain, 'get_raw_abi').mockImplementation(async () => {
+    if (++reads === 2) nativeWallet.value = undefined;
+    return resourceRawAbi;
+  });
+  const push = vi.spyOn(wallet.client.v1.chain, 'push_transaction');
+  const operation = nativeResourcePurchase(purchase, () => {});
+  await pending();
+  resolveApproval();
+  await expect(operation).rejects.toThrow();
+  expect(push).not.toHaveBeenCalled();
+});
+it('returns an uncertain resource broadcast with its transaction identity for review', async () => {
+  const purchase = resourcePurchase();
+  vi.spyOn(wallet.client.v1.chain, 'push_transaction').mockRejectedValue(new Error('RPC_TIMEOUT'));
+  const operation = nativeResourcePurchase(purchase, () => {});
+  await pending();
+  resolveApproval();
+  await expect(operation).rejects.toMatchObject({
+    message: 'RESOURCE_BROADCAST_UNCONFIRMED',
+    transactionId: expect.stringMatching(/^[0-9a-f]{64}$/),
+  });
+});
 it('rejects names code drift before asking the wallet to sign', async () => {
   payoutNetwork();
   vi.spyOn(wallet.client.v1.chain, 'get_raw_abi').mockResolvedValue(

@@ -1,5 +1,5 @@
 import { shallowRef } from 'vue';
-import { SessionKit, type Session } from '@wharfkit/session';
+import { SessionKit, type Session, type TransactOptions } from '@wharfkit/session';
 import { WebRenderer } from '@wharfkit/web-renderer';
 import { WalletPluginAnchor } from '@wharfkit/wallet-plugin-anchor';
 import { Action, Serializer, SignedTransaction, Transaction } from '@wharfkit/antelope';
@@ -25,11 +25,18 @@ import {
 } from '@daclify/core-protocol/sdk';
 import { api } from '../api/client';
 import { useWorkspace } from '../state/workspace';
+import {
+  ResourcePurchaseSchema,
+  resourceSystemAbi,
+  resourceSystemAction,
+  type ResourcePurchase,
+} from '../content/contract-resources';
 export const nativeWallet = shallowRef<Session>();
 let kit: SessionKit | undefined;
 let configuredChain = '';
 function walletKit(network: Network): SessionKit {
-  if (!kit || configuredChain !== network.chainId) {
+  const configuration = JSON.stringify([network.chainId, network.rpcUrl]);
+  if (!kit || configuredChain !== configuration) {
     nativeWallet.value = undefined;
     kit = new SessionKit(
       {
@@ -40,7 +47,7 @@ function walletKit(network: Network): SessionKit {
       },
       { allowModify: false, expireSeconds: 120 },
     );
-    configuredChain = network.chainId;
+    configuredChain = configuration;
   }
   return kit;
 }
@@ -70,13 +77,18 @@ export function nativeIdentity() {
 async function transactNative(
   action: Action | Action[],
   broadcast: boolean,
-  checkContext: () => void = () => {},
+  checkContext: () => void | Promise<void> = () => {},
+  additionalAbis: NonNullable<TransactOptions['abis']> = [],
 ) {
   const selected = nativeWallet.value;
   if (!selected) throw new Error('NATIVE_WALLET_MISSING');
   const workspace = useWorkspace(),
     accountId = workspace.account?.id,
-    network = JSON.stringify([workspace.network?.chainId, workspace.network?.runtime]),
+    network = JSON.stringify([
+      workspace.network?.chainId,
+      workspace.network?.runtime,
+      workspace.network?.rpcUrl,
+    ]),
     location = globalThis.location?.href;
   const actions = Array.isArray(action) ? action : [action];
   const first = actions[0];
@@ -90,25 +102,35 @@ async function transactNative(
         account: workspace.network?.runtime ?? actions[0]?.account.toString() ?? '',
         abi: runtimeAbi,
       },
+      ...additionalAbis,
     ],
   });
   const transaction = result.resolved?.transaction;
   if (!transaction) throw new Error('NATIVE_PROOF_INVALID');
-  if (
-    network !== JSON.stringify([workspace.network?.chainId, workspace.network?.runtime]) ||
-    location !== globalThis.location?.href ||
-    accountId !== workspace.account?.id ||
-    selected !== nativeWallet.value ||
-    !result.signer.equals(selected.permissionLevel) ||
-    result.chain.id.toString() !== selected.chain.id.toString() ||
-    transaction.actions.length !== actions.length ||
-    !actions.every((expected, index) => transaction.actions[index]?.equals(expected)) ||
-    transaction.context_free_actions.length ||
-    transaction.transaction_extensions.length ||
-    Number(transaction.delay_sec) !== 0
-  )
-    throw new Error('WALLET_CONTEXT_CHANGED');
-  checkContext();
+  const assertContext = () => {
+    if (
+      network !==
+        JSON.stringify([
+          workspace.network?.chainId,
+          workspace.network?.runtime,
+          workspace.network?.rpcUrl,
+        ]) ||
+      location !== globalThis.location?.href ||
+      accountId !== workspace.account?.id ||
+      selected !== nativeWallet.value ||
+      !result.signer.equals(selected.permissionLevel) ||
+      result.chain.id.toString() !== selected.chain.id.toString() ||
+      transaction.actions.length !== actions.length ||
+      !actions.every((expected, index) => transaction.actions[index]?.equals(expected)) ||
+      transaction.context_free_actions.length ||
+      transaction.transaction_extensions.length ||
+      Number(transaction.delay_sec) !== 0
+    )
+      throw new Error('WALLET_CONTEXT_CHANGED');
+  };
+  assertContext();
+  await checkContext();
+  assertContext();
   if (broadcast) {
     const executed = await selected.client.v1.chain.push_transaction(
       SignedTransaction.from({ ...transaction, signatures: result.signatures }),
@@ -121,6 +143,96 @@ async function transactNative(
       throw new Error('NATIVE_EXECUTION_UNCONFIRMED');
   }
   return { transaction, signatures: result.signatures };
+}
+export class ResourceBroadcastUnconfirmed extends Error {
+  constructor(readonly transactionId: string) {
+    super('RESOURCE_BROADCAST_UNCONFIRMED');
+  }
+}
+export async function nativeResourcePurchase(
+  value: ResourcePurchase,
+  checkContext: () => void,
+): Promise<string> {
+  const purchase = ResourcePurchaseSchema.parse(value),
+    wallet = nativeWallet.value;
+  if (!wallet) throw new Error('NATIVE_WALLET_MISSING');
+  const identity = nativeIdentity(),
+    state = useWorkspace();
+  const scope = (network: Network | undefined) =>
+    JSON.stringify([network?.chainId, network?.runtime, network?.rpcUrl]);
+  const expectedScope = scope(purchase.network),
+    accountId = state.account?.id,
+    location = globalThis.location?.href;
+  const check = () => {
+    checkContext();
+    if (
+      nativeWallet.value !== wallet ||
+      nativeIdentity().account !== identity.account ||
+      identity.chainId !== purchase.network.chainId ||
+      wallet.chain.url !== purchase.network.rpcUrl ||
+      scope(state.network) !== expectedScope ||
+      state.account?.id !== accountId ||
+      globalThis.location?.href !== location
+    )
+      throw new Error('WALLET_CONTEXT_CHANGED');
+    const now = Date.now() / 1000;
+    if (purchase.expires <= now || purchase.expires > now + 60)
+      throw new Error('RESOURCE_QUOTE_EXPIRED');
+  };
+  const validate = async () => {
+    check();
+    const [info, raw, balance] = await Promise.all([
+      wallet.client.v1.chain.get_info(),
+      wallet.client.v1.chain.get_raw_abi('eosio'),
+      wallet.client.v1.chain.get_currency_balance('eosio.token', identity.account, 'TLOS'),
+    ]);
+    check();
+    if (info.chain_id.toString() !== purchase.network.chainId)
+      throw new Error('RESOURCE_CHAIN_MISMATCH');
+    if (
+      raw.code_hash.toString() !== purchase.systemCodeHash ||
+      raw.abi_hash.toString() !== purchase.systemAbiHash
+    )
+      throw new Error('RESOURCE_SYSTEM_CHANGED');
+    const liquid = balance[0];
+    if (
+      balance.length !== 1 ||
+      !liquid ||
+      liquid.symbol.toString() !== '4,TLOS' ||
+      BigInt(liquid.units.toString()) < BigInt(purchase.units)
+    )
+      throw new Error('RESOURCE_BALANCE');
+    return resourceSystemAbi(raw);
+  };
+  const abi = await validate();
+  const action = resourceSystemAction(purchase, identity, abi);
+  const result = await transactNative(
+    action,
+    false,
+    async () => {
+      await validate();
+    },
+    [{ account: 'eosio', abi }],
+  );
+  check();
+  const transactionId = result.transaction.id.toString();
+  try {
+    const executed = await wallet.client.v1.chain.push_transaction(
+      SignedTransaction.from({
+        ...result.transaction,
+        signatures: result.signatures,
+      }),
+    );
+    if (
+      executed.transaction_id !== transactionId ||
+      executed.processed.id !== transactionId ||
+      executed.processed.receipt.status !== 'executed'
+    )
+      throw new Error('NATIVE_EXECUTION_UNCONFIRMED');
+    return transactionId;
+  } catch {
+    throw new ResourceBroadcastUnconfirmed(transactionId);
+  }
 }
 export async function nativeRamPurchase(
   value: RamQuote,

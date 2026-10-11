@@ -1,0 +1,183 @@
+{
+  "feature": "Status Contracts RAM/CPU/NET resources and bounded Anchor funding",
+  "date": "2026-10-11",
+  "baselineCommit": "f8819e953dc5d24aa01f36001107c9673a761097",
+  "branch": "dev",
+  "versions": {
+    "frontend": "0.13.0-alpha.4",
+    "coreProtocol": "0.13.0-alpha.4",
+    "modules": "0.9.0-alpha.20",
+    "wharfkitSession": "4.0.2",
+    "wharfkitAntelope": "4.0.2",
+    "anchorPlugin": "4.0.2"
+  },
+  "decisions": [
+    "RAM slider: 100% current quota, 200% double, explicitly confirmed by user.",
+    "Known zero-code service accounts remain selectable and are excluded from contract totals.",
+    "RAM value is current replacement cost including system fee; testnet USD is a mainnet reference.",
+    "CPU/NET slider scales current TLOS stake; zero stake uses an explicit amount; capacity varies.",
+    "Fixed-debit eosio::buyram; payer-owned eosio::delegatebw with transfer=false.",
+    "Direct sponsorship creates no DAO RAM credit or account/governance authority.",
+    "Fresh published USD rate required within 900 seconds; prepared purchase lifetime 60 seconds.",
+    "Live chain, system code/ABI hashes, balance, unchanged action and signing context checked before broadcast.",
+    "Closed modal, navigation, account/network changes or cancelled intent block pending-signature broadcast.",
+    "Unconfirmed submission exposes transaction ID and blocks automatic retry; acknowledgement refreshes resources.",
+    "No new dependency, package pin, backend interface or contract changes."
+  ],
+  "verification": [
+    {
+      "command": "npm run verify",
+      "result": "passed",
+      "details": {
+        "lintPolicyTests": 5,
+        "unitTests": 264,
+        "unitFiles": 40,
+        "vueTypecheck": "passed"
+      },
+      "log": "/data/daclify-runtime/contract-resources-verify-final.log",
+      "sha256": "3ee0d3876722dc446f13cd994c1a407366cbea90af920ca470851ddfbc58ec5e"
+    },
+    {
+      "command": "npm run build",
+      "result": "passed",
+      "details": {
+        "productionBuild": "passed",
+        "warnings": ["Existing Vite large-chunk warning"]
+      },
+      "log": "/data/daclify-runtime/contract-resources-build-final.log",
+      "sha256": "a059d3254b9f0918183fa628a20fcfd805057b3bf5ca274c014b935dc78ddddf"
+    },
+    {
+      "command": "LD_LIBRARY_PATH=/data/daclify-runtime/browser-libs/usr/lib/x86_64-linux-gnu DACLIFY_TEST_UI_PORT=5196 node_modules/.bin/playwright test tests/e2e/contract-resources.spec.ts",
+      "result": "passed",
+      "details": {
+        "browserCases": 20,
+        "projects": ["chromium", "mobile-chromium"],
+        "axeViolations": 0
+      },
+      "log": "/data/daclify-runtime/contract-resources-browser-reviewed.log",
+      "sha256": "bd003dfbdd66db1114fbbd6497902e1f16d787e1df9eff04a577897c0412d417"
+    },
+    {
+      "command": "LD_LIBRARY_PATH=/data/daclify-runtime/browser-libs/usr/lib/x86_64-linux-gnu DACLIFY_TEST_UI_PORT=5196 node_modules/.bin/playwright test tests/e2e/contract-resources.spec.ts tests/e2e/status-map.spec.ts tests/e2e/status-tabs.spec.ts",
+      "result": "passed",
+      "details": {
+        "browserCases": 58,
+        "existingStatusCases": 48,
+        "resourceCases": 10,
+        "note": "Earlier combined run; the final resource suite now has 20 cases and was rerun after final safeguards/layout changes."
+      },
+      "log": "/data/daclify-runtime/contract-resources-browser-final.log",
+      "sha256": "0e2bec150b0fb31acdf2448614d92f6a27f135eeadd3ff050b83e0fe02f819b7"
+    },
+    {
+      "command": "node_modules/.bin/prettier --check src/auth/telos-zero.ts src/components/ContractExplorer.vue src/components/ContractResources.vue src/content/contract-resources.ts tests/unit/native-wallet.test.ts tests/unit/contract-resources.test.ts tests/e2e/contract-resources.spec.ts tests/fixtures/resource-rpc.ts tests/fixtures/resource-wallet-browser.ts docs/releases/requirements.json docs/users/status-contracts.md docs/superpowers/specs/2026-10-11-contract-resources-design.md docs/superpowers/plans/2026-10-11-contract-resources.md docs/evidence/2026-10-11-contract-resources.json && git diff --check",
+      "result": "passed",
+      "details": {
+        "featureFiles": 14,
+        "whitespaceCheck": "passed"
+      },
+      "log": "/data/daclify-runtime/contract-resources-format-acceptance.log",
+      "sha256": "17aa973d3f004560237d9a95171210b0671deff23d61628eecf7322ff5938f20"
+    },
+    {
+      "command": "npm run lint",
+      "result": "passed",
+      "details": {
+        "lintPolicyTests": 5,
+        "note": "Rechecked after evidence and guide edits."
+      },
+      "log": "/data/daclify-runtime/contract-resources-lint-acceptance.log",
+      "sha256": "d62f71c9567a3e7d5a99df805214f4f76531f21cde6dc5e2024648a77c39e67e"
+    }
+  ],
+  "distinctBrowserCases": 68,
+  "redGreenRegressions": [
+    {
+      "log": "/data/daclify-runtime/contract-resources-unit-red.log",
+      "sha256": "b3a76525038d788a236126bf93ea327d2a9e9016b25165c3a4105153ac25fb25",
+      "expectedFailure": "Missing resource helper behavior",
+      "resolution": "Covered by passing final verification/resource browser suites"
+    },
+    {
+      "log": "/data/daclify-runtime/contract-resources-wallet-red.log",
+      "sha256": "a11f372fa67842fa732322f4fbf964e5a6c8c8a1f8f6f9c21c904fb7a786522e",
+      "expectedFailure": "Missing native resource purchase entry point",
+      "resolution": "Covered by passing final verification/resource browser suites"
+    },
+    {
+      "log": "/data/daclify-runtime/contract-resources-browser-red.log",
+      "sha256": "574085408ed3776b855d2948d039887b736315114140181f2056277d4c6ed9e8",
+      "expectedFailure": "Resources button/modal absent",
+      "resolution": "Covered by passing final verification/resource browser suites"
+    },
+    {
+      "log": "/data/daclify-runtime/contract-resources-market-red.log",
+      "sha256": "dde481947831b2575b7f4dd1b56c2fdc72f19350096fea1b74f460c98572076b",
+      "expectedFailure": "RAM market outage incorrectly prevented independent CPU/NET staking",
+      "resolution": "Covered by passing final verification/resource browser suites"
+    },
+    {
+      "log": "/data/daclify-runtime/contract-resources-uncertain-red.log",
+      "sha256": "02e348d1d73ffcfbc5f8554a1204746381d1cfc3c20029c72e8383f99d8aaec8",
+      "expectedFailure": "Acknowledgement did not refresh recipient capacity",
+      "resolution": "Covered by passing final verification/resource browser suites"
+    },
+    {
+      "log": "/data/daclify-runtime/contract-resources-system-red.log",
+      "sha256": "9c464a8aff2997a45c92306513903a6bca60ff364878009d77425d3b4d93bd3b",
+      "expectedFailure": "ABI-only system account with zero code hash was accepted",
+      "resolution": "Covered by passing final verification/resource browser suites"
+    }
+  ],
+  "sourceSha256": {
+    "src/content/contract-resources.ts": "2b90933474e0c1e57ca69b4552ddd67eeaa78af6411b1fc93d517d9253595f09",
+    "src/auth/telos-zero.ts": "487d50e7c5a6a6ffe0d44a50288657638c8eee0762700fee42574f65498c1a3c",
+    "src/components/ContractResources.vue": "be5900bc1e31cd78128c2dd78a6d813714b219c8e5e2ddbd7803ffc09f70ac02",
+    "src/components/ContractExplorer.vue": "5a99b53d7b7ded3f274c02345696c6ea9bd56dedebe33813140808eb57991dbd",
+    "tests/unit/contract-resources.test.ts": "06602ae2208d0a09c117070615cd74a04bda9ef2eb105291567eb9fcf04833d0",
+    "tests/unit/native-wallet.test.ts": "3aef8d8f359e2ae3e435f7fdd5ff94cc2e7aacda0eedaccb13ef8819e0ce4b01",
+    "tests/e2e/contract-resources.spec.ts": "6d14982f990b9e55f3a5bb2b96ade5fee9dc6e6db49ff569c2ec2dd63fee12cc",
+    "tests/fixtures/resource-rpc.ts": "defa643165c07016d3132f1a7c861bbc8b977fbc9a6067c240534b8fa9669a72",
+    "tests/fixtures/resource-wallet-browser.ts": "546251cb9bbac824b0893ada4088e5cb653aa1a523373af937ef5c14cee224be"
+  },
+  "liveReadOnlySmoke": {
+    "frontend": "http://127.0.0.1:5197/status",
+    "api": "https://testnet.api.daclify.com",
+    "rpc": "https://testnet.telos.caleos.io",
+    "chainId": "1eaa0824707c8c16bd25145493bf062aecddfeb56c736f6ba6397f3195f33c9f",
+    "result": {
+      "checkedAt": "2026-10-11T10:43:35.189Z",
+      "totals": "RAM used\n17,170,373 bytes\nRAM allocated\n19,794,833 bytes\nUsed RAM replacement estimate\n$17.42\n983.6635 TLOS",
+      "alerts": [],
+      "mutations": 0,
+      "fitsMobile": true,
+      "limitation": "Read-only API pass-through added localhost CORS headers; no wallet connected or transaction signed. RPC reads used the configured testnet provider."
+    },
+    "screenshots": [
+      "/data/daclify-runtime/contract-resources-live/desktop.png",
+      "/data/daclify-runtime/contract-resources-live/mobile.png"
+    ],
+    "visuallyInspected": true
+  },
+  "review": {
+    "mode": "inline; delegation prohibited by workspace instructions",
+    "unresolvedMaterialFindings": [],
+    "fixedFindings": [
+      "CPU/NET availability independent of RAM market",
+      "Refresh recipient after uncertain submission acknowledgement",
+      "Reject ABI-only system account with zero code hash"
+    ]
+  },
+  "limitations": [
+    "Provider signing and RPC execution tests use a disposable signing fixture and simulated receipts, not a live Anchor session.",
+    "No live signed transaction, resource purchase, asset movement or deployment was performed.",
+    "Local live smoke used real read responses with added localhost CORS headers; deployed-origin CORS was not established.",
+    "Native C++ contract execution was not rerun because contracts were unchanged.",
+    "USD estimates depend on published rate freshness and RAM price at the time of reading."
+  ],
+  "delivery": {
+    "target": "origin/dev",
+    "commitLookup": "git log -- docs/evidence/2026-10-11-contract-resources.json"
+  }
+}

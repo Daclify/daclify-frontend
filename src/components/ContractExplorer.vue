@@ -14,6 +14,7 @@ import {
 
 import PermissionMap from './PermissionMap.vue';
 import ContractDiagram from './ContractDiagram.vue';
+import ContractResources from './ContractResources.vue';
 
 const props = defineProps<{ chain: PlatformStatus['chain']; active: boolean }>();
 const selectedAccount = ref(''),
@@ -196,9 +197,23 @@ onUnmounted(cancelResources);
         <h2>Contracts and service accounts</h2>
         <p>Explore how accounts connect and who can authorize them.</p>
       </div>
-      <RouterLink to="/docs/contract-permissions"
-        >Permission guide <ArrowRight :size="16" aria-hidden="true"
-      /></RouterLink>
+      <div class="explorer-actions">
+        <ContractResources
+          v-if="chain && contracts.length"
+          :chain="chain"
+          :active="active"
+          :readings="readings"
+          :busy="resourceBusy"
+          :failures="failures"
+          :read-error="resourceError"
+          :checked-at="resourceChecked"
+          :selected="selected?.account ?? ''"
+          @refresh="readResources"
+        />
+        <RouterLink to="/docs/contract-permissions"
+          >Permission guide <ArrowRight :size="16" aria-hidden="true"
+        /></RouterLink>
+      </div>
     </div>
     <template v-if="contracts.length">
       <ContractDiagram
@@ -381,6 +396,12 @@ onUnmounted(cancelResources);
 </template>
 
 <style scoped>
+.explorer-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
 .contract-explorer {
   min-width: 0;
 }

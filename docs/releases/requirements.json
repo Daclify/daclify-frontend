@@ -1,6 +1,14 @@
 {
   "requirements": [
     {
+      "id": "CONTRACT-RESOURCE-VALUES-AND-ANCHOR-TOPUPS",
+      "tests": [
+        "tests/unit/contract-resources.test.ts",
+        "tests/unit/native-wallet.test.ts",
+        "tests/e2e/contract-resources.spec.ts"
+      ]
+    },
+    {
       "id": "ACCOUNT-ENTRY-AND-PROVIDER-CHOICES",
       "tests": [
         "tests/e2e/account-entry-experience.spec.ts",
