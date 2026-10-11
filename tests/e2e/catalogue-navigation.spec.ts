@@ -148,7 +148,7 @@ test('sidebar order and icon fold control match the workspace navigation', async
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   await navigation.getByRole('link', { name: 'Telos DAO', exact: true }).click();
   await expect(page).toHaveURL(/\/telos$/);
-  await expect(page.getByRole('heading', { name: 'Telos governance', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Telos DAO', exact: true })).toBeVisible();
   await openMenu(page);
   await expect(navigation.getByRole('link', { name: 'Telos DAO', exact: true })).toHaveAttribute(
     'aria-current',

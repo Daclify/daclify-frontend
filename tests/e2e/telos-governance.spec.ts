@@ -55,6 +55,20 @@ const active = TelosBallotSchema.parse({
   begin_time: '2020-01-01T00:00:00',
   end_time: '2090-01-01T00:00:00',
 });
+const foundation = {
+  ...active,
+  ballot_name: 'tfvt........2',
+  category: 'leaderboard',
+  publisher: 'tf',
+  status: 'closed',
+  title: 'TF Board Election',
+  end_time: '2023-07-24T21:58:42',
+  options: [
+    { key: 'alice', value: '12.5000 VOTE' },
+    { key: 'bob', value: '10.0000 VOTE' },
+  ],
+  total_voters: 7,
+};
 async function fixture(
   page: Page,
   signing = true,
@@ -167,6 +181,52 @@ async function fixture(
         session ? { json: { account } } : { status: 401, json: { code: 'AUTH_REQUIRED' } },
       );
     if (path === '/v1/me/memberships') return route.fulfill({ json: { memberships: [] } });
+    if (path === '/v1/telos/producers')
+      return route.fulfill({
+        json: {
+          source: { chainId, rpcUrl: source.rpcUrl, environment: 'testnet', contract: 'eosio' },
+          producers: [
+            {
+              owner: 'alice',
+              total_votes: '1200.5',
+              is_active: true,
+              url: 'javascript:alert(1)',
+              location: 840,
+            },
+            {
+              owner: 'bob',
+              total_votes: '999.0',
+              is_active: true,
+              url: 'https://example.test',
+              location: 826,
+            },
+          ],
+          activeSchedule: ['bob'],
+          scheduleVersion: 42,
+          totalVoteWeight: '5000.0',
+          nextCursor: null,
+          observedAt: new Date().toISOString(),
+        },
+      });
+    if (path === '/v1/telos/ballots/tfvt........2')
+      return route.fulfill({
+        json: {
+          source,
+          ballot: foundation,
+          signingAvailable: signing,
+          observedAt: new Date().toISOString(),
+        },
+      });
+    if (path === '/v1/telos/ballots' && url.searchParams.get('kind') === 'foundation')
+      return route.fulfill({
+        json: {
+          source,
+          ballots: [foundation],
+          nextCursor: null,
+          observedAt: new Date().toISOString(),
+          signingAvailable: signing,
+        },
+      });
     if (path === '/v1/telos/ballots')
       return route.fulfill({
         json: {
@@ -314,8 +374,8 @@ test('public history and active elections need no account and reject unsafe cont
   page,
 }) => {
   const flow = await fixture(page);
-  await page.goto('/telos');
-  await expect(page.getByRole('heading', { name: 'Telos governance', exact: true })).toBeVisible();
+  await page.goto('/telos?section=elections&publisher=all');
+  await expect(page.getByRole('heading', { name: 'Telos DAO', exact: true })).toBeVisible();
   await expect(
     page.getByRole('button', { name: 'Past council election', exact: true }),
   ).toBeVisible();
@@ -325,11 +385,101 @@ test('public history and active elections need no account and reject unsafe cont
   expect((await new AxeBuilder({ page }).include('#main').analyze()).violations).toEqual([]);
   expect(flow.counts()).toEqual({ signupCount: 0, broadcasts: 0 });
 });
+test('Foundation elections and producer schedules have separate readable public views', async ({
+  page,
+}) => {
+  const flow = await fixture(page);
+  await page.goto('/telos?section=elections');
+  await expect(page.getByRole('heading', { name: 'Telos DAO', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'TF Board Election', exact: true }).click();
+  const detail = page.getByRole('article', { name: 'Selected ballot' });
+  await expect(detail.getByText('12.5000 VOTE', { exact: true })).toBeVisible();
+  await expect(detail.getByText('Telos Foundation', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Block Producers', exact: true }).click();
+  const producers = page.getByRole('region', { name: 'Block producer standings' });
+  await expect(producers.getByText('bob', { exact: true })).toBeVisible();
+  await expect(producers.getByText('Active schedule', { exact: true })).toHaveCount(1);
+  await expect(producers.getByRole('link', { name: 'Producer website' })).toHaveCount(1);
+  expect((await new AxeBuilder({ page }).include('#main').analyze()).violations).toEqual([]);
+  expect(flow.counts()).toEqual({ signupCount: 0, broadcasts: 0 });
+});
+test('continues through empty election pages and appends later records', async ({ page }) => {
+  await fixture(page, false);
+  await page.route('**/v1/telos/ballots?*', (route) => {
+    const cursor = new URL(route.request().url()).searchParams.get('cursor');
+    return route.fulfill({
+      json: {
+        source,
+        ballots:
+          cursor === null
+            ? []
+            : cursor === '2'
+              ? [foundation]
+              : [
+                  {
+                    ...foundation,
+                    ballot_name: 'tfvt........3',
+                    title: 'Later Foundation election',
+                  },
+                ],
+        nextCursor: cursor === null ? '2' : cursor === '2' ? '3' : null,
+        observedAt: new Date().toISOString(),
+        signingAvailable: false,
+      },
+    });
+  });
+  await page.goto('/telos?section=elections');
+  await expect(page.getByRole('button', { name: 'TF Board Election', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Load more records', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: 'Later Foundation election', exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'TF Board Election', exact: true })).toBeVisible();
+});
+test('reports an unavailable producer schedule without claiming an empty active set', async ({
+  page,
+}) => {
+  await fixture(page, false);
+  await page.route('**/v1/telos/producers', (route) =>
+    route.fulfill({
+      json: {
+        source: { chainId, rpcUrl: source.rpcUrl, environment: 'testnet', contract: 'eosio' },
+        producers: [],
+        activeSchedule: [],
+        scheduleVersion: null,
+        totalVoteWeight: '0.0',
+        nextCursor: null,
+        observedAt: new Date().toISOString(),
+      },
+    }),
+  );
+  await page.goto('/telos?section=producers');
+  await expect(page.getByText('Active schedule unavailable', { exact: true })).toBeVisible();
+});
+test('returning from producers starts one election read', async ({ page }) => {
+  await fixture(page, false);
+  let reads = 0;
+  page.on('request', (request) => {
+    if (request.url().includes('/v1/telos/ballots?kind=foundation')) reads++;
+  });
+  await page.goto('/telos?section=elections');
+  await expect(page.getByRole('button', { name: 'TF Board Election', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Block Producers', exact: true }).click();
+  await expect(
+    page
+      .getByRole('region', { name: 'Block producer standings' })
+      .getByText('bob', { exact: true }),
+  ).toBeVisible();
+  const before = reads;
+  await page.getByRole('button', { name: 'Elections', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'TF Board Election', exact: true })).toBeVisible();
+  expect(reads).toBe(before + 1);
+});
 test('first native vote verifies signup and casts the external vote without DAO membership', async ({
   page,
 }) => {
   const flow = await fixture(page);
-  await page.goto('/telos');
+  await page.goto('/telos?section=elections&publisher=all');
   await page.getByRole('button', { name: 'Council election', exact: true }).click();
   await flow.install();
   await page.getByLabel('yes', { exact: true }).check();
@@ -345,7 +495,7 @@ test('first native vote verifies signup and casts the external vote without DAO 
 });
 test('read-only connections keep history available without offering a vote', async ({ page }) => {
   const flow = await fixture(page, false);
-  await page.goto('/telos');
+  await page.goto('/telos?section=elections&publisher=all');
   await page.getByRole('button', { name: 'Council election', exact: true }).click();
   await expect(
     page.getByRole('button', { name: 'Vote with Telos Zero', exact: true }),

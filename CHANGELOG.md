@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.14.0-alpha.3 development
+
+Redesign Telos DAO with separate Ballots, Foundation/network Elections and Block Producers views, responsive cards, candidate totals and retained history. Append loaded records and guard stale requests. Consume modules 0.10.0-alpha.2 and core protocol 0.14.0-alpha.2; preserve the native wallet and pending-vote flow.
+
 ## 0.13.0-alpha.3 development
 
 Browse paged Names inventory without losing earlier entries, reject ordinary seller listings through the producer SDK, and distinguish Relay/Fees service accounts from deployed contracts. Preserve permission trees, configured relationships and RAM/CPU/NET details. Consume core 0.13.0-alpha.3 and modules 0.9.0-alpha.19.

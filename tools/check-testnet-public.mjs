@@ -112,9 +112,7 @@ try {
       if (await menu.isVisible()) await menu.click();
       await navigation.getByRole('link', { name: 'Telos DAO', exact: true }).click();
       await expect(page).toHaveURL(origin + '/telos');
-      await expect(
-        main.getByRole('heading', { name: 'Telos governance', exact: true }),
-      ).toBeVisible();
+      await expect(main.getByRole('heading', { name: 'Telos DAO', exact: true })).toBeVisible();
       await expect(main.locator('.ballot-list li').first()).toBeVisible({ timeout: 25000 });
       await main.getByRole('button', { name: 'History', exact: true }).click();
       await expect(main.locator('.ballot-list li').first()).toBeVisible();
@@ -123,6 +121,28 @@ try {
       await checkLayout();
       await page.screenshot({
         path: `.artifacts/public/telos-dao-${viewport.width}.png`,
+        fullPage: true,
+      });
+      await main.getByRole('button', { name: 'Elections', exact: true }).click();
+      await expect(
+        main.getByRole('heading', { name: 'Foundation elections', exact: true }),
+      ).toBeVisible();
+      await expect(main.locator('.ballot-list li').first()).toBeVisible({ timeout: 30000 });
+      await main.locator('.ballot-list button').first().click();
+      await expect(main.getByRole('region', { name: 'Recorded voting totals' })).toBeVisible();
+      await checkLayout();
+      await page.screenshot({
+        path: `.artifacts/public/telos-elections-${viewport.width}.png`,
+        fullPage: true,
+      });
+      await main.getByRole('button', { name: 'Block Producers', exact: true }).click();
+      const producers = main.getByRole('region', { name: 'Block producer standings' });
+      await expect(producers.locator('.producer-list li').first()).toBeVisible({ timeout: 25000 });
+      await expect(producers).toContainText('producers in the active schedule');
+      await expect(producers).toContainText('Source: eosio');
+      await checkLayout();
+      await page.screenshot({
+        path: `.artifacts/public/telos-producers-${viewport.width}.png`,
         fullPage: true,
       });
 

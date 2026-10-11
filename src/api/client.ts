@@ -2,7 +2,12 @@ import { ModuleCodeHashes } from '@daclify/modules/sdk';
 import { ModuleApiRoutes, CONTRACT_VERSION, type ModuleState } from '@daclify/modules';
 import { ArchiveRoutes } from '@daclify/modules/archive';
 import { z } from 'zod';
-import { TelosGovernanceRoutes, TelosVoteInputSchema, type TelosVoteInput } from '@daclify/modules';
+import {
+  TelosGovernanceRoutes,
+  TelosVoteInputSchema,
+  type TelosVoteInput,
+  type TelosBallotKind,
+} from '@daclify/modules';
 import {
   PeopleRoutes,
   ContentPageQuerySchema,
@@ -1076,11 +1081,21 @@ export const api = {
           NativeFinishSchema.parse({ id, proof }),
         ),
   unlinkNative: (chainId: string) => request('/v1/account/native/unlink', z.null(), { chainId }),
-  telosBallots: (cursor?: string) =>
+  telosBallots: (cursor?: string, kind?: TelosBallotKind) =>
     request(
       TelosGovernanceRoutes.ballots.path +
-        (cursor === undefined ? '' : '?cursor=' + encodeURIComponent(cursor)),
+        '?' +
+        new URLSearchParams({
+          ...(cursor ? { cursor } : {}),
+          ...(kind ? { kind } : {}),
+        }).toString(),
       TelosGovernanceRoutes.ballots.response,
+    ),
+  telosProducers: (cursor?: string) =>
+    request(
+      TelosGovernanceRoutes.producers.path +
+        (cursor ? '?cursor=' + encodeURIComponent(cursor) : ''),
+      TelosGovernanceRoutes.producers.response,
     ),
   telosBallot: (ballot: string) =>
     request(

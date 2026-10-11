@@ -168,18 +168,6 @@ test('keeps account tasks compact and all paired methods reachable by keyboard',
     document.documentElement.style.fontSize = '200%';
   });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  expect(
-    await page.evaluate(() => {
-      const heading = document.querySelector('.settings-heading h1')?.getBoundingClientRect();
-      const help = document.querySelector('.settings-heading .help-link')?.getBoundingClientRect();
-      return (
-        !!heading &&
-        !!help &&
-        (heading.bottom <= help.top ||
-          help.bottom <= heading.top ||
-          heading.right <= help.left ||
-          help.right <= heading.left)
-      );
-    }),
-  ).toBe(true);
+  await expect(page.getByRole('heading', { name: 'Your account', exact: true })).toBeVisible();
+  await expect(page.locator('.settings-heading .help-link')).toHaveCount(0);
 });
