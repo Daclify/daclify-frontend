@@ -12,6 +12,8 @@ Current `dev` includes exact native/card RAM consent, separate prepaid storage, 
 
 DAO creation now offers community, NGO / grants, gaming guild, team / cooperative and custom presets, independently of human, mixed or guarded-agent participation. Policy and participant controls are in workspace settings; Works funding can require an executable member vote. Native guardian actions are prepared for external signing. See core's [authority and merge notes](../daclify-backend-core/docs/dao-presets.md).
 
+The user-approved [2026-10-11 testnet rollout](../daclify-backend-core/docs/evidence/2026-10-11-project-audit-testnet-rollout.md) published these matching versions. Actual public desktop/mobile checks passed, including the Relay/Fees service roles, live delegated permission trees, operator links and resources. [Workspace publication instructions](docs/workspace-testnet.md) preserve isolation between ordinary builds and the public app.
+
 ## Screens
 
 | Route                              | Screen                                                                     |
