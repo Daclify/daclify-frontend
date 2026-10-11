@@ -99,7 +99,7 @@ export function nativeIdentity() {
     permission: session.permission.toString(),
   });
 }
-async function transactNative(
+export async function transactNative(
   action: Action | Action[],
   broadcast: boolean,
   checkContext: () => void | Promise<void> = () => {},

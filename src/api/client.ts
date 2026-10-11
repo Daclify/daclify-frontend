@@ -2,6 +2,7 @@ import { ModuleCodeHashes } from '@daclify/modules/sdk';
 import { ModuleApiRoutes, CONTRACT_VERSION, type ModuleState } from '@daclify/modules';
 import { ArchiveRoutes } from '@daclify/modules/archive';
 import { z } from 'zod';
+import { TelosGovernanceRoutes, TelosVoteInputSchema, type TelosVoteInput } from '@daclify/modules';
 import {
   PeopleRoutes,
   ContentPageQuerySchema,
@@ -1019,21 +1020,42 @@ export const api = {
       CredentialHistorySchema,
     ),
   nativeLinks: () => request('/v1/account/native', NativeLinksSchema),
-  nativeChallenge: (purpose: 'login' | 'pair', account: string) =>
+  nativeChallenge: (purpose: 'login' | 'pair' | 'signup', account: string) =>
     request(
       '/v1/account/native/challenge',
       NativeChallengeSchema,
       NativeIntentSchema.parse({ purpose, account, permission: 'active' }),
     ),
-  nativeFinish: (purpose: 'login' | 'pair', id: string, proof: NativeProof) =>
-    purpose === 'login'
-      ? request('/v1/sign-in/native', SessionSchema, NativeFinishSchema.parse({ id, proof }))
+  nativeFinish: (purpose: 'login' | 'pair' | 'signup', id: string, proof: NativeProof) =>
+    purpose !== 'pair'
+      ? request(
+          purpose === 'signup' ? '/v1/sign-up/native' : '/v1/sign-in/native',
+          SessionSchema,
+          NativeFinishSchema.parse({ id, proof }),
+        )
       : request(
           '/v1/account/native/link',
           NativeIdentitySchema,
           NativeFinishSchema.parse({ id, proof }),
         ),
   unlinkNative: (chainId: string) => request('/v1/account/native/unlink', z.null(), { chainId }),
+  telosBallots: (cursor?: string) =>
+    request(
+      TelosGovernanceRoutes.ballots.path +
+        (cursor === undefined ? '' : '?cursor=' + encodeURIComponent(cursor)),
+      TelosGovernanceRoutes.ballots.response,
+    ),
+  telosBallot: (ballot: string) =>
+    request(
+      '/v1/telos/ballots/' + encodeURIComponent(ballot),
+      TelosGovernanceRoutes.ballot.response,
+    ),
+  telosPrepare: (input: TelosVoteInput) =>
+    request(
+      TelosGovernanceRoutes.prepare.path,
+      TelosGovernanceRoutes.prepare.response,
+      TelosVoteInputSchema.parse(input),
+    ),
   startEmailLink: (email: string) =>
     request('/v1/sign-in/email/start', EmailStartSchema, SignInEmailSchema.parse({ email })),
   confirmEmailLink: (email: string, code: string) =>
@@ -1114,6 +1136,28 @@ export const api = {
   },
 };
 export function friendlyError(error: unknown): string {
+  const telosMessages: Record<string, string> = {
+    TELOS_UNAVAILABLE: 'Telos ballot records are temporarily unavailable. Try again later.',
+    TELOS_CHAIN_MISMATCH:
+      'The connection returned a different chain. Ask the operator to verify its Telos network.',
+    TELOS_CURSOR_INVALID: 'The ballot page changed. Refresh records and try again.',
+    TELOS_BALLOT_UNKNOWN: 'This ballot is unavailable or belongs to another treasury.',
+    TELOS_BALLOT_UNSUPPORTED:
+      'This ballot uses voting rules that this app does not support. Open the Telos voting app to review it.',
+    TELOS_BALLOT_CLOSED: 'This ballot is outside its voting period. Refresh its records.',
+    TELOS_OPTIONS_INVALID: 'Review the allowed selections for this ballot.',
+    TELOS_ALREADY_VOTED: 'This ballot already records your vote and does not allow revoting.',
+    TELOS_NO_WEIGHT:
+      'The Telos voter record has no voting weight for this ballot. Review or refresh your stake in the Telos voting app.',
+    TELOS_VOTE_UNAVAILABLE:
+      'Voting is unavailable on this connection. Ask the operator to verify its contract version.',
+    TELOS_BALLOT_CHANGED:
+      'The ballot or your voting power changed during approval. Refresh and review your vote again.',
+    TELOS_PREPARATION_EXPIRED: 'The vote preparation expired. Refresh and review your vote again.',
+  };
+  const code =
+    error instanceof ApiFailure ? error.code : error instanceof Error ? error.message : undefined;
+  if (code && telosMessages[code]) return telosMessages[code];
   if (error instanceof ApiFailure) {
     const messages: Record<string, string> = {
       RECOVERY_UNAVAILABLE:

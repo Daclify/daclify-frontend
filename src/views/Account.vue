@@ -539,7 +539,15 @@ function backup() {
             }}</span>
           </div>
           <p v-if="vaultUnlocked">Ready to sign actions and open your private documents.</p>
-          <p v-if="state.account.signingKey === null" class="notice" role="status">
+          <p
+            v-if="state.account.signingKey === null && state.account.walletOrigin === 'signup'"
+            class="notice"
+            role="status"
+          >
+            Your Telos Zero wallet opens this Daclify account. Set up Daclify keys when you want to
+            join or create another DAO and use its private content.
+          </p>
+          <p v-else-if="state.account.signingKey === null" class="notice" role="status">
             Your wallet restores access to its current on-chain memberships and permissions. Your
             original document-decryption keys and lost social-login pairings have not been restored.
             To recover private content, import your original encrypted kit and confirm with your

@@ -29,6 +29,7 @@ const guideGroups = [
       'representative-elections',
       'agents',
       'telos-governance',
+      'telos-network-ballots',
     ],
   },
   {

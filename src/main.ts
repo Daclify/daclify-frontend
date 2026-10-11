@@ -27,6 +27,7 @@ const router = createRouter({
       },
     },
     { path: '/hub', component: () => import('./views/Hub.vue') },
+    { path: '/telos', component: () => import('./views/TelosGovernance.vue') },
     { path: '/users', component: () => import('./views/Users.vue') },
     { path: '/users/me', component: () => import('./views/UserDetail.vue') },
     { path: '/users/:daoId/:memberId', component: () => import('./views/UserDetail.vue') },
