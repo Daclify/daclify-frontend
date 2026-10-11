@@ -63,6 +63,10 @@ group, and search expands matching groups. Full guide text appears only after
 selecting a guide. Search still covers guide contents, collection filters remain
 available, and guide links retain their DAO context and release verification.
 New topics without an assigned group appear under More guides.
+The `/docs/connected-apps` guide documents the proposed external mini-app integration
+and links to a reusable garden-app design. It explains several apps per public or
+private DAO, member-authorised recording, protected evidence and implementation
+dependencies; it does not advertise available external login/activity APIs.
 On narrow screens the overview uses only the collection cards; individual guides
 show the contents menu, avoiding two copies of the index before the reader gets
 to the content.

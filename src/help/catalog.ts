@@ -74,6 +74,7 @@ const guideGroups = [
     description:
       'Run an independent deployment, configure services and check contract permissions.',
     topicIds: [
+      'connected-apps',
       'independent-operators',
       'providers',
       'platform',
