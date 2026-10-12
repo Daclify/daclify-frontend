@@ -48,6 +48,9 @@ import {
   type UserMembership,
   SessionSchema,
   AccountControlPaths,
+  ProfileContextSchema,
+  profileCipherDomain,
+  type ProfileContext,
   AccountControlChallengeSchema,
   type AccountControlChallenge,
   type AccountControlProof,
@@ -1045,6 +1048,49 @@ export const api = {
       `/v1/profile?daoId=${IdSchema.parse(daoId)}&memberId=${IdSchema.parse(memberId)}`,
       MemberProfileSchema,
     ),
+  shareProfileKeys: (input: z.infer<typeof ApiRoutes.profileKeysShare.input>) => {
+    const body = ApiRoutes.profileKeysShare.input.parse(input);
+    assertOperatorDao({
+      chainId: body.context.chainId,
+      contract: body.context.runtime,
+      daoId: body.context.daoId,
+      interfaceVersion: 1,
+    });
+    return request(ApiRoutes.profileKeysShare.path, ApiRoutes.profileKeysShare.response, body);
+  },
+  removeProfileKeys: (input: z.infer<typeof ApiRoutes.profileKeysRemove.input>) => {
+    const body = ApiRoutes.profileKeysRemove.input.parse(input);
+    assertOperatorDao({
+      chainId: body.context.chainId,
+      contract: body.context.runtime,
+      daoId: body.context.daoId,
+      interfaceVersion: 1,
+    });
+    return request(ApiRoutes.profileKeysRemove.path, ApiRoutes.profileKeysRemove.response, body);
+  },
+  profileKeys: async (input: ProfileContext) => {
+    const context = ProfileContextSchema.parse(input);
+    assertOperatorDao({
+      chainId: context.chainId,
+      contract: context.runtime,
+      daoId: context.daoId,
+      interfaceVersion: 1,
+    });
+    const grant = await request(
+      `/v1/profiles/${context.daoId}/${context.memberId}/keys/${context.profileRevision}`,
+      ApiRoutes.profileKeysGet.response,
+    );
+    if (profileCipherDomain(context) !== profileCipherDomain(grant.context))
+      throw new Error('PROFILE_KEY_CONTEXT');
+    return grant;
+  },
+  profileRecipients: (daoId: string, after?: string) => {
+    const query = ApiRoutes.profileRecipients.query.parse({ ...(after ? { after } : {}) });
+    return request(
+      `/v1/profiles/${IdSchema.parse(daoId)}/recipients${query.after ? '?after=' + query.after : ''}`,
+      ApiRoutes.profileRecipients.response,
+    );
+  },
   people: (value: z.infer<typeof PeopleRoutes.list.query> = {}) => {
     const query = PeopleRoutes.list.query.parse(value);
     const params = new URLSearchParams();

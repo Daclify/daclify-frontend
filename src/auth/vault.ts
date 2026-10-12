@@ -1,6 +1,20 @@
 import { PrivateKey } from '@wharfkit/antelope';
 import { verifyRecoveryIdentity } from '@daclify/core-protocol/sdk';
 import {
+  encryptProfile,
+  decryptProfile,
+  sealProfileKey,
+  openProfileKey,
+  profileCiphertextCommitment,
+} from '@daclify/core-protocol/profiles';
+import {
+  EncryptedProfileSchema,
+  ProfileShareSchema,
+  type ProfileContext,
+  type EncryptedProfile,
+  type ProfileKeyGrant,
+} from '@daclify/core-protocol';
+import {
   RecoveryKitSchema,
   type RecoveryKit,
   VaultEnvelopeSchema,
@@ -319,4 +333,49 @@ export async function openCommittedEpoch(
   const key = await openEpochGrant(recipient, grant, domain);
   if ((await sha256Hex(key)) !== commitment) throw new Error('EPOCH_KEY_MISMATCH');
   return key;
+}
+export async function sealProfileForAudience(
+  plaintext: Uint8Array,
+  context: ProfileContext,
+  owner: EncryptionPublicKey,
+  selected: EncryptionPublicKey[] = [],
+): Promise<{ cipher: EncryptedProfile; grants: ProfileKeyGrant[] }> {
+  const audience = new Map<string, EncryptionPublicKey>();
+  for (const input of [owner, ...selected]) {
+    const key = EncryptionPublicKeySchema.parse(input);
+    audience.set(JSON.stringify(key), key);
+  }
+  if (audience.size > 64) throw new Error('PROFILE_AUDIENCE_LIMIT');
+  const key = crypto.getRandomValues(new Uint8Array(32));
+  try {
+    const cipher = await encryptProfile(plaintext, key, context);
+    const commitment = await profileCiphertextCommitment(cipher);
+    const grants = await Promise.all(
+      [...audience.values()].map((recipient) =>
+        sealProfileKey(key, recipient, cipher.context, commitment),
+      ),
+    );
+    return { cipher, grants: ProfileShareSchema.parse({ context: cipher.context, grants }).grants };
+  } finally {
+    key.fill(0);
+  }
+}
+export async function openProfileWithGrant(
+  input: EncryptedProfile,
+  grant: ProfileKeyGrant | undefined,
+  recipient: EncryptionPrivateKey,
+): Promise<Uint8Array> {
+  if (!grant) throw new Error('PROFILE_KEY_UNAVAILABLE');
+  const cipher = EncryptedProfileSchema.parse(input);
+  const key = await openProfileKey(
+    grant,
+    recipient,
+    cipher.context,
+    await profileCiphertextCommitment(cipher),
+  );
+  try {
+    return await decryptProfile(cipher, key, cipher.context);
+  } finally {
+    key.fill(0);
+  }
 }

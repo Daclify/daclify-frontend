@@ -25,6 +25,10 @@ import {
   type RecoveryContext,
   DeviceRecoveryRequestSchema,
   type DeviceRecoveryRequest,
+  type ProfileContext,
+  type EncryptedProfile,
+  type ProfileKeyGrant,
+  type EncryptionPublicKey,
 } from '@daclify/core-protocol';
 import {
   instructionDigest,
@@ -48,6 +52,8 @@ import {
   openContent,
   sha256Hex,
   type CreatedVault,
+  sealProfileForAudience,
+  openProfileWithGrant,
 } from './vault';
 import {
   preparePrivateFile,
@@ -67,7 +73,11 @@ setAccountControlSigner(async (challenge) => {
   if (message.origin !== window.location.origin || message.accountId !== useWorkspace().account?.id)
     throw new Error('ACCOUNT_KEY_MISMATCH');
   const { selectedSigner } = await import('./action-signer');
-  const rootRequired = message.path === ApiRoutes.accountReconnectNative.path;
+  const rootRequired = [
+    ApiRoutes.accountReconnectNative.path,
+    ApiRoutes.profileKeysShare.path,
+    ApiRoutes.profileKeysRemove.path,
+  ].some((path) => path === message.path);
   if (!rootRequired && selectedSigner.value === 'native') {
     const { nativeIdentity, nativeIntentProof } = await import('./telos-zero');
     const identity = nativeIdentity(),
@@ -427,6 +437,43 @@ export function downloadBackup(record: SavedVault): void {
 
 function guardEpochAccess(started: number): void {
   if (!secrets || generation !== started) throw new Error('VAULT_LOCKED');
+}
+export async function preparePrivateProfile(
+  plaintext: Uint8Array,
+  context: ProfileContext,
+  audience: EncryptionPublicKey[] = [],
+) {
+  const started = generation,
+    opened = secrets;
+  if (!opened) throw new Error('VAULT_LOCKED');
+  touch();
+  const privateKey = opened.encryptionPrivateKey;
+  const owner = EncryptionPublicKeySchema.parse({
+    kty: privateKey.kty,
+    crv: privateKey.crv,
+    x: privateKey.x,
+    y: privateKey.y,
+  });
+  const prepared = await sealProfileForAudience(plaintext, context, owner, audience);
+  guardEpochAccess(started);
+  return prepared;
+}
+export async function openPrivateProfile(
+  cipher: EncryptedProfile,
+  grant: ProfileKeyGrant | undefined,
+) {
+  const started = generation,
+    opened = secrets;
+  if (!opened) throw new Error('VAULT_LOCKED');
+  touch();
+  const plaintext = await openProfileWithGrant(cipher, grant, opened.encryptionPrivateKey);
+  try {
+    guardEpochAccess(started);
+    return plaintext;
+  } catch (error) {
+    plaintext.fill(0);
+    throw error;
+  }
 }
 export async function prepareAppEpoch(
   dao: DaoRef,
