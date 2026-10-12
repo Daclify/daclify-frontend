@@ -93,6 +93,9 @@ describe('versioned handbook catalog', () => {
       groups.find((group) => group.id === 'getting-started')?.topics.map((topic) => topic.id),
     ).toContain('accounts');
     expect(
+      groups.find((group) => group.id === 'governance')?.topics.map((topic) => topic.id),
+    ).toContain('governing-documents');
+    expect(
       groups.find((group) => group.id === 'operators')?.topics.map((topic) => topic.id),
     ).toContain('contract-permissions');
     expect(groups.some((group) => group.id === 'more-guides')).toBe(false);

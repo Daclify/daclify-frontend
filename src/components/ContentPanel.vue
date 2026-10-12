@@ -25,6 +25,8 @@ import { decodeStoredBytes, verifyStoredFile, downloadFile } from '../content/fi
 import FilePanel from './FilePanel.vue';
 import AdmissionPanel from './AdmissionPanel.vue';
 import MemberDirectory from './MemberDirectory.vue';
+import GoverningDocumentsPanel from './GoverningDocumentsPanel.vue';
+import { sha256Hex } from '../auth/vault';
 import { useWorkspace } from '../state/workspace';
 import { canSignMember } from '../auth/action-signer';
 import { planPrivateAccess, privateSuccessors } from '../auth/private-access';
@@ -611,8 +613,10 @@ async function retrieve(document: DaoContent['documents'][number]) {
         content.value,
         stored,
       );
-      if (current() && vaultUnlocked.value && props.member?.active)
+      if (current() && vaultUnlocked.value && props.member?.active) {
         downloadFile(opened.bytes, opened.metadata);
+        return true;
+      }
     } else {
       const metadata =
         document.metadata === '{}'
@@ -622,13 +626,32 @@ async function retrieve(document: DaoContent['documents'][number]) {
               mediaType: 'application/octet-stream',
             }
           : JSON.parse(document.metadata);
-      if (current()) downloadFile(stored, FileMetadataSchema.parse(metadata));
+      if (current()) {
+        downloadFile(stored, FileMetadataSchema.parse(metadata));
+        return true;
+      }
     }
   } catch (cause) {
     error.value = friendlyError(cause);
   } finally {
     busy.value = false;
   }
+  return false;
+}
+async function openManagedVersion(
+  document: DaoContent['documents'][number],
+): Promise<string | undefined> {
+  if (document.cid)
+    return (await retrieve(document))
+      ? 'The verified file has been downloaded. Review it before accepting.'
+      : undefined;
+  if (document.envelope_version === 1) {
+    await decrypt(document);
+    return decrypted.value.get(document.id);
+  }
+  if ((await sha256Hex(new TextEncoder().encode(document.metadata))) !== document.commitment)
+    throw new Error('DOCUMENT_INTEGRITY');
+  return document.metadata;
 }
 </script>
 <template>
@@ -701,7 +724,15 @@ async function retrieve(document: DaoContent['documents'][number]) {
     <p v-if="accessNote" role="status">{{ accessNote }}</p>
   </section>
   <template v-if="section === 'documents'"
-    ><section v-if="privateDao" class="panel narrow">
+    ><GoverningDocumentsPanel
+      :key="context"
+      :dao="dao"
+      :member="member"
+      :content="content"
+      :open-version="openManagedVersion"
+      @updated="refresh"
+    />
+    <section v-if="privateDao" class="panel narrow">
       <h3>Encryption epoch {{ currentEpoch }}</h3>
       <p v-if="hasCurrentKey">Encryption epoch ready</p>
       <p v-else-if="!member?.active">

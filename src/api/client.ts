@@ -250,6 +250,41 @@ export function verifiedModuleRelease(state: ModuleState): ModuleState {
   };
 }
 export const api = {
+  clearGoverningDocuments: (input: z.infer<typeof ModuleApiRoutes.clearDocuments.input>) =>
+    request(
+      ModuleApiRoutes.clearDocuments.path,
+      ModuleApiRoutes.clearDocuments.response,
+      ModuleApiRoutes.clearDocuments.input.parse(input),
+    ),
+  governingDocuments: async (
+    daoId: string,
+    query: z.infer<typeof ModuleApiRoutes.documents.query> = {},
+  ) => {
+    const id = IdSchema.parse(daoId);
+    const page = await request(
+      ModuleApiRoutes.documents.path.replace(':id', id) +
+        '?' +
+        new URLSearchParams(
+          Object.entries(ModuleApiRoutes.documents.query.parse(query)).flatMap(([key, value]) =>
+            value === undefined ? [] : [[key, value]],
+          ),
+        ).toString(),
+      ModuleApiRoutes.documents.response,
+    );
+    if (page.dao.daoId !== id) throw new ApiFailure('DAO_REFERENCE');
+    const module = page.module;
+    return {
+      ...page,
+      available:
+        page.available &&
+        !!module &&
+        module.installed &&
+        module.compatible &&
+        module.codeVerified &&
+        module.deployment.version === CONTRACT_VERSION &&
+        module.deployment.codeHash === ModuleCodeHashes.decide,
+    };
+  },
   appSourceAccess: (id: string) =>
     request(
       ApiRoutes.appSourceAccess.path.replace(':id', z.uuid().parse(id)),
@@ -1529,6 +1564,8 @@ export function friendlyError(error: unknown): string {
       EPOCH_KEY_MISMATCH:
         'The key grant does not match the DAO epoch. Ask an administrator to resolve it.',
       DOCUMENT_INTEGRITY: 'The document failed its integrity check and was not opened.',
+      DOCUMENT_CONTENT_UNAVAILABLE:
+        'This version could not be opened. Unlock your account and check permitted document access before accepting.',
       FILE_EMPTY: 'Choose a file that contains data.',
       FILE_REQUIRED: 'Choose a document file.',
       FILE_TOO_LARGE:
