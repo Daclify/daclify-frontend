@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.14.0-alpha.10 development
+## 0.14.0-alpha.11 development
 
 Put Ballots and Elections first in a compact toolbar, followed by a large plus and help icon. Show the ballot list immediately and open creation in an accessible popup. Preserve drafts on cancellation and failed requests; close after confirmed creation. Keep pending controls, signer requirements and saved governance policy checks.
 

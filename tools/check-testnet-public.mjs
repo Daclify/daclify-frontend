@@ -214,7 +214,10 @@ try {
       await expect(
         main.getByRole('link', { name: 'Ballot rules and help', exact: true }),
       ).toBeVisible();
-      await expect(main.getByRole('button', { name: 'Open a ballot', exact: true })).toBeDisabled();
+      const addBallot = main.getByRole('button', { name: 'Open a ballot', exact: true });
+      await expect(addBallot).toBeDisabled();
+      await expect(addBallot.locator('svg')).toHaveCSS('width', '32px');
+      await expect(addBallot.locator('svg')).toHaveCSS('height', '32px');
       await expect(main.getByRole('dialog', { name: 'Open a ballot', exact: true })).toHaveCount(0);
       await elections.click();
       await expect(elections).toHaveAttribute('aria-selected', 'true');

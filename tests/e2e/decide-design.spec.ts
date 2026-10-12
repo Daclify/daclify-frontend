@@ -169,6 +169,8 @@ test('ballot creation opens from the compact toolbar and preserves its draft acr
     page.getByRole('link', { name: 'Ballot rules and help', exact: true }),
   ).toBeVisible();
   await expect(page.getByRole('link', { name: /Rules & help/ })).toHaveCount(0);
+  await expect(add.locator('svg')).toHaveCSS('width', '32px');
+  await expect(add.locator('svg')).toHaveCSS('height', '32px');
   await expect(dialog).not.toBeVisible();
   await expect(
     page.getByRole('heading', { name: 'Community decision', exact: true }),

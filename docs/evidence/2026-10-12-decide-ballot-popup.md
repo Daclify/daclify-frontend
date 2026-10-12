@@ -2,7 +2,7 @@
 
 The requested layout removes the duplicate Decide heading, places Ballots and Elections at the left of one toolbar and a large plus followed by help at the right. The ballot list is the default content. The plus opens the existing ballot form in a native modal dialog; election scheduling remains in Elections.
 
-Frontend 0.14.0-alpha.10 consumes the unchanged core 0.14.0-alpha.5 and modules 0.10.0-alpha.5 packages. No contract, API, dependency or authorization changes are required. Active members can preview the form; visitors cannot create ballots. Submission preserves signer readiness, module action checks, code verification and saved DAO governance policy. Context changes close the popup.
+Frontend 0.14.0-alpha.11 consumes the unchanged core 0.14.0-alpha.5 and modules 0.10.0-alpha.5 packages. No contract, API, dependency or authorization changes are required. Active members can preview the form; visitors cannot create ballots. Submission preserves signer readiness, module action checks, code verification and saved DAO governance policy. Context changes close the popup.
 
 ## Verification
 
@@ -10,7 +10,7 @@ Frontend 0.14.0-alpha.10 consumes the unchanged core 0.14.0-alpha.5 and modules 
 
 A submission regression uses an encrypted synthetic vault, verifies genuine login and relay signatures and independently decodes the released native Decide action schema. A failed relay leaves its draft and visible error in the popup; a pending relay disables cancellation and Escape; confirmed creation closes the popup and adds its ballot to the list. No live transaction is broadcast by this fixture.
 
-The initial toolbar regression failed against the old UI. A separate failed-relay regression demonstrated the old unconditional clearing of the title; the final implementation clears only after confirmed success. An initial accessibility failure exposed skipped heading levels after removing the Decide heading; ballot and empty-state headings now follow the DAO heading. All final browser checks pass. Logs are retained in frontend `.artifacts/decide-popup-*.log` and the publication packet.
+The initial toolbar regression failed against the old UI. A separate failed-relay regression demonstrated the old unconditional clearing of the title; the final implementation clears only after confirmed success. An initial accessibility failure exposed skipped heading levels after removing the Decide heading; ballot and empty-state headings now follow the DAO heading. All final browser checks pass. A final screenshot exposed the global 18-pixel button icon rule overriding the plus size; a separate desktop/mobile regression confirmed it, and scoped sizing now renders the plus at 32 pixels. The complete 26-case browser selection was repeated after that correction. Logs are retained in frontend `.artifacts/decide-popup-*.log` and the publication packet.
 
 ## Publication
 

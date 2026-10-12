@@ -889,7 +889,7 @@ const selectedProject = computed(() =>
         <div class="decide-toolbar-actions">
           <button
             type="button"
-            class="decide-icon"
+            class="decide-icon decide-add"
             aria-label="Open a ballot"
             title="Open a ballot"
             aria-haspopup="dialog"
@@ -1495,6 +1495,14 @@ const selectedProject = computed(() =>
   color: var(--accent-amber);
   background: transparent;
   box-shadow: none;
+}
+.decide-icon :deep(svg) {
+  width: 24px;
+  height: 24px;
+}
+.decide-add :deep(svg) {
+  width: 32px;
+  height: 32px;
 }
 .decide-icon:hover {
   transform: none;
