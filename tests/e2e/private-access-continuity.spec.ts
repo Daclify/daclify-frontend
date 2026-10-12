@@ -4,6 +4,10 @@ import { z } from 'zod';
 import { ABI, PublicKey, Serializer, Signature } from '@wharfkit/antelope';
 import {
   AccountSchema,
+  DaoHandoverSchema,
+  ExitPreflightSchema,
+  VERSION,
+  type DaoHandover,
   ApiRoutes,
   DaoContentSchema,
   DaoRefSchema,
@@ -16,7 +20,13 @@ import {
   epochGrantDomain,
 } from '@daclify/core-protocol';
 import { ModuleStateSchema } from '@daclify/modules';
-import { instructionDigest, runtimeAbi, RuntimeActionSchemas } from '@daclify/core-protocol/sdk';
+import {
+  instructionDigest,
+  runtimeAbi,
+  RuntimeActionSchemas,
+  RuntimeTableSchemas,
+  privateHandoverCommitment,
+} from '@daclify/core-protocol/sdk';
 import { createVault, createEpochGrant, sealContent, sha256Hex } from '../../src/auth/vault';
 
 test('grants private history, verifies it on another device, and preserves it after the creator leaves', async ({
@@ -94,6 +104,7 @@ test('grants private history, verifies it on another device, and preserves it af
       },
     ],
   });
+  let handover: DaoHandover | null = null;
   let currentEpoch = '1',
     writes = 0,
     contentUnavailable = false;
@@ -141,10 +152,39 @@ test('grants private history, verifies it on another device, and preserves it af
             hub: null,
             environment: 'testnet',
             interfaceVersion: 1,
-            coreVersion: '0.14.0-alpha.3',
-            capabilities: ['governance-policy'],
+            coreVersion: VERSION,
+            capabilities: ['governance-policy', 'account-exit-v1'],
           },
         });
+      if (path === '/v1/daos/1') return route.fulfill({ json: summary() });
+      if (path === '/v1/daos/1/handover') return route.fulfill({ json: handover });
+      if (path === '/v1/me/exit/preflight') {
+        const m = records.members.find((person) => person.id === memberId);
+        if (!m) throw Error('MEMBER');
+        return route.fulfill({
+          json: ExitPreflightSchema.parse({
+            version: 1,
+            nativeAvailable: true,
+            memberships: [
+              {
+                reference,
+                memberId,
+                nonce: m.nonce,
+                active: m.active,
+                admin: m.admin,
+                claim: m.claim,
+                stake: m.stake,
+                nativeAccount: null,
+                soleMember: false,
+                lifecycle: 'active',
+                reason: 'DAO_AVAILABLE',
+              },
+            ],
+            limits: { memberships: 256, statusDays: 30 },
+            retained: 'Shared history',
+          }),
+        });
+      }
       if (path === '/v1/daos') return route.fulfill({ json: { daos: [summary()], next: null } });
       if (path === '/v1/me') return route.fulfill({ json: { account } });
       if (path === '/v1/me/memberships') {
@@ -257,13 +297,58 @@ test('grants private history, verifies it on another device, and preserves it af
               Serializer.decode({ abi, type: input.request.action, data: input.request.data }),
             ),
           );
-        for (const key of ['dao_id', 'member_id', 'recipient', 'target', 'epoch']) {
+        for (const key of [
+          'dao_id',
+          'member_id',
+          'recipient',
+          'target',
+          'epoch',
+          'departing',
+          'successor',
+        ]) {
           if (typeof decoded[key] === 'number')
             decoded[key] = String(
               z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).parse(decoded[key]),
             );
         }
-        if (input.request.action === 'grantkey') {
+        if (input.request.action === 'beginhand') {
+          const args = RuntimeActionSchemas.beginhand.parse(decoded),
+            next = records.members.find((person) => person.id === args.successor);
+          if (!next) throw Error('SUCCESSOR');
+          const row = RuntimeTableSchemas.handovers.parse({
+            dao_id: '1',
+            initiator: memberId,
+            departing: args.departing,
+            successor: args.successor,
+            departing_credentials: '0',
+            successor_credentials: '0',
+            successor_key: await sha256Hex(new TextEncoder().encode(next.encryption_key)),
+            key_epoch: currentEpoch,
+            history_policy: 0,
+            last_epoch: currentEpoch,
+            cursor: '0',
+            complete: false,
+            accepted: false,
+            expires: args.expires,
+          });
+          handover = DaoHandoverSchema.parse({
+            ...row,
+            commitment: privateHandoverCommitment(reference, row),
+            status: 'pending',
+          });
+        } else if (input.request.action === 'scanhand') {
+          if (!handover) throw Error('HANDOVER');
+          handover = { ...handover, cursor: currentEpoch, complete: true, status: 'ready' };
+        } else if (input.request.action === 'accepthand') {
+          const args = RuntimeActionSchemas.accepthand.parse(decoded);
+          if (
+            !handover ||
+            handover.successor !== memberId ||
+            args.expected_commitment !== handover.commitment
+          )
+            throw Error('HANDOVER');
+          handover = { ...handover, accepted: true };
+        } else if (input.request.action === 'grantkey') {
           const args = RuntimeActionSchemas.grantkey.parse(decoded);
           records.keyGrants.push({
             id: String(records.keyGrants.length + 1),
@@ -315,6 +400,25 @@ test('grants private history, verifies it on another device, and preserves it af
       .click();
     await target.getByRole('link', { name: 'Members', exact: true }).click();
   }
+  async function openExit(target: Page) {
+    await target.goto('/account');
+    await target.getByLabel('Vault password', { exact: true }).fill(password);
+    await target.getByRole('button', { name: 'Unlock and sign in', exact: true }).click();
+    await expect(target.getByText('Keys unlocked', { exact: true })).toBeVisible();
+    await target
+      .getByRole('link', { name: 'Leave DAOs or delete my hosted account', exact: true })
+      .click();
+  }
+  async function openMembers(target: Page) {
+    const menu = target.getByRole('button', { name: 'Menu', exact: true });
+    if (await menu.isVisible()) await menu.click();
+    await target.getByRole('link', { name: 'My DAO', exact: true }).click();
+    await target
+      .getByRole('link', { name: /Continuity DAO/ })
+      .first()
+      .click();
+    await target.getByRole('link', { name: 'Members', exact: true }).click();
+  }
   await device(page, 0);
   await page.getByLabel('Member', { exact: true }).selectOption('1');
   await expect(
@@ -337,6 +441,37 @@ test('grants private history, verifies it on another device, and preserves it af
   await expect(
     recipient.getByText('1 of 1 permitted epochs verified on this device.'),
   ).toBeVisible();
+  await openExit(page);
+  await page.getByRole('button', { name: 'Load current private handover' }).click();
+  await page.getByLabel('Successor administrator').selectOption('2');
+  await page.getByRole('button', { name: 'Verify my permitted private history' }).click();
+  await expect(page.getByText(/decryption on this device: verified/)).toBeVisible();
+  await page
+    .getByLabel(
+      'I verified the original keys and private history on another device and saved recovery credentials.',
+    )
+    .check();
+  await page.getByRole('button', { name: 'Sign handover preparation', exact: true }).click();
+  await page.getByRole('button', { name: 'Sign scan of up to 25 epochs', exact: true }).click();
+  await openExit(recipient);
+  await recipient.getByRole('button', { name: 'Load current private handover' }).click();
+  await recipient.getByRole('button', { name: 'Verify my permitted private history' }).click();
+  await expect(recipient.getByText(/decryption on this device: verified/)).toBeVisible();
+  await recipient
+    .getByLabel(
+      'I verified the original keys and private history on another device and saved recovery credentials.',
+    )
+    .check();
+  await recipient.getByRole('button', { name: 'Sign successor acceptance', exact: true }).click();
+  await expect(recipient.getByText(/successor acceptance: recorded/)).toBeVisible();
+  await page.getByRole('button', { name: 'Load current private handover' }).click();
+  await page
+    .getByRole('button', { name: 'Confirm reviewed handover for departure', exact: true })
+    .click();
+  expect(DaoHandoverSchema.parse(handover).accepted).toBe(true);
+  expect(writes).toBe(4);
+  await openMembers(page);
+  await page.getByLabel('Member', { exact: true }).selectOption('1');
   await page.getByLabel('Administrator keeping private access').selectOption('2');
   await page
     .getByLabel(
@@ -346,11 +481,12 @@ test('grants private history, verifies it on another device, and preserves it af
   contentUnavailable = true;
   await page.getByRole('button', { name: 'Deactivate member', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Prepare another active administrator');
-  expect(writes).toBe(1);
+  expect(writes).toBe(4);
   contentUnavailable = false;
   await page.getByRole('button', { name: 'Deactivate member', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Deactivate member', exact: true })).toHaveCount(0);
-  expect(writes).toBe(2);
+  expect(writes).toBe(5);
+  await openMembers(recipient);
   await recipient.getByRole('link', { name: 'Documents', exact: true }).click();
   await recipient.getByRole('button', { name: 'Decrypt document 1', exact: true }).click();
   await expect(

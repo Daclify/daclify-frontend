@@ -12,6 +12,7 @@ const guideGroups = [
       'telos-networks',
       'dao-discovery',
       'accounts',
+      'account-exit',
       'deployments',
       'dao-presets',
       'docs-assistant',

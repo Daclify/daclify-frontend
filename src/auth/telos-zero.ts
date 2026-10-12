@@ -104,6 +104,7 @@ export async function transactNative(
   broadcast: boolean,
   checkContext: () => void | Promise<void> = () => {},
   additionalAbis: NonNullable<TransactOptions['abis']> = [],
+  expireSeconds: 60 | 120 = 120,
 ) {
   const selected = nativeWallet.value;
   if (!selected) throw new Error('NATIVE_WALLET_MISSING');
@@ -121,7 +122,7 @@ export async function transactNative(
   const result = await selected.transact(actions.length === 1 ? { action: first } : { actions }, {
     broadcast: false,
     allowModify: false,
-    expireSeconds: 120,
+    expireSeconds,
     abis: [
       {
         account: workspace.network?.runtime ?? actions[0]?.account.toString() ?? '',

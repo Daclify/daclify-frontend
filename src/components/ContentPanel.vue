@@ -29,6 +29,7 @@ import GoverningDocumentsPanel from './GoverningDocumentsPanel.vue';
 import { sha256Hex } from '../auth/vault';
 import { useWorkspace } from '../state/workspace';
 import { canSignMember } from '../auth/action-signer';
+import {validatePrivateHandover} from '../auth/private-handover';
 import { planPrivateAccess, privateSuccessors } from '../auth/private-access';
 import Account from '../views/Account.vue';
 const props = defineProps<{
@@ -455,8 +456,8 @@ async function checkHandover(departing: DaoContent['members'][number]) {
   if (!(await refresh())) throw new ApiFailure('PRIVATE_HANDOVER_REQUIRED');
   if (disposed || domain !== context.value || fingerprint !== accessFingerprint.value)
     throw new Error('WALLET_CONTEXT_CHANGED');
-  if (!confirmed || !privatePolicy.value || !successors.value.some((m) => m.id === chosen))
-    throw new ApiFailure('PRIVATE_HANDOVER_REQUIRED');
+  if (!privatePolicy.value||!content.value)throw new ApiFailure('PRIVATE_HANDOVER_REQUIRED');
+  validatePrivateHandover(content.value,privatePolicy.value,departing.id,chosen,confirmed);
 }
 async function decrypt(document: DaoContent['documents'][number]) {
   const m = props.member;

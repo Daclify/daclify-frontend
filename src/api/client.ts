@@ -1,3 +1,11 @@
+import {
+  AccountExitRoutes,
+  ExitNativeStepRoute,
+  type ExitIntent,
+  SignedExitInstructionSchema,
+  ExitSettlementRoutes,
+  type ExitSubmission,
+} from '@daclify/core-protocol';
 import { ModuleCodeHashes } from '@daclify/modules/sdk';
 import { ModuleApiRoutes, CONTRACT_VERSION, type ModuleState } from '@daclify/modules';
 import { ArchiveRoutes } from '@daclify/modules/archive';
@@ -996,6 +1004,54 @@ export const api = {
       ModuleApiRoutes.finalize.response,
       ModuleApiRoutes.finalize.input.parse(input),
     ),
+  exitPreflight: () =>
+    request(AccountExitRoutes.exitPreflight.path, AccountExitRoutes.exitPreflight.response),
+  beginExit: (intent: ExitIntent, statusCapability: string) =>
+    request(AccountExitRoutes.exitBegin.path, AccountExitRoutes.exitBegin.response, {
+      intent,
+      statusCapability,
+    }),
+  exitStatus: (capability: string) =>
+    request(
+      AccountExitRoutes.exitStatus.path,
+      AccountExitRoutes.exitStatus.response,
+      { capability },
+      60000,
+    ),
+  exitStep: (id: string, stepId: string, signed: z.infer<typeof SignedExitInstructionSchema>) =>
+    request(
+      ExitNativeStepRoute.path.replace(':id', id).replace(':stepId', stepId),
+      ExitNativeStepRoute.response,
+      { signed },
+      60000,
+    ),
+  prepareExitSettlement: (signed: z.infer<typeof SignedExitInstructionSchema>) =>
+    request(
+      ExitSettlementRoutes.settlementPrepare.path,
+      ExitSettlementRoutes.settlementPrepare.response,
+      signed,
+    ),
+  exitSettlementReceipt: (packet: ExitSubmission) =>
+    request(
+      ExitSettlementRoutes.settlementReceipt.path,
+      ExitSettlementRoutes.settlementReceipt.response,
+      packet,
+      60000,
+    ),
+  submitExitSettlement: (packet: ExitSubmission) =>
+    request(
+      ExitSettlementRoutes.settlementSubmit.path,
+      ExitSettlementRoutes.settlementSubmit.response,
+      packet,
+      60000,
+    ),
+  daoHandover: (id: string) =>
+    request(
+      AccountExitRoutes.daoHandover.path.replace(':id', IdSchema.parse(id)),
+      AccountExitRoutes.daoHandover.response,
+    ),
+  dao: (id: string) =>
+    request(ApiRoutes.dao.path.replace(':id', IdSchema.parse(id)), ApiRoutes.dao.response),
   network: (): Promise<Network> => request(ApiRoutes.network.path, ApiRoutes.network.response),
   daos: async (): Promise<DaoSummary[]> => {
     const page = await request(ApiRoutes.daos.path, ApiRoutes.daos.response);
@@ -1310,6 +1366,28 @@ export const api = {
   },
 };
 export function friendlyError(error: unknown): string {
+  const handoverErrors: Record<string, string> = {
+    EXIT_SETTLEMENT_CONTEXT:
+      'This settlement belongs to another exit report. Open its original report before retrying the signed transaction.',
+    EXIT_MEMBERSHIP_CHANGED:
+      'DAO membership, rights or duties changed. Refresh the review and confirm again.',
+    EXIT_DAO_REVIEW_REQUIRED:
+      'Refresh the DAO directory and review this administrator responsibility before deleting your hosted account.',
+    EXIT_SOLE_MEMBER_REQUIRED:
+      'Closure must be explicitly chosen by the only active member. Refresh this DAO before continuing.',
+    EXIT_SIGNER_REQUIRED:
+      'Use this native member’s original saved kit or linked wallet. The read-only report cannot sign a departure or settlement.',
+    PRIVATE_HANDOVER_REQUIRED:
+      'Prepare another active administrator’s private grants, then verify their decryption and recovery on another device before this handover.',
+    PRIVATE_ACCESS_CONTEXT:
+      'Private keys or policy changed. Load the current records and verify them again.',
+    PRIVATE_ACCESS_INCOMPLETE:
+      'Load and verify the complete permitted private history before handing over.',
+  };
+  const handoverCode =
+    error instanceof ApiFailure ? error.code : error instanceof Error ? error.message : '';
+  const handoverMessage = handoverErrors[handoverCode];
+  if (handoverMessage) return handoverMessage;
   const telosMessages: Record<string, string> = {
     TELOS_UNAVAILABLE: 'Telos ballot records are temporarily unavailable. Try again later.',
     TELOS_CHAIN_MISMATCH:
@@ -1446,6 +1524,11 @@ export function friendlyError(error: unknown): string {
         'These accounts have conflicting sign-in methods, memberships or saved requests, or would exceed the passkey limit. Their access was kept intact. You can restore the original account without reconnecting sign-ins.',
       ACCOUNT_RECONNECT_CHANGED:
         'Account access changed while you were restoring it. Refresh and try again.',
+
+      PRIVATE_ACCESS_CONTEXT:
+        'Private keys or policy changed. Load the current records and verify them again.',
+      PRIVATE_ACCESS_INCOMPLETE:
+        'The private history is incomplete. Finish loading and verify the full permitted history.',
       PRIVATE_HANDOVER_REQUIRED:
         'Prepare another active administrator’s private grants, then verify their decryption and recovery on another device before this handover.',
       PRIVATE_ACCESS_UNAVAILABLE:

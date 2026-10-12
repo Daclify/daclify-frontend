@@ -32,6 +32,7 @@ const router = createRouter({
     { path: '/users', component: () => import('./views/Users.vue') },
     { path: '/users/me', component: () => import('./views/UserDetail.vue') },
     { path: '/users/:daoId/:memberId', component: () => import('./views/UserDetail.vue') },
+    { path: '/account/exit', component: () => import('./views/AccountExit.vue') },
     { path: '/account', component: () => import('./views/Account.vue') },
     { path: '/apps/evidence', component: () => import('./views/AppEvidence.vue') },
     { path: '/apps/consent', component: () => import('./views/AppConsent.vue') },

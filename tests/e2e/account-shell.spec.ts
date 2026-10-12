@@ -1,3 +1,4 @@
+import { AccountSchema, canonicalEvmSignInMessage } from '@daclify/core-protocol';
 import { expect, test, type Page } from '@playwright/test';
 
 async function noOverflow(page: Page) {
@@ -75,13 +76,31 @@ test('reviews EVM pairing and removal using a provider fixture', async ({ page }
   await page.route('**/v1/account/evm**', async (route) => {
     const url = route.request().url();
     if (url.endsWith('/challenge')) {
+      const id = crypto.randomUUID(),
+        issued = new Date().toISOString(),
+        expires = new Date(Date.now() + 300000).toISOString(),
+        origin = new URL(page.url()).origin,
+        audience = new URL(url).origin,
+        accountResponse = await page.request.get(audience + '/v1/me'),
+        account = AccountSchema.parse((await accountResponse.json()).account);
       await route.fulfill({
         json: {
-          id: crypto.randomUUID(),
+          id,
           chainId: 41,
           address: '0x1111111111111111111111111111111111111111',
-          message: `${new URL(page.url()).origin} wants you to sign in with your Ethereum account:\n0x1111111111111111111111111111111111111111\n\nURI: ${new URL(page.url()).origin}/account\n`,
-          expires: new Date(Date.now() + 300_000).toISOString(),
+          message: canonicalEvmSignInMessage({
+            origin,
+            audience,
+            address: '0x1111111111111111111111111111111111111111',
+            chainId: 41,
+            nonce: 'ownedtestnonce1234',
+            id,
+            issued,
+            expires,
+            purpose: 'pair',
+            accountId: account.id,
+          }),
+          expires,
         },
       });
       return;

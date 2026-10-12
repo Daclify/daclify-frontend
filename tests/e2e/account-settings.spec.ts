@@ -169,7 +169,7 @@ test('keeps account tasks compact and all paired methods reachable by keyboard',
   await expect(page.getByRole('button', { name: 'Copy public join identity' })).toBeDisabled();
   await page.getByRole('tab', { name: 'Profile', exact: true }).click();
   await expect(
-    page.getByText('Join or create a DAO to publish your public profile.', { exact: true }),
+    page.getByText('Join or create a DAO to publish a profile.', { exact: true }),
   ).toBeVisible();
   await page.getByRole('tab', { name: 'Sign-in methods', exact: true }).focus();
   await page.keyboard.press('End');

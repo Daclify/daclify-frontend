@@ -8,6 +8,7 @@ import {
   canonicalEvmSignature,
   bindingTypedData,
   governanceTypedData,
+  exitGovernanceTypedData,
   recoveryMaterialFromSignature,
 } from '@daclify/core-protocol/sdk';
 import type { DaoRef } from '@daclify/core-protocol';
@@ -206,4 +207,16 @@ export function providerCode(cause: unknown): number | undefined {
     return cause.code;
   }
   return undefined;
+}
+
+export function signEvmExit(
+  operation: string,
+  stepDigest: string,
+  request: instruction,
+  binding: EvmBinding,
+) {
+  return signWallet(
+    'eth_signTypedData_v4',
+    JSON.stringify(exitGovernanceTypedData(operation, stepDigest, request, binding)),
+  );
 }

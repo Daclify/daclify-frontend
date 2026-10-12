@@ -793,6 +793,7 @@ function backup() {
         </form>
       </details>
     </section>
+    <p v-if="state.network?.capabilities.includes('account-exit-v1')"><router-link to="/account/exit">Leave DAOs or delete my hosted account</router-link></p>
     <div
       v-if="opened['sign-in']"
       v-show="tab === 'sign-in'"

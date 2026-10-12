@@ -32,6 +32,9 @@ import {
 } from '@daclify/core-protocol';
 import {
   instructionDigest,
+  exitInstructionDigest,
+  exitOperationCommitment,
+  exitStepCommitment,
   verifyRecoveryIdentity,
   type instruction,
 } from '@daclify/core-protocol/sdk';
@@ -418,6 +421,69 @@ export function signInstruction(request: instruction): string {
   if (!secrets) throw new Error('VAULT_LOCKED');
   touch();
   return PrivateKey.from(secrets.signingKey).signDigest(instructionDigest(request)).toString();
+}
+export function signExitInstruction(operationId: string, stepId: string, request: instruction) {
+  assertOperatorDao({
+    chainId: request.chain_id,
+    contract: request.deployment,
+    daoId: request.dao_id,
+    interfaceVersion: 1,
+  });
+  if (!secrets) throw Error('VAULT_LOCKED');
+  touch();
+  const operation = exitOperationCommitment(operationId),
+    step_digest = exitStepCommitment(operationId, stepId, request);
+  return {
+    operation,
+    step_digest,
+    request,
+    sig: PrivateKey.from(secrets.signingKey)
+      .signDigest(exitInstructionDigest(operation, step_digest, request))
+      .toString(),
+  };
+}
+export async function signSavedExitInstruction(
+  input: SavedVault,
+  password: string,
+  operationId: string,
+  stepId: string,
+  request: instruction,
+) {
+  assertOperatorDao({
+    chainId: request.chain_id,
+    contract: request.deployment,
+    daoId: request.dao_id,
+    interfaceVersion: 1,
+  });
+  const operation = exitOperationCommitment(operationId),
+    step_digest = exitStepCommitment(operationId, stepId, request),
+    digest = exitInstructionDigest(operation, step_digest, request),
+    kit = RecoveryKitSchema.parse(input);
+  const context = JSON.stringify([
+    useWorkspace().account?.id,
+    useWorkspace().network?.chainId,
+    useWorkspace().network?.runtime,
+    globalThis.location?.href,
+  ]);
+  const opened = await unlockVault(kit.localEnvelope, password),
+    key = PrivateKey.from(opened.signingKey);
+  if (
+    context !==
+    JSON.stringify([
+      useWorkspace().account?.id,
+      useWorkspace().network?.chainId,
+      useWorkspace().network?.runtime,
+      globalThis.location?.href,
+    ])
+  )
+    throw Error('WALLET_CONTEXT_CHANGED');
+  if (
+    key.toPublic().toString() !== kit.signingPublicKey ||
+    opened.encryptionPrivateKey.x !== kit.encryptionPublicKey.x ||
+    opened.encryptionPrivateKey.y !== kit.encryptionPublicKey.y
+  )
+    throw Error('ACCOUNT_KEY_MISMATCH');
+  return { operation, step_digest, request, sig: key.signDigest(digest).toString() };
 }
 export async function relayWithVault(request: instruction): Promise<string> {
   if (!secrets) throw new Error('VAULT_LOCKED');
