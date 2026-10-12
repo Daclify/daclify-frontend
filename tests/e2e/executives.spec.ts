@@ -335,7 +335,7 @@ test('makes executive elections explicit and keeps signing disabled while the va
   await serve(page);
   await page.goto('/dao/1/decide');
   await page.getByRole('tab', { name: 'Elections', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'DAO elections', exact: true })).toBeVisible();
+  await expect(page.getByRole('tabpanel', { name: 'Elections', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Election and term rules', exact: true }).click();
   await page.getByLabel('Election purpose').selectOption('executive');
   await expect(

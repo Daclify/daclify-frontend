@@ -222,7 +222,7 @@ test('ballot creation opens from the compact toolbar and preserves its draft acr
     page.getByRole('heading', { name: 'Community decision', exact: true }),
   ).toBeVisible();
   await expect(ballots).toHaveAttribute('aria-selected', 'true');
-  await expect(page.getByRole('heading', { name: 'DAO elections' })).not.toBeVisible();
+  await expect(page.getByRole('tabpanel', { name: 'Elections' })).not.toBeVisible();
   await page.screenshot({ path: test.info().outputPath('ballots-list.png'), fullPage: true });
   await add.click();
   await expect(dialog).toBeVisible();
@@ -237,7 +237,7 @@ test('ballot creation opens from the compact toolbar and preserves its draft acr
   await page.keyboard.press('ArrowRight');
   await expect(elections).toBeFocused();
   await expect(elections).toHaveAttribute('aria-selected', 'true');
-  await expect(page.getByRole('heading', { name: 'DAO elections' })).toBeVisible();
+  await expect(page.getByRole('tabpanel', { name: 'Elections' })).toBeVisible();
   await expect(dialog).not.toBeVisible();
   await page.keyboard.press('Home');
   await expect(ballots).toBeFocused();

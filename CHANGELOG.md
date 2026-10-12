@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.14.0-alpha.13 development
+
+Remove the DAO elections heading, introductory paragraph and Representative terms heading from the Elections tab. Keep record and empty-state headings in a valid accessible hierarchy.
+
 ## 0.14.0-alpha.12 development
 
 Make Decide’s plus button follow the active Ballots or Elections tab. Move election setup into an Election and term rules popup with purpose, seats, published document choices and local dates. Preserve selected versions, drafts and signing rules; show recall reasons beside their terms and explain document/loading/policy requirements.

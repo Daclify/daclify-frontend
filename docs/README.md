@@ -1,6 +1,6 @@
 # Frontend documentation
 
-Current development application: **0.14.0-alpha.12**, consuming core **0.14.0-alpha.5** and modules **0.10.0-alpha.5** SDK/help packages. Development uses `dev`. See the [repository README](../README.md) for routes, local development, account recovery and test phases, and the [Netlify dev guide](netlify-dev.md) for the separate testnet site.
+Current development application: **0.14.0-alpha.13**, consuming core **0.14.0-alpha.5** and modules **0.10.0-alpha.5** SDK/help packages. Development uses `dev`. See the [repository README](../README.md) for routes, local development, account recovery and test phases, and the [Netlify dev guide](netlify-dev.md) for the separate testnet site.
 
 ## Help inside the application
 

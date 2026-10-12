@@ -37,7 +37,7 @@ test('shows the native election candidates and actual recall without allowing vi
   );
   await page.goto(`/dao/${evidence.reference.daoId}/decide`);
   await page.getByRole('tab', { name: 'Elections', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'DAO elections', exact: true })).toBeVisible();
+  await expect(page.getByRole('tabpanel', { name: 'Elections', exact: true })).toBeVisible();
   await expect(page.getByText(/Recalled/).first()).toBeVisible();
   await expect(page.getByRole('button', { name: 'Sign self-nomination' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Sign term recall' })).toHaveCount(0);

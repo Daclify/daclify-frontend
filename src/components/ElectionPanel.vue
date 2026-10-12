@@ -261,13 +261,6 @@ function termStatus(term: ModuleState['terms'][number]) {
 </script>
 <template>
   <section aria-label="DAO elections">
-    <div class="section-toolbar">
-      <h2>DAO elections</h2>
-    </div>
-    <p>
-      Elect representatives for a fixed term, or explicitly elect executives to change the appointed
-      roster. Representative titles grant no administrator, reviewer or Treasury powers.
-    </p>
     <p v-if="error" class="alert" role="alert">{{ error }}</p>
     <dialog
       v-if="member?.active && member.admin && module?.enabled"
@@ -414,7 +407,7 @@ function termStatus(term: ModuleState['terms'][number]) {
       </form>
     </dialog>
     <article v-for="election in data.elections" :key="election.id" class="panel">
-      <h3>{{ election.title }} · election {{ election.id }}</h3>
+      <h2>{{ election.title }} · election {{ election.id }}</h2>
       <p>
         {{ election.seats }} seats · rules {{ election.document_id }} / v{{
           election.document_version
@@ -525,9 +518,8 @@ function termStatus(term: ModuleState['terms'][number]) {
       >
       <p v-else>Load more Decide records to read this election’s ballot and result.</p>
     </article>
-    <h3>Representative terms</h3>
     <article v-for="term in data.terms" :key="term.id" class="panel">
-      <h4>{{ term.title }} · member {{ term.member_id }}</h4>
+      <h2>{{ term.title }} · member {{ term.member_id }}</h2>
       <p>
         {{ termStatus(term) }} · {{ date(term.starts) }} — {{ date(term.ends) }} · election
         {{ term.election_id }}

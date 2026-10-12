@@ -1104,7 +1104,7 @@ const selectedProject = computed(() =>
           :finalize="finalize"
         />
         <div v-if="!data?.elections.length" class="empty-state">
-          <h3>No elections yet</h3>
+          <h2>No elections yet</h2>
           <p>Schedule an election to choose representatives or executives for a fixed term.</p>
         </div>
       </div>
