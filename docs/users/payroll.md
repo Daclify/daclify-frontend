@@ -1,6 +1,6 @@
 # Adding payroll
 
-Open your DAO’s **Payroll** tab. The list and its search and ongoing-schedules filter appear immediately. The **+** opens **Add payroll**; the help icon beside it opens the matching **Rules & help** with your DAO context.
+Open your DAO’s **Payroll** tab. Search and **Ongoing schedules** share a compact toolbar with **+** and help on the right, above the list. The toolbar wraps on smaller screens. The **+** opens **Add payroll**; the help icon beside it opens the matching **Rules & help** with your DAO context.
 
 Active administrators can prepare a payroll. Choose an active recipient by their public profile or wallet name. Members without either use a stable member reference. Missing member records offer retry; optional profile-name failures fall back to wallet/member references. Records from another DAO cannot supply a recipient.
 

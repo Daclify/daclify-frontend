@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.15.0-alpha.10 development
+
+Put Payroll search and the Ongoing schedules checkbox on the same toolbar row as plus and help. Remove the separate filter card and let the toolbar wrap on smaller screens. Preserve filtering, accessible labels and payroll creation behavior.
+
 ## 0.15.0-alpha.9 development
 
 Remove the visible Workspace overview and Payroll headings. Put payroll creation in an accessible Add payroll popup opened by a plus icon beside contextual payroll help. Select active recipients by name, require explicitly entered whole-token installments and an exact reviewed total, validate schedule limits and preserve failed/cancelled drafts. Retain signing, administrator, grant and code-pin checks, pending-state protection and existing payment obligations.

@@ -1147,31 +1147,41 @@ const selectedProject = computed(() =>
       <h2>{{ current ? names[current.deployment.id] : 'Module workspace' }}</h2>
       <RouterLink :to="helpLink(section)">Rules &amp; help ↗</RouterLink>
     </div>
-    <div
+    <form
       v-if="section === 'payroll'"
       class="decide-toolbar payroll-toolbar"
       role="group"
       aria-label="Payroll tools"
+      @submit.prevent
     >
-      <button
-        type="button"
-        class="decide-icon decide-add"
-        aria-label="Add payroll"
-        title="Add payroll"
-        aria-haspopup="dialog"
-        :disabled="!member?.active || !member.admin || !current?.enabled || busy"
-        @click="showPayrollDialog"
+      <div class="payroll-search">
+        <label for="pay-search" class="sr-only">Search payrolls</label>
+        <input id="pay-search" v-model="payrollQuery" placeholder="Search payrolls" />
+      </div>
+      <label class="checkbox payroll-ongoing"
+        ><input v-model="showOngoing" type="checkbox" /> Ongoing schedules</label
       >
-        <Plus :size="32" aria-hidden="true" />
-      </button>
-      <RouterLink
-        class="decide-icon"
-        :to="helpLink('payroll')"
-        aria-label="Payroll rules and help"
-        title="Payroll rules and help"
-        ><CircleHelp :size="24" aria-hidden="true"
-      /></RouterLink>
-    </div>
+      <div class="decide-toolbar-actions">
+        <button
+          type="button"
+          class="decide-icon decide-add"
+          aria-label="Add payroll"
+          title="Add payroll"
+          aria-haspopup="dialog"
+          :disabled="!member?.active || !member.admin || !current?.enabled || busy"
+          @click="showPayrollDialog"
+        >
+          <Plus :size="32" aria-hidden="true" />
+        </button>
+        <RouterLink
+          class="decide-icon"
+          :to="helpLink('payroll')"
+          aria-label="Payroll rules and help"
+          title="Payroll rules and help"
+          ><CircleHelp :size="24" aria-hidden="true"
+        /></RouterLink>
+      </div>
+    </form>
     <p v-if="current && (!current.codeVerified || !current.compatible)" class="alert" role="alert">
       New actions are unavailable because this deployment does not match the installed code pin or
       supported release. An administrator must review the upgrade and permissions in Modules.
@@ -2113,13 +2123,6 @@ const selectedProject = computed(() =>
           </fieldset>
         </form>
       </dialog>
-      <form class="panel form-panel" @submit.prevent>
-        <label for="pay-search">Search payrolls</label
-        ><input id="pay-search" v-model="payrollQuery" placeholder="Label, member, or schedule" />
-        <label class="choice"
-          ><input v-model="showOngoing" type="checkbox" /> Ongoing schedules</label
-        >
-      </form>
       <p v-if="current?.enabled && !current.actions.includes('edit')" class="notice">
         Pause and the label need the edit action. Enable payroll again after disabling it once to
         grant that action. Approved installments stay payable.
@@ -2256,10 +2259,7 @@ const selectedProject = computed(() =>
   font-size: 0.8rem;
 }
 @media (max-width: 640px) {
-  .works-toolbar .payroll-toolbar {
-    justify-content: flex-end;
-  }
-  .decide-tabs {
+  .works-toolbar .decide-tabs {
     min-width: 0;
     gap: 4px;
   }
@@ -2318,6 +2318,19 @@ const selectedProject = computed(() =>
 }
 .payroll-toolbar {
   justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.payroll-search {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+.payroll-ongoing {
+  flex: none;
+  align-items: center;
+  min-height: 44px;
+  margin: 0 auto 0 0;
+  white-space: nowrap;
 }
 .decide-tabs {
   margin: 0;

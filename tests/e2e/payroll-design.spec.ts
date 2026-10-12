@@ -104,7 +104,33 @@ test('payroll uses an accessible Add payroll popup with readable members and an 
     'href',
     '/docs/payroll?dao=1',
   );
-  await expect(page.getByLabel('Search payrolls')).toBeVisible();
+  const search = page.getByLabel('Search payrolls', { exact: true });
+  const ongoing = page.getByRole('checkbox', { name: 'Ongoing schedules', exact: true });
+  await expect(search).toBeVisible();
+  await expect(ongoing).toBeChecked();
+  if (test.info().project.name === 'chromium') {
+    const controls = [
+      search,
+      ongoing.locator('..'),
+      add,
+      page.getByRole('link', { name: 'Payroll rules and help' }),
+    ];
+    const boxes = await Promise.all(controls.map((control) => control.boundingBox()));
+    const centers = boxes.map((box) => {
+      if (!box) throw new Error('Payroll toolbar control is not visible');
+      return box.y + box.height / 2;
+    });
+    expect(Math.max(...centers) - Math.min(...centers)).toBeLessThan(4);
+  }
+  await search.fill('no matching payroll');
+  await expect(page.getByRole('heading', { name: 'Schedule 90', exact: true })).toHaveCount(0);
+  await search.fill('90');
+  await expect(page.getByRole('heading', { name: 'Schedule 90', exact: true })).toBeVisible();
+  await ongoing.uncheck();
+  await expect(search).toHaveValue('90');
+  await expect(page.getByRole('heading', { name: 'Schedule 90', exact: true })).toBeVisible();
+  await search.clear();
+  await ongoing.check();
   const dialog = page.getByRole('dialog', { name: 'Add payroll', exact: true });
   await expect(dialog).not.toBeVisible();
   await add.click();
