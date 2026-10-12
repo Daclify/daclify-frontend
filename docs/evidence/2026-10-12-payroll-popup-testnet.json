@@ -1,0 +1,149 @@
+{
+  "timestamp": "2026-10-12T21:06:40.869Z",
+  "frontendCommit": "c4e492eafdd5895da508e605490b4a746fdf2230",
+  "frontendVersion": "0.15.0-alpha.9",
+  "coreVersion": "0.15.0-alpha.7",
+  "modulesVersion": "0.10.0-alpha.14",
+  "indexSha256": "552a348aaabb829a65f82331fef16d758f8bb0cd42c11109cafb609fd523725d",
+  "assets": [
+    {
+      "path": "/assets/index-C7hAKYjN.js",
+      "sha256": "df4e020fdf05dd1357a8fe6f1f617fdf6f709a7a5158ebc7032a4b3e6592fd28"
+    },
+    {
+      "path": "/assets/protocol-BOBQ-c81.js",
+      "sha256": "cd935ea42e7d6aad8be69fbd5308b780f6da29f5ad335443ed5cfb9ac376ee15"
+    },
+    {
+      "path": "/assets/runtime-core.esm-bundler-Cx9s9XIL.js",
+      "sha256": "b3fa77ea3d442671ac8628564c94940731d3a04f3b12fe399de8118aeb5fc9ef"
+    },
+    {
+      "path": "/assets/runtime-dom.esm-bundler-DXQ6dLM3.js",
+      "sha256": "6c11ebbef10a1ff8829ab6df3aa583049ea88f110a710348cb9f32b0385375ef"
+    },
+    {
+      "path": "/assets/networks-DAAdv1pt.js",
+      "sha256": "09c06b3a4f025a4a29af4f8d35d8c2220f7f5ae2be015d6a9c9353718519118c"
+    },
+    {
+      "path": "/assets/workspace-gf0sd_Vn.js",
+      "sha256": "80d444ee5382c88f86123c665150156a690c21517839edba721d0dc2a540a10a"
+    },
+    {
+      "path": "/assets/useApi-BPuI6ZR9-CX4uEoR-.js",
+      "sha256": "9110dd2a0d5f2794a1cfe7af06faaf9416a04cd41ee87d415483ce60aa298456"
+    },
+    {
+      "path": "/assets/createLucideIcon-BdG-Esd8.js",
+      "sha256": "f9a0f871f3dcc2d81dd7c8d1794471ec20ea8941140691f6abdb4702b7a69419"
+    },
+    {
+      "path": "/assets/arrow-up-right-B3KsOLAj.js",
+      "sha256": "2047a181732f097cf28b252524fa44333c4dc126ef6706797d97135270b8057f"
+    },
+    {
+      "path": "/assets/at-sign-CG88k3Mr.js",
+      "sha256": "abae408d680f0e076e776fc2ef3bcb8e91cd0cc4dfdc773f1e7655992b4e6c44"
+    },
+    {
+      "path": "/assets/blocks-X5WGnGAF.js",
+      "sha256": "6674794c3fa19e5dd22e3583e6ca7dbd7c43b56c197954bca402e89c03b482e6"
+    },
+    {
+      "path": "/assets/book-open-DpzsoLcD.js",
+      "sha256": "c2488827d63b00a8897fd8c597f8650b34ef5b2e69b477ffecef31cc42605c50"
+    },
+    {
+      "path": "/assets/bot-CQtc45O8.js",
+      "sha256": "d6a35f2c4cb4161661ca13c9a328248685f07d587e3036dfe342428d784cdf1a"
+    },
+    {
+      "path": "/assets/layout-grid-BnlCQN10.js",
+      "sha256": "03931c8a2897bfe79a43b55f6e77168aeff279ceb46604c51ab7a507041d7c03"
+    },
+    {
+      "path": "/assets/network-COPoFwLW.js",
+      "sha256": "948da5175d8b76ea0c3e857e2871561bd243f0a7699b038dab0aa8b574f51109"
+    },
+    {
+      "path": "/assets/plus-Bo_K9AEu.js",
+      "sha256": "583b4ae3a42666a0515f6a2e562a733a601569aa46bfdbb66e0d035dc6e2dd82"
+    },
+    {
+      "path": "/assets/shield-check--kpClfzw.js",
+      "sha256": "a7b9cb713becd5de26a6a98b0936662ed8131aed4a150a9799ad3512e6f35496"
+    },
+    {
+      "path": "/assets/shield-BbwKs_Ea.js",
+      "sha256": "4bd68b18337c6f6f20b14562a14f94cc8e41485a7879d51c8e3b9aae4da65a4f"
+    },
+    {
+      "path": "/assets/users-CFIJTUVO.js",
+      "sha256": "b6fa98728cfe33a230a546c4c13c0bd33bbfeba3aaccf2ccbc53ca0b802f3554"
+    },
+    {
+      "path": "/assets/vote-BrPfP-F3.js",
+      "sha256": "02350a272c667e7224eba52b0e1b6bcd865a1edfcd5900741ab6da5cf006a509"
+    },
+    {
+      "path": "/assets/session-D-ZXyO2Z.js",
+      "sha256": "ae7c97d137469791d5fa0ba55b62985f8beba51f62ac72e9c8230b5eec5d3ff6"
+    },
+    {
+      "path": "/assets/index-QumOkApQ.css",
+      "sha256": "0c555ba9ca63c4b0347f2946479d5e524274181b6eeb78ab98ef44c8c13090e2"
+    }
+  ],
+  "source": {
+    "commit": "c4e492eafdd5895da508e605490b4a746fdf2230",
+    "trackedFilesMatched": 404
+  },
+  "checks": {
+    "lint": "passed",
+    "vueTypeScript": "passed",
+    "unit": {
+      "files": 54,
+      "passed": 327
+    },
+    "payrollWorksBrowser": {
+      "passed": 22,
+      "viewports": ["Desktop Chrome", "Pixel 7"]
+    },
+    "overviewBrowser": {
+      "passed": 6,
+      "viewports": ["Desktop Chrome", "Pixel 7"]
+    },
+    "publicCompiledPopupBrowser": {
+      "passed": 2,
+      "apiResponses": "synthetic DAO/account fixture; actual published assets"
+    },
+    "actualPublicBrowser": [
+      {
+        "viewport": {
+          "width": 1440,
+          "height": 1000
+        },
+        "result": "passed",
+        "pageErrors": 0,
+        "fixture": "actual public read"
+      },
+      {
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "result": "passed",
+        "pageErrors": 0,
+        "fixture": "actual public read"
+      }
+    ],
+    "testnetBuild": "passed; existing large-chunk warning",
+    "customAccessAssertions": "passed",
+    "formatting": "passed",
+    "whitespace": "passed",
+    "paidNativePayrollSuite": "updated callers; unrun",
+    "livePayrollTransactions": "none"
+  },
+  "releasePacket": "/data/daclify-runtime/releases/20261012-payroll-popup"
+}
