@@ -72,12 +72,17 @@ const guideGroups = [
     topicIds: ['privacy', 'documents', 'recovery', 'archive'],
   },
   {
+    id: 'builders',
+    title: 'Mini apps & builders',
+    description: 'Connect community apps and understand their accounts, databases and permissions.',
+    topicIds: ['connected-apps', 'mini-app-database'],
+  },
+  {
     id: 'operators',
     title: 'Operators & reference',
     description:
       'Run an independent deployment, configure services and check contract permissions.',
     topicIds: [
-      'connected-apps',
       'independent-operators',
       'providers',
       'platform',

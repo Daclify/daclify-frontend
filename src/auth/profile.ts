@@ -1,5 +1,22 @@
-import { CidSchema, NativeAccountSchema, PublicProfileSchema } from '@daclify/core-protocol';
+import {
+  CidSchema,
+  NativeAccountSchema,
+  PublicProfileSchema,
+  type Network,
+  type ProfileContext,
+  type EncryptionPublicKey,
+  type EncryptedProfile,
+  type ProfileKeyGrant,
+  type DaoRef,
+  type PublicProfile,
+} from '@daclify/core-protocol';
 import { encodeAction } from '@daclify/core-protocol/sdk';
+import { decodeRawNativeProfile } from '@daclify/core-protocol/profiles';
+import { preparePrivateProfile, openPrivateProfile } from './session';
+import { api } from '../api/client';
+export function legacyProfileAllowed(network: Pick<Network, 'capabilities'> | undefined): boolean {
+  return !!network && !network.capabilities.includes('encrypted-profiles-v2');
+}
 
 export interface ProfileDraft {
   name: string;
@@ -59,6 +76,7 @@ const textKeys = Object.keys(textLimits) as (keyof typeof textLimits)[];
 export function profileError(draft: ProfileDraft): string | undefined {
   if (
     draft.name.length > 12 ||
+    draft.name.startsWith('.') ||
     draft.name.includes('..') ||
     !NativeAccountSchema.safeParse(draft.name).success
   )
@@ -119,4 +137,75 @@ export function encodeSetprofile(input: {
     account_name: input.accountName,
     profile: input.profile,
   });
+}
+
+export function encryptedProfileAllowed(
+  network: Pick<Network, 'capabilities'> | undefined,
+): boolean {
+  return (
+    !!network?.capabilities.includes('encrypted-profiles-v2') &&
+    network.capabilities.includes('profile-key-envelopes-v1')
+  );
+}
+export interface PreparedProfile {
+  cipher: EncryptedProfile;
+  grants: ProfileKeyGrant[];
+}
+export async function prepareEncryptedProfile(
+  draft: ProfileDraft,
+  context: ProfileContext,
+  audience: EncryptionPublicKey[],
+  includeImages = false,
+): Promise<PreparedProfile> {
+  const value = { ...draft, ...(!includeImages ? { avatar: '', background: '' } : {}) };
+  const error = profileError(value);
+  if (error) throw new Error(error);
+  const plaintext = new TextEncoder().encode(profileJson(value));
+  try {
+    return await preparePrivateProfile(plaintext, context, audience);
+  } finally {
+    plaintext.fill(0);
+  }
+}
+export function encodeSetEncryptedProfile(
+  accountName: string,
+  cipher: EncryptedProfile,
+): Uint8Array {
+  return encodeAction('setencprof', {
+    actor: {
+      runtime: cipher.context.runtime,
+      dao_id: cipher.context.daoId,
+      member_id: cipher.context.memberId,
+    },
+    account_name: accountName,
+    profile: JSON.stringify(cipher),
+  });
+}
+export async function readProfileForAudience(
+  row: Awaited<ReturnType<typeof api.memberProfile>>,
+  dao: DaoRef,
+  memberId: string,
+): Promise<PublicProfile | undefined> {
+  if (!row.profile) return undefined;
+  const decoded = decodeRawNativeProfile(row);
+  let profile: PublicProfile;
+  if (decoded.version === 1) profile = decoded.profile;
+  else {
+    if (
+      decoded.context.chainId !== dao.chainId ||
+      decoded.context.runtime !== dao.contract ||
+      decoded.context.daoId !== dao.daoId ||
+      decoded.context.memberId !== memberId
+    )
+      throw new Error('PROFILE_CONTEXT');
+    const grant = await api.profileKeys(decoded.context);
+    const plaintext = await openPrivateProfile(decoded, grant);
+    try {
+      profile = PublicProfileSchema.parse(JSON.parse(new TextDecoder().decode(plaintext)));
+    } finally {
+      plaintext.fill(0);
+    }
+  }
+  if (profile.name !== row.accountName) throw new Error('PROFILE_CONTEXT');
+  return profile;
 }

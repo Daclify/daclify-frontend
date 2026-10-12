@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.15.0-alpha.8 development
+
+Integrate explicit whole-token Works milestone payments with current dev’s Mini apps and account/profile changes, preserving their pinned SDK dependencies. The compatible testnet UI correction remains frontend 0.14.0-alpha.15 on the running core/modules combination.
+
 ## 0.14.0-alpha.15 development
 
 Replace the Works payment textarea with separate, initially empty milestone rows. Require positive whole-token amounts, pair each payment with its own optional due date and show an exact total. Add/remove controls enforce the 16-milestone limit; input and aggregate overflow checks reject invalid amounts without rounding. Require review of the amounts and total, reset confirmation after edits and preserve payment rows on cancellation or failed submission. Keep payroll amounts separate.

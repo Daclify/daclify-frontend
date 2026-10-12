@@ -48,6 +48,9 @@ import {
   type UserMembership,
   SessionSchema,
   AccountControlPaths,
+  ProfileContextSchema,
+  profileCipherDomain,
+  type ProfileContext,
   AccountControlChallengeSchema,
   type AccountControlChallenge,
   type AccountControlProof,
@@ -76,6 +79,7 @@ import {
   RecoveryRoutes,
   SignupRoutes,
   RecoveryGrantSchema,
+  MiniAppsRoutes,
 } from '@daclify/core-protocol';
 import type { instruction } from '@daclify/core-protocol/sdk';
 import {
@@ -355,6 +359,21 @@ export const api = {
     request(
       ApiRoutes.connectedApps.path.replace(':id', IdSchema.parse(daoId)),
       ApiRoutes.connectedApps.response,
+    ),
+  miniAppConnection: (daoId: string, appId: string) =>
+    request(
+      MiniAppsRoutes.miniAppConnection.path
+        .replace(':daoId', IdSchema.parse(daoId))
+        .replace(':appId', IdSchema.parse(appId)),
+      MiniAppsRoutes.miniAppConnection.response,
+    ),
+  checkMiniAppConnection: (daoId: string, appId: string) =>
+    request(
+      MiniAppsRoutes.checkMiniAppConnection.path
+        .replace(':daoId', IdSchema.parse(daoId))
+        .replace(':appId', IdSchema.parse(appId)),
+      MiniAppsRoutes.checkMiniAppConnection.response,
+      {},
     ),
   stageConnectedApp: (input: z.infer<typeof ApiRoutes.stageConnectedApp.input>) =>
     request(
@@ -1029,6 +1048,49 @@ export const api = {
       `/v1/profile?daoId=${IdSchema.parse(daoId)}&memberId=${IdSchema.parse(memberId)}`,
       MemberProfileSchema,
     ),
+  shareProfileKeys: (input: z.infer<typeof ApiRoutes.profileKeysShare.input>) => {
+    const body = ApiRoutes.profileKeysShare.input.parse(input);
+    assertOperatorDao({
+      chainId: body.context.chainId,
+      contract: body.context.runtime,
+      daoId: body.context.daoId,
+      interfaceVersion: 1,
+    });
+    return request(ApiRoutes.profileKeysShare.path, ApiRoutes.profileKeysShare.response, body);
+  },
+  removeProfileKeys: (input: z.infer<typeof ApiRoutes.profileKeysRemove.input>) => {
+    const body = ApiRoutes.profileKeysRemove.input.parse(input);
+    assertOperatorDao({
+      chainId: body.context.chainId,
+      contract: body.context.runtime,
+      daoId: body.context.daoId,
+      interfaceVersion: 1,
+    });
+    return request(ApiRoutes.profileKeysRemove.path, ApiRoutes.profileKeysRemove.response, body);
+  },
+  profileKeys: async (input: ProfileContext) => {
+    const context = ProfileContextSchema.parse(input);
+    assertOperatorDao({
+      chainId: context.chainId,
+      contract: context.runtime,
+      daoId: context.daoId,
+      interfaceVersion: 1,
+    });
+    const grant = await request(
+      `/v1/profiles/${context.daoId}/${context.memberId}/keys/${context.profileRevision}`,
+      ApiRoutes.profileKeysGet.response,
+    );
+    if (profileCipherDomain(context) !== profileCipherDomain(grant.context))
+      throw new Error('PROFILE_KEY_CONTEXT');
+    return grant;
+  },
+  profileRecipients: (daoId: string, after?: string) => {
+    const query = ApiRoutes.profileRecipients.query.parse({ ...(after ? { after } : {}) });
+    return request(
+      `/v1/profiles/${IdSchema.parse(daoId)}/recipients${query.after ? '?after=' + query.after : ''}`,
+      ApiRoutes.profileRecipients.response,
+    );
+  },
   people: (value: z.infer<typeof PeopleRoutes.list.query> = {}) => {
     const query = PeopleRoutes.list.query.parse(value);
     const params = new URLSearchParams();
@@ -1270,6 +1332,41 @@ export function friendlyError(error: unknown): string {
   const code =
     error instanceof ApiFailure ? error.code : error instanceof Error ? error.message : undefined;
   if (code && telosMessages[code]) return telosMessages[code];
+  const appMessages: Record<string, string> = {
+    PROFILE_KEYS_UNAVAILABLE:
+      'The profile key service is unavailable. Retry after the operator configures the matching service.',
+    PROFILE_KEY_UNAVAILABLE:
+      'This profile key envelope is missing. Your recovery kit cannot reconstruct a removed profile key.',
+    PROFILE_AUDIENCE:
+      'This profile is not shared with your current account. Joining the DAO alone does not grant access.',
+    PROFILE_CONTEXT:
+      'This profile belongs to another deployment or membership. Refresh the selected community.',
+    PROFILE_KEY_CONTEXT:
+      'This envelope does not match the profile or your account. Refresh; do not reuse it.',
+    PROFILE_KEY_CHANGED:
+      'A registered recipient key changed. Refresh the audience before publishing.',
+    PROFILE_DELETION_UNAVAILABLE:
+      'Profile key removal is unavailable. The current profile has not been removed; retry.',
+    PROFILE_ENCRYPTION_REQUIRED:
+      'This deployment requires encrypted profiles. Update the profile editor before publishing.',
+    MINI_APP_RELEASE_UNAVAILABLE:
+      'This deployment has no verified mini app starter. Ask its operator to install the matching release.',
+    MINI_APP_RELEASE_VERSION:
+      'The starter differs from this deployment. Ask its operator for the matching release.',
+    APP_BINDING:
+      'This configuration belongs to a different app or DAO. Choose your community and refresh it.',
+    APP_CALLBACK: 'Use the exact HTTPS callback registered by your community administrator.',
+    APP_REQUEST_EXPIRED: 'This consent request expired. Return to the app and sign in again.',
+    APP_REVISED:
+      'Your administrator changed the app registration. Return to the app and sign in again.',
+    APP_DISABLED: 'Your community has suspended this app. Contact its administrator.',
+    APP_UNKNOWN: 'No registered app was found. Refresh or ask your administrator to register it.',
+    APP_GRANT_REQUIRED:
+      'The recording grant could not be verified. Refresh your membership and approve it again.',
+    ADMIN_REQUIRED: 'Ask an active community administrator to register or configure this app.',
+    MEMBERSHIP_REQUIRED: 'Sign in as an active member of this community before continuing.',
+  };
+  if (code && appMessages[code]) return appMessages[code];
   if (error instanceof ApiFailure) {
     const messages: Record<string, string> = {
       MODULE_BILLING_UNCONFIGURED: 'Module access payments are not configured on this service.',
