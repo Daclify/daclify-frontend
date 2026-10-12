@@ -26,16 +26,19 @@ import {
   LoginMessageSchema,
   VaultAccountSchema,
   type Account,
+  DaoContentSchema,
+  epochGrantDomain,
 } from '@daclify/core-protocol';
 import { configureNetworks } from '../../src/api/networks';
-import { api } from '../../src/api/client';
-import { createVault } from '../../src/auth/vault';
+import { api, ApiFailure } from '../../src/api/client';
+import { createVault, createEpochGrant, sha256Hex } from '../../src/auth/vault';
 import {
   acceptProviderSession,
   lockVault,
   saveVault,
   unlockAndLogin,
   vaultUnlocked,
+  verifyPrivateEpochs,
 } from '../../src/auth/session';
 const password = 'long disposable fixture password';
 const csrf = 'a'.repeat(43);
@@ -132,6 +135,50 @@ describe('provider sessions leave the user-controlled vault locked', () => {
   });
 });
 
+it('verifies actual committed private grants and rejects a corrupted commitment without exposing keys', async () => {
+  const created = await createVault(password);
+  saveVault(created);
+  const owned = {
+    ...account(created.signingPublicKey),
+    encryptionKey: created.encryptionPublicKey,
+  };
+  vi.spyOn(api, 'challenge').mockResolvedValue({
+    id: randomUUID(),
+    message: 'fixture-message',
+    expires: new Date(Date.now() + 60000).toISOString(),
+  });
+  vi.spyOn(api, 'login').mockResolvedValue(owned);
+  await unlockAndLogin(password);
+  const dao = {
+    chainId: 'ab'.repeat(32),
+    contract: 'daclifycore',
+    daoId: '1',
+    interfaceVersion: 1 as const,
+  };
+  const key = crypto.getRandomValues(new Uint8Array(32));
+  const envelope = await createEpochGrant(
+    created.encryptionPublicKey,
+    key,
+    epochGrantDomain(dao, '1', '1'),
+  );
+  const records = DaoContentSchema.parse({
+    dao,
+    members: [],
+    documents: [],
+    epochs: [{ epoch: '1', creator: '1', commitment: await sha256Hex(key) }],
+    keyGrants: [
+      { id: '1', epoch: '1', recipient: '1', grantor: '1', envelope: JSON.stringify(envelope) },
+    ],
+  });
+  await expect(verifyPrivateEpochs(dao, '1', ['1'], records)).resolves.toBeUndefined();
+  const epoch = records.epochs[0];
+  if (!epoch) throw new Error('Missing epoch fixture');
+  epoch.commitment = '00'.repeat(32);
+  await expect(verifyPrivateEpochs(dao, '1', ['1'], records)).rejects.toThrow('EPOCH_KEY_MISMATCH');
+  lockVault();
+  await expect(verifyPrivateEpochs(dao, '1', ['1'], records)).rejects.toThrow('VAULT_LOCKED');
+});
+
 it('does not unlock keys or replace CSRF state when the account changes while vault attachment is pending', async () => {
   const { createPinia, setActivePinia } = await import('pinia');
   const { useWorkspace } = await import('../../src/state/workspace');
@@ -192,6 +239,86 @@ it('does not unlock keys or replace CSRF state when the account changes while va
     csrfToken: csrf,
   });
   await expect(operation).rejects.toThrow('ACCOUNT_KEY_MISMATCH');
+  expect(vaultUnlocked.value).toBe(false);
+  expect(sessionStorage.getItem('daclify.csrf')).toBe('b'.repeat(43));
+  setActivePinia(undefined);
+});
+
+it('lets a wallet session explicitly restore its already registered account without signing out', async () => {
+  const { createPinia, setActivePinia } = await import('pinia');
+  const { useWorkspace } = await import('../../src/state/workspace');
+  setActivePinia(createPinia());
+  vi.stubGlobal('window', { location: { origin: 'http://localhost:5208' } });
+  const created = await createVault(password);
+  saveVault(created);
+  const wallet = AccountSchema.parse({
+    id: randomUUID(),
+    custody: 'user-controlled',
+    signingKey: null,
+    encryptionKey: null,
+  });
+  const restored = AccountSchema.parse({
+    id: randomUUID(),
+    custody: 'user-controlled',
+    signingKey: created.signingPublicKey,
+    encryptionKey: created.encryptionPublicKey,
+  });
+  useWorkspace().account = wallet;
+  const attach = vi
+    .spyOn(api, 'vaultAttachChallenge')
+    .mockRejectedValue(new ApiFailure('VAULT_ALREADY_REGISTERED'));
+  const challenge = vi.spyOn(api, 'challenge').mockResolvedValue({
+    id: randomUUID(),
+    message: 'fixture-message',
+    expires: new Date(Date.now() + 60000).toISOString(),
+  });
+  vi.spyOn(api, 'login').mockResolvedValue(restored);
+  expect(await unlockAndLogin(password, wallet, 'recover')).toEqual(restored);
+  expect(attach).not.toHaveBeenCalled();
+  expect(challenge).toHaveBeenCalledOnce();
+  expect(vaultUnlocked.value).toBe(true);
+  setActivePinia(undefined);
+});
+
+it('keeps a changed session intact when registered-account recovery finishes late', async () => {
+  const { createPinia, setActivePinia } = await import('pinia');
+  const { useWorkspace } = await import('../../src/state/workspace');
+  setActivePinia(createPinia());
+  vi.stubGlobal('window', { location: { origin: 'http://localhost:5208' } });
+  const created = await createVault(password);
+  saveVault(created);
+  const wallet = AccountSchema.parse({
+    id: randomUUID(),
+    custody: 'user-controlled',
+    signingKey: null,
+    encryptionKey: null,
+  });
+  const restored = AccountSchema.parse({
+    id: randomUUID(),
+    custody: 'user-controlled',
+    signingKey: created.signingPublicKey,
+    encryptionKey: created.encryptionPublicKey,
+  });
+  const workspace = useWorkspace();
+  workspace.account = wallet;
+  const attach = vi
+    .spyOn(api, 'vaultAttachChallenge')
+    .mockRejectedValue(new ApiFailure('VAULT_ALREADY_REGISTERED'));
+  vi.spyOn(api, 'challenge').mockResolvedValue({
+    id: randomUUID(),
+    message: 'fixture-message',
+    expires: new Date(Date.now() + 60000).toISOString(),
+  });
+  vi.spyOn(api, 'login').mockImplementation(async (_id, _signature, _key, check) => {
+    workspace.account = AccountSchema.parse({ ...wallet, id: randomUUID() });
+    sessionStorage.setItem('daclify.csrf', 'b'.repeat(43));
+    check?.(restored);
+    return restored;
+  });
+  await expect(unlockAndLogin(password, wallet, 'recover')).rejects.toThrow(
+    'WALLET_CONTEXT_CHANGED',
+  );
+  expect(attach).not.toHaveBeenCalled();
   expect(vaultUnlocked.value).toBe(false);
   expect(sessionStorage.getItem('daclify.csrf')).toBe('b'.repeat(43));
   setActivePinia(undefined);

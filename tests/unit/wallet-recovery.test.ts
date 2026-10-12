@@ -8,6 +8,6 @@ it('explains the difference between recovering wallet access and recovering decr
     'Pair another blockchain wallet before removing your last account-control method.',
   );
   expect(friendlyError(new ApiFailure('VAULT_ALREADY_REGISTERED'))).toBe(
-    'These keys belong to an existing service account. Sign out and sign in with that vault; accounts are not merged automatically.',
+    'Your original account was found. Restore that account to continue with these keys.',
   );
 });

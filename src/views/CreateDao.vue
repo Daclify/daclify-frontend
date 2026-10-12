@@ -15,6 +15,8 @@ import {
 } from '@daclify/core-protocol';
 import { useWorkspace } from '../state/workspace';
 import { api, friendlyError } from '../api/client';
+import { canUseVaultKey } from '../auth/session';
+import Account from './Account.vue';
 const state = useWorkspace();
 const router = useRouter();
 const route = useRoute();
@@ -387,17 +389,17 @@ onBeforeUnmount(() => {
       >Set up account</RouterLink
     >
   </div>
-  <div v-else-if="state.account.signingKey === null" class="panel narrow">
-    <h2>Set up your Daclify keys</h2>
+  <section
+    v-else-if="state.account.signingKey === null || !canUseVaultKey(state.account.signingKey)"
+    class="full-access-setup"
+  >
+    <h2>Enable full access</h2>
     <p>
-      Your wallet can manage its existing DAOs. Creating a DAO also needs a signing and encryption
-      identity. Restore your original recovery kit or create keys from your Account page; wallet
-      access stays on the same service profile.
+      Open your Daclify account on this device to create a DAO. Your paired sign-ins and one
+      recovery kit belong to the same account. Complete this step here, then continue your setup.
     </p>
-    <RouterLink class="button" :to="{ path: '/account', query: { returnTo: route.fullPath } }"
-      >Set up or restore keys</RouterLink
-    >
-  </div>
+    <Account access-setup />
+  </section>
   <section v-else-if="order" class="panel narrow">
     <h2>{{ order.setup.metadata.title }}</h2>
     <p>{{ order.setup.metadata.description }}</p>

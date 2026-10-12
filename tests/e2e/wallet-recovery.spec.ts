@@ -6,13 +6,19 @@ import {
   AccountControlMessageSchema,
   AccountControlRequestSchema,
   AccountControlProofSchema,
+  AccountReconnectMessageSchema,
+  LoginMessageSchema,
+  RecoveryKitSchema,
   type Account,
 } from '@daclify/core-protocol';
+import { createVault } from '../../src/auth/vault';
 const id = 'ea8725ba-243d-4dd4-8455-c9f6da55cbfe',
   chainId = 'ab'.repeat(32);
 const address = '0x1111111111111111111111111111111111111111';
-async function fixture(page: Page) {
+async function fixture(page: Page, registered = false) {
   let account: Account = { id, custody: 'user-controlled', signingKey: null, encryptionKey: null };
+  const original = registered ? await createVault('original fixture vault password') : undefined;
+  const restoredId = '89590c11-9a6c-4a88-9435-2d11c0343052';
   let message = '',
     intentId = '';
   const sourceKey = PrivateKey.generate('K1').toPublic().toString();
@@ -126,6 +132,11 @@ async function fixture(page: Page) {
       if (proof.kind !== 'evm') throw new Error('Fixture requires EVM account control');
       expect(proof.chainId).toBe(41);
       expect(proof.address.toLowerCase()).toBe(address);
+      if (registered)
+        return route.fulfill({
+          status: 409,
+          json: { code: 'VAULT_ALREADY_REGISTERED', message: 'Registered account' },
+        });
       account = {
         id,
         custody: 'user-controlled',
@@ -134,12 +145,72 @@ async function fixture(page: Page) {
       };
       return route.fulfill({ json: { account, csrfToken: 'c'.repeat(43) } });
     }
+    if (path === '/v1/account/reconnect/challenge' || path === '/v1/auth/challenge') {
+      const input = ApiRoutes.challenge.input.parse(route.request().postDataJSON());
+      if (!original) throw new Error('Missing registered fixture');
+      expect(input.signingKey).toBe(original.signingPublicKey);
+      expect(input.encryptionKey).toEqual(original.encryptionPublicKey);
+      intentId = crypto.randomUUID();
+      const expires = new Date(Date.now() + 300000).toISOString();
+      message = JSON.stringify(
+        path === '/v1/auth/challenge'
+          ? LoginMessageSchema.parse({
+              ...input,
+              domain: 'daclify.login.v3',
+              origin: new URL(page.url()).origin,
+              audience: new URL(route.request().url()).origin,
+              challenge: intentId,
+              expires,
+            })
+          : AccountReconnectMessageSchema.parse({
+              ...input,
+              domain: 'daclify.account-reconnect.v1',
+              origin: new URL(page.url()).origin,
+              audience: new URL(route.request().url()).origin,
+              accountId: id,
+              targetAccountId: restoredId,
+              id: intentId,
+              expires,
+            }),
+      );
+      return route.fulfill({ json: { id: intentId, message, expires } });
+    }
+    if (path === '/v1/account/reconnect' || path === '/v1/auth/login') {
+      if (!original) throw new Error('Missing registered fixture');
+      const input =
+        path === '/v1/auth/login'
+          ? ApiRoutes.login.input.parse(route.request().postDataJSON())
+          : ApiRoutes.vaultAttach.input.parse(route.request().postDataJSON());
+      expect(
+        Signature.from(input.signature).verifyMessage(
+          new TextEncoder().encode(message),
+          PublicKey.from(original.signingPublicKey),
+        ),
+      ).toBe(true);
+      if (path === '/v1/account/reconnect') {
+        const proof = AccountControlProofSchema.parse(
+          JSON.parse(route.request().headers()['x-account-proof'] ?? '{}'),
+        );
+        expect(proof.kind).toBe('evm');
+        expect(AccountReconnectMessageSchema.parse(JSON.parse(message)).targetAccountId).toBe(
+          restoredId,
+        );
+      }
+      account = {
+        id: restoredId,
+        custody: 'user-controlled',
+        signingKey: original.signingPublicKey,
+        encryptionKey: original.encryptionPublicKey,
+      };
+      return route.fulfill({ json: { account, csrfToken: 'd'.repeat(43) } });
+    }
     return route.fulfill({
       status: 503,
       json: { code: 'STRIPE_NOT_CONFIGURED', message: 'Fixture provider unavailable' },
     });
   });
   await page.addInitScript(() => sessionStorage.setItem('daclify.csrf', 'c'.repeat(43)));
+  return { original, restoredId };
 }
 test('shows wallet-only recovery honestly and gates paid DAO creation before checkout', async ({
   page,
@@ -156,12 +227,60 @@ test('shows wallet-only recovery honestly and gates paid DAO creation before che
   await page.getByText('Account details', { exact: true }).click();
   await expect(page.getByText(id, { exact: true })).toBeVisible();
   await page.goto('/create');
-  await expect(page.getByRole('heading', { name: 'Set up your Daclify keys' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Set up or restore keys' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Enable full access' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Recover from an encrypted kit' })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   );
 });
+
+for (const keepSignIns of [true, false]) {
+  test(`restores an already registered account ${keepSignIns ? 'with explicitly reconnected sign-ins' : 'without signing out first'}`, async ({
+    page,
+  }) => {
+    const { original, restoredId } = await fixture(page, true);
+    if (!original) throw new Error('Missing fixture kit');
+    await page.goto('/account');
+    await page.getByRole('tab', { name: 'Sign-in methods', exact: true }).click();
+    await page.locator('summary').filter({ hasText: 'Telos EVM' }).click();
+    await page.getByRole('button', { name: 'Use paired EVM wallet for account control' }).click();
+    await page.getByRole('tab', { name: 'Access & recovery', exact: true }).click();
+    await page.getByRole('button', { name: 'Recover from an encrypted kit' }).click();
+    const kit = RecoveryKitSchema.parse({
+      version: 1,
+      localEnvelope: original.localEnvelope,
+      recoveryEnvelope: original.recoveryEnvelope,
+      signingPublicKey: original.signingPublicKey,
+      encryptionPublicKey: original.encryptionPublicKey,
+    });
+    await page.getByLabel('Encrypted recovery kit').setInputFiles({
+      name: 'account-kit.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify(kit)),
+    });
+    await page.getByLabel('Vault password or recovery code').fill(original.recoveryCredential);
+    await page.getByLabel('New vault password', { exact: true }).fill('restored fixture password');
+    await page.getByRole('button', { name: 'Restore', exact: true }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Your original account was found' }),
+    ).toBeVisible();
+    await expect(page.getByRole('alert')).toHaveCount(0);
+    await page
+      .getByRole('button', {
+        name: keepSignIns ? 'Restore account and keep my sign-ins' : 'Restore account only',
+        exact: true,
+      })
+      .click();
+    await expect(page.getByText('Keys unlocked', { exact: true })).toBeVisible();
+    await page.getByText('Public join identity', { exact: true }).click();
+    await expect(page.getByText(restoredId, { exact: true })).toBeVisible();
+    const storage = await page.evaluate(() => localStorage.getItem('daclify.vault.v1'));
+    expect(storage).not.toContain('PVT_K1_');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+  });
+}
 test('attaches a proved new vault to the recovered profile with a separate wallet approval', async ({
   page,
 }) => {
@@ -182,10 +301,30 @@ test('attaches a proved new vault to the recovered profile with a separate walle
   await expect(page.getByRole('heading', { name: 'This device', exact: true })).toBeVisible();
   await page.getByText('Public join identity', { exact: true }).click();
   await expect(page.getByText(id, { exact: true })).toBeVisible();
-  await expect(page.getByText('Vault unlocked', { exact: true })).toBeVisible();
+  await expect(page.getByText('Keys unlocked', { exact: true })).toBeVisible();
   const raw = await page.evaluate(() => localStorage.getItem('daclify.vault.v1'));
   expect(raw).not.toContain('PVT_K1_');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   );
+});
+
+test('enables full access inside Create and keeps the original setup route', async ({ page }) => {
+  await fixture(page);
+  await page.goto('/account');
+  await page.getByRole('tab', { name: 'Sign-in methods', exact: true }).click();
+  await page.locator('summary').filter({ hasText: 'Telos EVM' }).click();
+  await page.getByRole('button', { name: 'Use paired EVM wallet for account control' }).click();
+  const menu = page.getByRole('button', { name: 'Menu', exact: true });
+  if (await menu.isVisible()) await menu.click();
+  await page.getByRole('link', { name: 'Create', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Enable full access' })).toBeVisible();
+  await page.getByText('Create Daclify keys for a new DAO', { exact: true }).click();
+  await page.getByLabel('New vault password', { exact: true }).fill('one account fixture password');
+  await page.getByRole('button', { name: 'Create encrypted vault', exact: true }).click();
+  await page.getByLabel('I have saved my recovery kit and credential').check();
+  await page.getByRole('button', { name: 'Finish account setup' }).click();
+  await expect(page.getByLabel('DAO name', { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/create$/);
+  await expect(page.getByRole('heading', { name: 'Enable full access' })).toHaveCount(0);
 });

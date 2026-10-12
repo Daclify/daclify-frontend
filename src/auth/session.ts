@@ -17,6 +17,7 @@ import {
   type Account,
   AccountControlMessageSchema,
   VaultAttachMessageSchema,
+  AccountReconnectMessageSchema,
   RecoveryContextSchema,
   VaultSecretsSchema,
   type RecoveryContext,
@@ -260,11 +261,18 @@ export async function installCreatedVault(
   vaultUnlocked.value = true;
   touch();
 }
-export async function unlockAndLogin(password: string, current?: Account): Promise<Account> {
+export async function unlockAndLogin(
+  password: string,
+  current?: Account,
+  mode: 'attach' | 'recover' | 'reconnect' = 'attach',
+): Promise<Account> {
   const started = generation;
+  const check = current && mode !== 'attach' ? recoveryContextGuard(current) : undefined;
+  check?.();
   const vault = savedVault();
   if (!vault) throw new Error('VAULT_UNLOCK_FAILED');
   const opened = await unlockVault(vault.localEnvelope, password);
+  check?.();
   const signing = PrivateKey.from(opened.signingKey);
   const encryption = EncryptionPublicKeySchema.parse({
     kty: opened.encryptionPrivateKey.kty,
@@ -278,13 +286,23 @@ export async function unlockAndLogin(password: string, current?: Account): Promi
   )
     throw new Error('VAULT_UNLOCK_FAILED');
   let account: Account;
-  if (current?.signingKey === null) {
+  if (mode === 'reconnect' && current?.signingKey !== null) throw new Error('ACCOUNT_KEY_MISMATCH');
+  if (current?.signingKey === null && mode !== 'recover') {
     const { useWorkspace } = await import('../state/workspace');
-    const challenge = await api.vaultAttachChallenge({
+    const identity = {
       signingKey: vault.signingPublicKey,
       encryptionKey: vault.encryptionPublicKey,
-    });
-    const message = VaultAttachMessageSchema.parse(JSON.parse(challenge.message));
+    };
+    const challenge =
+      mode === 'reconnect'
+        ? await api.accountReconnectChallenge(identity)
+        : await api.vaultAttachChallenge(identity);
+    check?.();
+    const message =
+      mode === 'reconnect'
+        ? AccountReconnectMessageSchema.parse(JSON.parse(challenge.message))
+        : VaultAttachMessageSchema.parse(JSON.parse(challenge.message));
+    const targetId = 'targetAccountId' in message ? message.targetAccountId : current.id;
     if (
       message.origin !== window.location.origin ||
       message.accountId !== current.id ||
@@ -296,14 +314,16 @@ export async function unlockAndLogin(password: string, current?: Account): Promi
       started !== generation
     )
       throw new Error('ACCOUNT_KEY_MISMATCH');
-    const session = await api.attachVault(
-      challenge.id,
-      signing.signMessage(new TextEncoder().encode(challenge.message)).toString(),
-    );
+    const signature = signing.signMessage(new TextEncoder().encode(challenge.message)).toString();
+    const session =
+      mode === 'reconnect'
+        ? await api.reconnectAccount(challenge.id, signature)
+        : await api.attachVault(challenge.id, signature);
+    check?.();
     if (
       useWorkspace().account?.id !== current.id ||
       started !== generation ||
-      session.account.id !== current.id ||
+      session.account.id !== targetId ||
       session.account.signingKey !== vault.signingPublicKey ||
       JSON.stringify(session.account.encryptionKey) !== JSON.stringify(vault.encryptionPublicKey)
     )
@@ -314,13 +334,29 @@ export async function unlockAndLogin(password: string, current?: Account): Promi
       signingKey: vault.signingPublicKey,
       encryptionKey: vault.encryptionPublicKey,
     });
+    check?.();
     account = await api.login(
       challenge.id,
       signing.signMessage(new TextEncoder().encode(challenge.message)).toString(),
       vault.encryptionPublicKey,
+      (recovered) => {
+        check?.();
+        if (
+          started !== generation ||
+          recovered.signingKey !== vault.signingPublicKey ||
+          JSON.stringify(recovered.encryptionKey) !== JSON.stringify(vault.encryptionPublicKey)
+        )
+          throw new Error('ACCOUNT_KEY_MISMATCH');
+      },
     );
   }
+  check?.();
   if (started !== generation) throw new Error('VAULT_LOCKED');
+  if (
+    account.signingKey !== vault.signingPublicKey ||
+    JSON.stringify(account.encryptionKey) !== JSON.stringify(vault.encryptionPublicKey)
+  )
+    throw new Error('ACCOUNT_KEY_MISMATCH');
   secrets = opened;
   (await import('./action-signer')).selectedSigner.value = 'vault';
   vaultUnlocked.value = true;
@@ -501,6 +537,20 @@ async function epochKey(
   );
   guardEpochAccess(started);
   return key;
+}
+export async function verifyPrivateEpochs(
+  dao: DaoRef,
+  member: string,
+  epochs: string[],
+  content: DaoContent,
+): Promise<void> {
+  if (epochs.length > 20) throw new Error('KEY_CHECK_LIMIT');
+  const started = generation;
+  for (const epoch of epochs) {
+    const key = await epochKey(dao, member, epoch, content);
+    key.fill(0);
+  }
+  guardEpochAccess(started);
 }
 export async function preparePrivateEpoch(
   dao: DaoRef,

@@ -6,9 +6,11 @@ import {
   type DaoContent,
   type DaoSummary,
   type UserMembership,
+  type PrivateAccessPolicy,
+  EncryptionPublicKeySchema,
 } from '@daclify/core-protocol';
 import { encodeAction, makeInstruction, type RuntimeActions } from '@daclify/core-protocol/sdk';
-import { api, friendlyError } from '../api/client';
+import { api, ApiFailure, friendlyError } from '../api/client';
 import {
   preparePrivateEpoch,
   encryptDaoJson,
@@ -17,6 +19,7 @@ import {
   grantPrivateEpoch,
   relayInstruction,
   vaultUnlocked,
+  verifyPrivateEpochs,
 } from '../auth/session';
 import { decodeStoredBytes, verifyStoredFile, downloadFile } from '../content/files';
 import FilePanel from './FilePanel.vue';
@@ -24,6 +27,8 @@ import AdmissionPanel from './AdmissionPanel.vue';
 import MemberDirectory from './MemberDirectory.vue';
 import { useWorkspace } from '../state/workspace';
 import { canSignMember } from '../auth/action-signer';
+import { planPrivateAccess, privateSuccessors } from '../auth/private-access';
+import Account from '../views/Account.vue';
 const props = defineProps<{
   dao: DaoSummary;
   member: UserMembership | undefined;
@@ -42,6 +47,15 @@ const target = ref('');
 const quantity = ref('0');
 const admin = ref(false);
 const reviewer = ref(false);
+const privatePolicy = ref<PrivateAccessPolicy>();
+const currentEpoch = computed(() => privatePolicy.value?.keyEpoch ?? props.dao.keyEpoch);
+watch(currentEpoch, (epoch, previous) => {
+  if (epochChoice.value === previous) epochChoice.value = epoch;
+});
+const verifiedEpochs = ref(new Set<string>());
+const successor = ref('');
+const handoverConfirmed = ref(false);
+const accessNote = ref('');
 let generation = 0;
 let disposed = false;
 const context = computed(() =>
@@ -55,14 +69,78 @@ const context = computed(() =>
 const isAdmin = computed(() => !!props.member?.active && props.member.admin);
 const privateDao = computed(() => props.dao.privacy !== 'public');
 const epochReady = computed(() =>
-  content.value?.epochs.some((e) => e.epoch === props.dao.keyEpoch),
+  content.value?.epochs.some((e) => e.epoch === currentEpoch.value),
 );
 const hasCurrentKey = computed(() =>
   content.value?.keyGrants.some(
-    (g) => g.epoch === props.dao.keyEpoch && g.recipient === props.member?.memberId,
+    (g) => g.epoch === currentEpoch.value && g.recipient === props.member?.memberId,
   ),
 );
 const selected = computed(() => content.value?.members.find((m) => m.id === target.value));
+const privateIdentityReady = computed(() => {
+  const account = state.account,
+    person = content.value?.members.find((m) => m.id === props.member?.memberId);
+  if (!account?.encryptionKey || !person || !vaultUnlocked.value) return false;
+  try {
+    const key = EncryptionPublicKeySchema.parse(JSON.parse(person.encryption_key));
+    return key.x === account.encryptionKey.x && key.y === account.encryptionKey.y;
+  } catch {
+    return false;
+  }
+});
+const accessPlan = computed(() =>
+  content.value && privatePolicy.value && props.member
+    ? planPrivateAccess(
+        content.value,
+        props.member.memberId,
+        privatePolicy.value.historyPolicy,
+        props.dao.privacy,
+      )
+    : undefined,
+);
+const ownEpochs = computed(() => {
+  const person = content.value?.members.find((m) => m.id === props.member?.memberId),
+    policy = privatePolicy.value;
+  return person && policy
+    ? (content.value?.epochs ?? [])
+        .filter(
+          (e) =>
+            policy.historyPolicy === 'full-history' || BigInt(e.epoch) >= BigInt(person.join_epoch),
+        )
+        .map((e) => e.epoch)
+    : [];
+});
+const ownChecks = computed(() =>
+  ownEpochs.value.filter(
+    (epoch) =>
+      !verifiedEpochs.value.has(epoch) &&
+      content.value?.keyGrants.some(
+        (g) => g.recipient === props.member?.memberId && g.epoch === epoch,
+      ),
+  ),
+);
+const successors = computed(() =>
+  content.value && selected.value ? privateSuccessors(content.value, selected.value.id) : [],
+);
+const accessFingerprint = computed(() =>
+  JSON.stringify([
+    context.value,
+    currentEpoch.value,
+    privatePolicy.value,
+    content.value?.epochs,
+    content.value?.keyGrants,
+    content.value?.members.map((m) => [m.id, m.active, m.admin, m.encryption_key, m.join_epoch]),
+  ]),
+);
+watch(accessFingerprint, () => {
+  verifiedEpochs.value.clear();
+  handoverConfirmed.value = false;
+  successor.value = '';
+});
+watch(target, () => {
+  handoverConfirmed.value = false;
+  successor.value = '';
+});
 const latest = computed(() => {
   const records = new Map<string, DaoContent['documents'][number]>();
   for (const d of content.value?.documents ?? []) {
@@ -71,26 +149,42 @@ const latest = computed(() => {
   }
   return Array.from(records.values());
 });
-async function refresh() {
+async function refresh(): Promise<boolean> {
   const request = ++generation;
   const domain = context.value;
   try {
-    const records = await api.content(props.dao.reference.daoId);
+    const [records, policy] = await Promise.all([
+      api.content(props.dao.reference.daoId),
+      privateDao.value
+        ? api.privateAccessPolicy(props.dao.reference.daoId).catch(() => undefined)
+        : Promise.resolve(undefined),
+    ]);
     if (
       !disposed &&
       request === generation &&
       domain === context.value &&
       JSON.stringify(records.dao) === JSON.stringify(props.dao.reference)
-    )
+    ) {
+      if (policy && JSON.stringify(policy.dao) !== JSON.stringify(props.dao.reference))
+        throw new Error('DAO_REFERENCE');
       content.value = records;
+      privatePolicy.value = policy;
+      return true;
+    }
   } catch (cause) {
     if (!disposed && request === generation && domain === context.value)
       error.value = friendlyError(cause);
   }
+  return false;
 }
+watch(
+  () => props.section,
+  () => void refresh(),
+);
 watch(vaultUnlocked, (unlocked) => {
   if (!unlocked) {
     decrypted.value.clear();
+    verifiedEpochs.value.clear();
     if (privateDao.value) value.value = '';
   }
 });
@@ -115,6 +209,8 @@ watch(
   () => {
     generation++;
     content.value = undefined;
+    privatePolicy.value = undefined;
+    accessNote.value = '';
     decrypted.value.clear();
     value.value = '';
     documentId.value = '';
@@ -149,7 +245,7 @@ async function transact<K extends keyof RuntimeActions>(action: K, args: Runtime
     ),
   );
   await state.refresh();
-  await refresh();
+  if (!(await refresh())) throw new ApiFailure('ACTION_REFRESH_REQUIRED');
 }
 async function publish() {
   const m = props.member;
@@ -180,7 +276,7 @@ async function publish() {
           m.memberId,
           id,
           version,
-          props.dao.keyEpoch,
+          currentEpoch.value,
           content.value,
           json,
         )
@@ -205,7 +301,7 @@ async function publish() {
       version,
       value: stored,
       envelope_version: privateDao.value ? 1 : 0,
-      key_epoch: privateDao.value ? props.dao.keyEpoch : '0',
+      key_epoch: privateDao.value ? currentEpoch.value : '0',
     });
     documentId.value = '';
     value.value = '';
@@ -221,20 +317,144 @@ async function initialize() {
   busy.value = true;
   error.value = '';
   try {
-    const prepared = await preparePrivateEpoch(props.dao.reference, m.memberId, props.dao.keyEpoch);
-    await transact('commitepoch', {
-      runtime: props.dao.reference.contract,
-      dao_id: props.dao.reference.daoId,
-      member_id: m.memberId,
-      epoch: props.dao.keyEpoch,
-      commitment: prepared.commitment,
-      self_grant: prepared.selfGrant,
-    });
+    await commitCurrentEpoch();
   } catch (cause) {
     error.value = friendlyError(cause);
   } finally {
     busy.value = false;
   }
+}
+async function commitCurrentEpoch() {
+  const m = props.member,
+    domain = context.value;
+  if (!m || !isAdmin.value || !privateIdentityReady.value) throw new Error('ACCOUNT_KEY_MISMATCH');
+  const epoch = currentEpoch.value;
+  const prepared = await preparePrivateEpoch(props.dao.reference, m.memberId, epoch);
+  if (
+    domain !== context.value ||
+    epoch !== currentEpoch.value ||
+    !privateIdentityReady.value ||
+    !signerReady.value
+  )
+    throw new Error('WALLET_CONTEXT_CHANGED');
+  await transact('commitepoch', {
+    runtime: props.dao.reference.contract,
+    dao_id: props.dao.reference.daoId,
+    member_id: m.memberId,
+    epoch,
+    commitment: prepared.commitment,
+    self_grant: prepared.selfGrant,
+  });
+}
+async function grantAccess(recipients?: string[]) {
+  if (!isAdmin.value || !privateIdentityReady.value || !signerReady.value || !privatePolicy.value)
+    return;
+  const domain = context.value;
+  busy.value = true;
+  error.value = '';
+  accessNote.value = '';
+  try {
+    if (!(await refresh())) throw new ApiFailure('PRIVATE_ACCESS_UNAVAILABLE');
+    if (!epochReady.value) await commitCurrentEpoch();
+    const records = content.value,
+      m = props.member;
+    if (!records || !m || domain !== context.value) throw new Error('WALLET_CONTEXT_CHANGED');
+    const jobs = (accessPlan.value?.grants ?? [])
+      .filter((g) => !recipients || recipients.includes(g.recipient.id))
+      .slice(0, 20);
+    const prepared = [];
+    for (const job of jobs)
+      prepared.push({
+        ...job,
+        envelope: await grantPrivateEpoch(
+          props.dao.reference,
+          m.memberId,
+          job.recipient,
+          job.epoch,
+          records,
+        ),
+      });
+    let completed = 0;
+    for (const job of prepared) {
+      const recipient = content.value?.members.find((person) => person.id === job.recipient.id);
+      if (
+        disposed ||
+        domain !== context.value ||
+        !privateIdentityReady.value ||
+        !signerReady.value ||
+        !recipient?.active ||
+        recipient.encryption_key !== job.recipient.encryption_key
+      )
+        throw new Error('WALLET_CONTEXT_CHANGED');
+      if (
+        content.value?.keyGrants.some((g) => g.recipient === recipient.id && g.epoch === job.epoch)
+      )
+        continue;
+      await transact('grantkey', {
+        runtime: props.dao.reference.contract,
+        dao_id: props.dao.reference.daoId,
+        member_id: m.memberId,
+        recipient: recipient.id,
+        epoch: job.epoch,
+        envelope: job.envelope,
+      });
+      completed++;
+    }
+    accessNote.value = `Prepared ${completed} private-access grants. Remaining grants and unavailable epochs are shown below.`;
+  } catch (cause) {
+    if (domain === context.value) error.value = friendlyError(cause);
+  } finally {
+    if (domain === context.value) busy.value = false;
+  }
+}
+async function onAdmitted(signingKey?: string) {
+  const domain = context.value;
+  const loaded = await refresh();
+  if (!signingKey || domain !== context.value) return;
+  if (!loaded || !privatePolicy.value || !privateIdentityReady.value) {
+    accessNote.value =
+      'Member admitted. Private access is pending until the account and history policy are ready.';
+    return;
+  }
+  const recipient = content.value?.members.find((m) => m.signing_key === signingKey);
+  if (recipient) await grantAccess([recipient.id]);
+}
+async function verifyAccess() {
+  const m = props.member,
+    records = content.value,
+    domain = context.value,
+    fingerprint = accessFingerprint.value;
+  if (!m?.active || !records || !privateIdentityReady.value) return;
+  busy.value = true;
+  error.value = '';
+  try {
+    const epochs = ownChecks.value.slice(0, 20);
+    await verifyPrivateEpochs(props.dao.reference, m.memberId, epochs, records);
+    if (
+      disposed ||
+      domain !== context.value ||
+      fingerprint !== accessFingerprint.value ||
+      !privateIdentityReady.value
+    )
+      throw new Error('WALLET_CONTEXT_CHANGED');
+    for (const epoch of epochs) verifiedEpochs.value.add(epoch);
+  } catch (cause) {
+    if (domain === context.value) error.value = friendlyError(cause);
+  } finally {
+    if (domain === context.value) busy.value = false;
+  }
+}
+async function checkHandover(departing: DaoContent['members'][number]) {
+  if (!privateDao.value || !departing.admin) return;
+  const fingerprint = accessFingerprint.value,
+    confirmed = handoverConfirmed.value,
+    chosen = successor.value,
+    domain = context.value;
+  if (!(await refresh())) throw new ApiFailure('PRIVATE_HANDOVER_REQUIRED');
+  if (disposed || domain !== context.value || fingerprint !== accessFingerprint.value)
+    throw new Error('WALLET_CONTEXT_CHANGED');
+  if (!confirmed || !privatePolicy.value || !successors.value.some((m) => m.id === chosen))
+    throw new ApiFailure('PRIVATE_HANDOVER_REQUIRED');
 }
 async function decrypt(document: DaoContent['documents'][number]) {
   const m = props.member;
@@ -313,6 +533,7 @@ async function activate() {
   busy.value = true;
   error.value = '';
   try {
+    if (recipient.active) await checkHandover(recipient);
     await transact('setactive', {
       runtime: props.dao.reference.contract,
       dao_id: props.dao.reference.daoId,
@@ -328,17 +549,21 @@ async function activate() {
 }
 async function roles() {
   const m = props.member;
-  if (!m || !selected.value) return;
+  const recipient = selected.value,
+    nextAdmin = admin.value,
+    nextReviewer = reviewer.value;
+  if (!m || !recipient) return;
   busy.value = true;
   error.value = '';
   try {
+    if (recipient.admin && !nextAdmin) await checkHandover(recipient);
     await transact('setroles', {
       runtime: props.dao.reference.contract,
       dao_id: props.dao.reference.daoId,
       member_id: m.memberId,
-      target: selected.value.id,
-      admin: admin.value,
-      reviewer: reviewer.value,
+      target: recipient.id,
+      admin: nextAdmin,
+      reviewer: nextReviewer,
     });
   } catch (cause) {
     error.value = friendlyError(cause);
@@ -412,9 +637,72 @@ async function retrieve(document: DaoContent['documents'][number]) {
     <RouterLink class="help-link" :to="`/docs/${section}`">Help ↗</RouterLink>
   </div>
   <p v-if="error" class="alert" role="alert">{{ error }}</p>
+  <section
+    v-if="privateDao && member?.active && content"
+    class="panel narrow"
+    aria-labelledby="private-access-title"
+  >
+    <h3 id="private-access-title">Private data access</h3>
+    <button class="text-button" :disabled="busy" @click="refresh">Refresh private access</button>
+    <p v-if="privatePolicy">
+      New members receive
+      {{
+        privatePolicy.historyPolicy === 'full-history'
+          ? 'the full private history'
+          : 'access from their joining epoch'
+      }}
+      when an administrator grants it.
+    </p>
+    <p v-else class="notice">
+      The private-history policy could not be checked.
+      <button class="text-button" :disabled="busy" @click="refresh">Retry</button>
+    </p>
+    <p v-if="!privateIdentityReady">
+      Open this membership's original Daclify account to prepare or verify private access.
+    </p>
+    <Account v-if="!vaultUnlocked && isAdmin" access-setup />
+    <p v-if="ownEpochs.length" role="status">
+      {{ verifiedEpochs.size }} of {{ ownEpochs.length }} permitted epochs verified on this device.
+    </p>
+    <button
+      class="secondary"
+      :disabled="busy || !privateIdentityReady || !ownChecks.length"
+      @click="verifyAccess"
+    >
+      Verify my private access
+    </button>
+    <p v-if="verifiedEpochs.size && verifiedEpochs.size === ownEpochs.length">
+      Your granted keys decrypt correctly on this device. Test account recovery on another device
+      before handing over administration.
+    </p>
+    <template v-if="isAdmin">
+      <p>
+        {{ accessPlan?.grants.length ?? 0 }} grants can be prepared.
+        {{ accessPlan?.pending.length ?? 0 }} grants need an administrator who holds the original
+        epoch keys.
+      </p>
+      <button
+        :disabled="
+          busy ||
+          !privateIdentityReady ||
+          !signerReady ||
+          !privatePolicy ||
+          (epochReady && !accessPlan?.grants.length)
+        "
+        @click="grantAccess()"
+      >
+        Prepare private access for members
+      </button>
+      <p class="field-help">
+        Each approval prepares up to 20 grants. Completed grants remain valid if a later grant needs
+        retrying.
+      </p>
+    </template>
+    <p v-if="accessNote" role="status">{{ accessNote }}</p>
+  </section>
   <template v-if="section === 'documents'"
     ><section v-if="privateDao" class="panel narrow">
-      <h3>Encryption epoch {{ dao.keyEpoch }}</h3>
+      <h3>Encryption epoch {{ currentEpoch }}</h3>
       <p v-if="hasCurrentKey">Encryption epoch ready</p>
       <p v-else-if="!member?.active">
         First obtain an active membership through Members, then ask an administrator for document
@@ -542,17 +830,51 @@ async function retrieve(document: DaoContent['documents'][number]) {
     <p v-if="content && !latest.length" class="muted">No documents published yet.</p></template
   >
   <template v-else
-    ><AdmissionPanel :key="context" :dao="dao" :member="member" @admitted="refresh" />
+    ><AdmissionPanel :key="context" :dao="dao" :member="member" @admitted="onAdmitted" />
     <MemberDirectory v-if="content" :dao="dao.reference" :members="content.members" />
     <section v-if="isAdmin" class="panel narrow">
       <h3>Manage roles and governance credits</h3>
       <label for="member-target">Member</label
-      ><select id="member-target" v-model="target">
+      ><select id="member-target" v-model="target" :disabled="busy">
         <option value="" disabled>Choose a member</option>
         <option v-for="row in content?.members" :key="row.id" :value="row.id">
           Member {{ row.id }}
-        </option></select
-      ><button v-if="selected" class="secondary" :disabled="busy || !signerReady" @click="activate">
+        </option>
+      </select>
+      <section v-if="privateDao && selected?.active && selected.admin" class="handover-check">
+        <h4>Prepare an administrator handover</h4>
+        <p>
+          Another active administrator needs every recorded private epoch before this administrator
+          leaves or is demoted.
+        </p>
+        <p v-if="!successors.length" class="notice">
+          No remaining administrator has every recorded grant. Prepare their private access first.
+        </p>
+        <p
+          v-if="!successors.length && privatePolicy?.historyPolicy === 'from-join'"
+          class="field-help"
+        >
+          Members who joined later cannot receive earlier epochs under this DAO's history policy.
+          Keep an administrator who already has that history.
+        </p>
+        <label for="private-successor">Administrator keeping private access</label>
+        <select id="private-successor" v-model="successor" :disabled="busy">
+          <option value="" disabled>Choose an administrator with all grants</option>
+          <option v-for="person in successors" :key="person.id" :value="person.id">
+            Member {{ person.id }}
+          </option>
+        </select>
+        <label class="checkbox"
+          ><input v-model="handoverConfirmed" type="checkbox" :disabled="busy || !successor" />This
+          administrator verified private access and tested account recovery on another
+          device.</label
+        >
+        <p class="field-help">
+          After departure, the remaining administrator prepares the new epoch and grants it to
+          active members.
+        </p>
+      </section>
+      <button v-if="selected" class="secondary" :disabled="busy || !signerReady" @click="activate">
         {{ selected.active ? 'Deactivate member' : 'Reactivate member' }}
       </button>
       <form v-if="privateDao" @submit.prevent="share">

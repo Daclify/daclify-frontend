@@ -9,12 +9,13 @@ import {
 import type { ModuleState } from '@daclify/modules';
 import { encodeAction, makeInstruction } from '@daclify/core-protocol/sdk';
 import { encodeEndorse, type EndorseActions } from '@daclify/modules/sdk';
-import { relayInstruction } from '../auth/session';
+import { relayInstruction, vaultUnlocked } from '../auth/session';
 import { canSignMember } from '../auth/action-signer';
 import { useWorkspace } from '../state/workspace';
 import { api, friendlyError } from '../api/client';
+import Account from '../views/Account.vue';
 const props = defineProps<{ dao: DaoSummary; member: UserMembership | undefined }>();
-const emit = defineEmits<{ admitted: [] }>(),
+const emit = defineEmits<{ admitted: [privateRecipientKey?: string] }>(),
   state = useWorkspace();
 const identity = ref(''),
   kind = ref(props.dao.participantMode === 'agents-guarded' ? 1 : 0),
@@ -22,6 +23,7 @@ const identity = ref(''),
   busy = ref(false),
   error = ref(''),
   success = ref('');
+const includePrivateAccess = ref(true);
 const data = ref<ModuleState>(),
   governance = ref<GovernanceState>(),
   documentId = ref(''),
@@ -121,7 +123,13 @@ onBeforeUnmount(() => {
   disposed = true;
   generation++;
 });
-async function run(target: string, action: string, bytes: Uint8Array, message: string) {
+async function run(
+  target: string,
+  action: string,
+  bytes: Uint8Array,
+  message: string,
+  privateRecipientKey?: string,
+) {
   const member = props.member,
     domain = context.value;
   if (!member || !signerReady.value) return;
@@ -155,7 +163,7 @@ async function run(target: string, action: string, bytes: Uint8Array, message: s
     if (disposed || domain !== context.value) return;
     confirmed.value = false;
     reviewed.value = {};
-    emit('admitted');
+    emit('admitted', privateRecipientKey);
     success.value = message;
   } catch (cause) {
     if (!disposed && domain === context.value) error.value = friendlyError(cause);
@@ -183,11 +191,15 @@ function publicFields() {
 async function admit() {
   if (!canAdmit.value || !confirmed.value) return;
   try {
+    const fields = publicFields();
     await run(
       props.dao.reference.contract,
       'addmember',
-      encodeAction('addmember', { ...actor(), ...publicFields() }),
-      'Membership admitted. Roles, credits and private document access require separate approvals.',
+      encodeAction('addmember', { ...actor(), ...fields }),
+      'Membership admitted. Private access is prepared only when selected; roles and credits remain separate.',
+      props.dao.privacy !== 'public' && includePrivateAccess.value && vaultUnlocked.value
+        ? fields.signing_key
+        : undefined,
     );
     identity.value = '';
   } catch (cause) {
@@ -261,6 +273,14 @@ function eligibleAction(action: string) {
 }
 </script>
 <template>
+  <section v-if="state.account && !member" aria-labelledby="join-access-title">
+    <h3 id="join-access-title">Enable full access to join</h3>
+    <p>
+      Use the same Daclify account and recovery kit for this community. After setup, share your
+      public identity with an administrator or sponsor.
+    </p>
+    <Account access-setup join-setup />
+  </section>
   <section class="panel narrow">
     <h3>{{ requiresEndorsement ? 'Member endorsement admission' : 'Administrator admission' }}</h3>
     <p>
@@ -371,6 +391,13 @@ function eligibleAction(action: string) {
       <p>
         Never paste a recovery kit or private key. A managed or assisted identity can join only a
         DAO whose privacy policy allows operator access.
+      </p>
+      <label v-if="dao.privacy !== 'public' && vaultUnlocked" class="checkbox"
+        ><input v-model="includePrivateAccess" type="checkbox" :disabled="busy" />Include private
+        access allowed by this DAO</label
+      >
+      <p v-else-if="dao.privacy !== 'public'" class="field-help">
+        Private access stays pending until an administrator with full access grants it.
       </p>
       <button
         :disabled="!confirmed || (requiresEndorsement ? !eligibleAction('applyjoin') : !canAdmit)"

@@ -535,6 +535,18 @@ export const api = {
       ApiRoutes.vaultAttach.response,
       ApiRoutes.vaultAttach.input.parse({ id, signature }),
     ),
+  accountReconnectChallenge: (input: z.infer<typeof ApiRoutes.accountReconnectChallenge.input>) =>
+    request(
+      ApiRoutes.accountReconnectChallenge.path,
+      ApiRoutes.accountReconnectChallenge.response,
+      ApiRoutes.accountReconnectChallenge.input.parse(input),
+    ),
+  reconnectAccount: (id: string, signature: string) =>
+    request(
+      ApiRoutes.accountReconnect.path,
+      ApiRoutes.accountReconnect.response,
+      ApiRoutes.accountReconnect.input.parse({ id, signature }),
+    ),
   spendingReport: (daoId: string) =>
     request(
       ApiRoutes.spendingReport.path.replace(':id', IdSchema.parse(daoId)),
@@ -589,6 +601,11 @@ export const api = {
     }
     return all;
   },
+  privateAccessPolicy: (daoId: string) =>
+    request(
+      ApiRoutes.privateAccessPolicy.path.replace(':id', IdSchema.parse(daoId)),
+      ApiRoutes.privateAccessPolicy.response,
+    ),
   cardRamQuote: (input: z.infer<typeof ApiRoutes.ramCardQuote.input>) =>
     request(
       ApiRoutes.ramCardQuote.path,
@@ -951,12 +968,14 @@ export const api = {
     challengeId: string,
     signature: string,
     encryptionKey: z.infer<typeof ApiRoutes.login.input>['encryptionKey'],
+    check?: (account: Account) => void,
   ) => {
     const result = await request(ApiRoutes.login.path, ApiRoutes.login.response, {
       challengeId,
       signature,
       encryptionKey,
     });
+    check?.(result.account);
     sessionStorage.setItem(csrfStorageKey(), result.csrfToken);
     return result.account;
   },
@@ -1280,9 +1299,21 @@ export function friendlyError(error: unknown): string {
       WALLET_MEMBERSHIP_CONFLICT:
         'Your credentials point to different members in this DAO. Use a separate account for each member.',
       VAULT_ALREADY_REGISTERED:
-        'These keys belong to an existing service account. Sign out and sign in with that vault; accounts are not merged automatically.',
+        'Your original account was found. Restore that account to continue with these keys.',
       VAULT_ALREADY_CONFIGURED:
         'This account already has Daclify keys. Unlock its original vault instead.',
+      ACCOUNT_RECONNECT_IDENTITY:
+        'This kit does not match a registered account. Use the original recovery kit for the account you want to restore.',
+      ACCOUNT_RECONNECT_CONFLICT:
+        'These accounts have conflicting wallet links, memberships or connected-app identities. Your accounts and sign-ins were kept intact. You can restore the original account without reconnecting sign-ins.',
+      ACCOUNT_RECONNECT_CHANGED:
+        'Account access changed while you were restoring it. Refresh and try again.',
+      PRIVATE_HANDOVER_REQUIRED:
+        'Prepare another active administrator’s private grants, then verify their decryption and recovery on another device before this handover.',
+      PRIVATE_ACCESS_UNAVAILABLE:
+        'Private-access records could not be refreshed. Refresh the DAO before continuing.',
+      ACTION_REFRESH_REQUIRED:
+        'The action was submitted. Refresh the DAO to check its result before retrying.',
       VAULT_PROOF_INVALID:
         'The key setup proof expired or was rejected. Unlock your vault and try again.',
       AUTH_INVALID: 'The login proof expired or was already used. Try again.',

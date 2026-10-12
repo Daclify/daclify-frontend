@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, nextTick } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
   ArrowUpRight,
@@ -13,7 +13,7 @@ import {
   ChevronRight,
 } from '@lucide/vue';
 import { useWorkspace } from '../state/workspace';
-import { api, friendlyError, type ServiceReceipt } from '../api/client';
+import { api, ApiFailure, friendlyError, type ServiceReceipt } from '../api/client';
 import { formatReceiptAmount } from '../api/billing';
 import {
   createVault,
@@ -30,6 +30,7 @@ import {
   downloadBackup,
   vaultUnlocked,
   acceptProviderSession,
+  canUseVaultKey,
 } from '../auth/session';
 import { JoinIdentitySchema, type Account, type RecoveryMethods } from '@daclify/core-protocol';
 import { accountDestination } from '../auth/destination';
@@ -42,6 +43,8 @@ import AssistedRecoveryOptOut from '../components/AssistedRecoveryOptOut.vue';
 import { restoreFastSignIn } from '../auth/fast-sign-in';
 const props = defineProps<{
   embedded?: boolean;
+  accessSetup?: boolean;
+  joinSetup?: boolean;
   profileDaoId?: string | undefined;
   profileMemberId?: string | undefined;
 }>();
@@ -52,35 +55,50 @@ const accountTabs = [
   { id: 'profile', label: 'Profile', icon: UserRound },
   { id: 'service', label: 'Payment history', icon: CreditCard },
 ] as const;
+const visibleAccountTabs = computed(() =>
+  props.accessSetup
+    ? accountTabs.filter((item) => item.id === 'keys' || item.id === 'sign-in')
+    : accountTabs,
+);
 type AccountTab = (typeof accountTabs)[number]['id'];
 function billingTab(value: unknown): boolean {
   return value === 'submitted' || value === 'cancelled';
 }
 const restoring = ref(false);
+const recoveredAccountFound = ref(false);
 const kitText = ref('');
 const recoveryCredential = ref('');
 const replacementAcknowledged = ref(false);
 const route = useRoute();
 const router = useRouter();
-const destination = computed(() => accountDestination(route.query.returnTo));
+const destination = computed(() =>
+  props.accessSetup ? undefined : accountDestination(route.query.returnTo),
+);
 const state = useWorkspace();
 const recoveryInfo = ref<RecoveryMethods>();
 const recoveryCheckFailed = ref(false);
+let recoveryRead = 0;
+async function checkRecoveryPolicy() {
+  const id = state.account?.id,
+    request = ++recoveryRead;
+  recoveryInfo.value = undefined;
+  recoveryCheckFailed.value = false;
+  if (!id) return;
+  try {
+    const response = await api.recoveryMethods();
+    if (state.account?.id === id && request === recoveryRead) recoveryInfo.value = response;
+  } catch {
+    if (state.account?.id === id && request === recoveryRead) recoveryCheckFailed.value = true;
+  }
+}
 watch(
   () => state.account?.id,
-  async (id) => {
-    recoveryInfo.value = undefined;
-    recoveryCheckFailed.value = false;
-    if (!id) return;
-    try {
-      const response = await api.recoveryMethods();
-      if (state.account?.id === id) recoveryInfo.value = response;
-    } catch {
-      if (state.account?.id === id) recoveryCheckFailed.value = true;
-    }
-  },
+  () => void checkRecoveryPolicy(),
   { immediate: true },
 );
+onBeforeUnmount(() => {
+  recoveryRead++;
+});
 watch(restoring, (active) => {
   void nextTick(() =>
     document
@@ -127,19 +145,20 @@ function openTab(next: AccountTab) {
   void nextTick(() => document.getElementById(`account-tab-${next}`)?.focus());
 }
 function navigateTabs(event: KeyboardEvent) {
-  const current = accountTabs.findIndex((item) => item.id === tab.value);
+  const tabs = visibleAccountTabs.value;
+  const current = tabs.findIndex((item) => item.id === tab.value);
   const index =
     event.key === 'ArrowRight'
-      ? (current + 1) % accountTabs.length
+      ? (current + 1) % tabs.length
       : event.key === 'ArrowLeft'
-        ? (current + accountTabs.length - 1) % accountTabs.length
+        ? (current + tabs.length - 1) % tabs.length
         : event.key === 'Home'
           ? 0
           : event.key === 'End'
-            ? accountTabs.length - 1
+            ? tabs.length - 1
             : undefined;
   if (index === undefined) return;
-  const item = accountTabs[index];
+  const item = tabs[index];
   if (!item) return;
   event.preventDefault();
   openTab(item.id);
@@ -363,20 +382,30 @@ async function finish() {
   await unlock();
   created.value = undefined;
 }
-async function unlock() {
+async function unlock(mode: 'attach' | 'recover' | 'reconnect' = 'attach') {
   if (providerBusy.value || quickBusy.value) return;
   busy.value = true;
   error.value = '';
   try {
-    state.account = await unlockAndLogin(password.value, state.account);
+    state.account = await unlockAndLogin(password.value, state.account, mode);
+    recoveredAccountFound.value = false;
     password.value = '';
     await state.refresh();
     if (destination.value) await router.push(destination.value);
   } catch (cause) {
-    error.value = friendlyError(cause);
+    if (cause instanceof ApiFailure && cause.code === 'VAULT_ALREADY_REGISTERED') {
+      recoveredAccountFound.value = true;
+      void nextTick(() => document.getElementById('restore-registered-account')?.focus());
+    } else error.value = friendlyError(cause);
   } finally {
     busy.value = false;
   }
+}
+function cancelRecoveredAccount() {
+  recoveredAccountFound.value = false;
+  password.value = '';
+  error.value = '';
+  void nextTick(() => document.getElementById('unlock')?.focus());
 }
 async function onSignedIn(account: Account) {
   state.account = account;
@@ -422,7 +451,7 @@ function backup() {
 </script>
 <template>
   <div
-    v-if="!embedded"
+    v-if="!embedded && !accessSetup"
     class="page-heading account-heading"
     :class="{ 'settings-heading': state.account }"
   >
@@ -445,6 +474,39 @@ function backup() {
     Sign-in method removed. Its sessions were revoked; sign in with a remaining method.
   </p>
   <p v-if="error" class="alert" role="alert">{{ error }}</p>
+  <section v-if="recoveredAccountFound" class="panel narrow" aria-labelledby="recovered-title">
+    <h2 id="recovered-title">Your original account was found</h2>
+    <p>
+      This recovery kit opens your existing Daclify account, including its signing and private
+      document access. You can restore it without signing out first.
+    </p>
+    <p>
+      Keep your paired sign-ins so they open the restored account. Your wallet will ask for
+      approval. Enable full access for a sign-in separately if you want it to unlock this account
+      automatically.
+    </p>
+    <p>
+      Keeping sign-ins closes existing sessions on both accounts. Sign in again on other devices and
+      approve connected apps again.
+    </p>
+    <div class="button-row">
+      <button id="restore-registered-account" :disabled="busy" @click="unlock('reconnect')">
+        {{ busy ? 'Restoring…' : 'Restore account and keep my sign-ins' }}
+      </button>
+      <button class="secondary" :disabled="busy" @click="unlock('recover')">
+        Restore account only
+      </button>
+      <button class="secondary" :disabled="busy" @click="cancelRecoveredAccount">Cancel</button>
+    </div>
+    <button
+      v-if="state.account?.signingKey === null"
+      class="text-button"
+      :disabled="busy"
+      @click="openTab('sign-in')"
+    >
+      Choose a paired wallet
+    </button>
+  </section>
   <section v-if="restoring" class="panel narrow account-flow">
     <h2>Restore your existing keys</h2>
     <p>
@@ -530,6 +592,30 @@ function backup() {
       {{ busy ? 'Finishing…' : 'Finish account setup' }}
     </button>
   </section>
+  <section
+    v-else-if="joinSetup && state.account?.signingKey && canUseVaultKey(state.account.signingKey)"
+    class="panel narrow"
+  >
+    <h3>Your public account identity</h3>
+    <p>
+      Share this with a DAO administrator or sponsor to request admission. Your private keys stay
+      with your account.
+    </p>
+    <label for="public-join-identity">Public join identity JSON</label>
+    <textarea id="public-join-identity" readonly rows="7" :value="joinIdentity"></textarea>
+    <button class="secondary" :disabled="!joinIdentity" @click="copyJoinIdentity">
+      Copy public join identity
+    </button>
+    <p v-if="recoveryCheckFailed" class="notice" role="alert">
+      Your account's recovery policy could not be checked. Try again before sharing your public
+      identity.
+      <button class="text-button" @click="checkRecoveryPolicy">Retry recovery check</button>
+    </p>
+    <p v-else-if="!recoveryInfo" class="field-help">
+      Checking your account's recovery policy before sharing.
+    </p>
+    <p v-if="joinCopied" role="status">Public join identity copied.</p>
+  </section>
   <div v-else-if="state.account" class="account-settings">
     <div class="account-session-bar">
       <span class="pill">{{
@@ -556,7 +642,7 @@ function backup() {
     </p>
     <div class="account-tabs" role="tablist" @keydown="navigateTabs" aria-label="Account sections">
       <button
-        v-for="item in accountTabs"
+        v-for="item in visibleAccountTabs"
         :id="`account-tab-${item.id}`"
         :key="item.id"
         type="button"
@@ -590,8 +676,8 @@ function backup() {
             class="notice"
             role="status"
           >
-            Your Telos Zero wallet opens this Daclify account. Set up Daclify keys when you want to
-            join or create another DAO and use its private content.
+            Your wallet opens this Daclify account. Enable full access once to create or join DAOs
+            and open private content. One recovery kit protects your account.
           </p>
           <p v-else-if="state.account.signingKey === null" class="notice" role="status">
             Your wallet restores access to its current on-chain memberships and permissions. Your
@@ -599,7 +685,7 @@ function backup() {
             To recover private content, import your original encrypted kit and confirm with your
             wallet.
           </p>
-          <form v-if="!vaultUnlocked && accountKit" @submit.prevent="unlock">
+          <form v-if="!vaultUnlocked && accountKit" @submit.prevent="unlock()">
             <label for="unlock">Vault password</label
             ><input
               id="unlock"
@@ -619,6 +705,12 @@ function backup() {
             Your account is signed in. To sign actions and open private documents, use a paired
             method with full access, approve this device, or restore your encrypted kit.
           </p>
+          <SignInMethods
+            v-if="accessSetup && !vaultUnlocked && state.account.signingKey !== null"
+            mode="enter"
+            @authenticated="onSignedIn"
+            @busy="providerBusy = $event"
+          />
           <button
             v-if="!vaultUnlocked && !accountKit"
             type="button"
@@ -638,6 +730,7 @@ function backup() {
           </button>
         </section>
         <DeviceApproval
+          v-if="state.account.signingKey !== null"
           :account="state.account"
           :approve-id="
             typeof route.query.deviceApproval === 'string' ? route.query.deviceApproval : undefined
@@ -657,18 +750,20 @@ function backup() {
         <p class="muted">Account ID</p>
         <p class="mono wrap">{{ state.account.id }}</p>
         <template v-if="state.account.signingKey !== null">
-          <p class="muted">Signing public key</p>
-          <p class="mono wrap">{{ state.account.signingKey }}</p>
           <p>
-            Share this JSON with the DAO administrator to request admission. It contains public
-            signing and encryption keys only. Keep your recovery kit private.
+            Share this public identity with the DAO administrator to request admission. One recovery
+            kit restores the signing and document keys inside your account. Keep that kit private.
           </p>
           <label for="public-join-identity">Public join identity JSON</label>
           <textarea id="public-join-identity" readonly rows="7" :value="joinIdentity"></textarea>
           <button class="secondary" :disabled="!joinIdentity" @click="copyJoinIdentity">
             Copy public join identity
           </button>
-          <p v-if="!recoveryInfo" class="field-help">
+          <p v-if="recoveryCheckFailed" class="notice" role="alert">
+            Your account's recovery policy could not be checked.
+            <button class="text-button" @click="checkRecoveryPolicy">Retry recovery check</button>
+          </p>
+          <p v-else-if="!recoveryInfo" class="field-help">
             Recovery authority must be checked before sharing a join identity.
           </p>
           <p v-if="joinCopied" role="status">Public join identity copied.</p>
@@ -803,7 +898,7 @@ function backup() {
           <span class="pill success">Saved on this device</span>
           <h3>Use your Daclify keys</h3>
           <p>Your vault password unlocks signing and decryption keys in this browser.</p>
-          <form @submit.prevent="unlock">
+          <form @submit.prevent="unlock()">
             <label for="unlock">Vault password</label
             ><input
               id="unlock"

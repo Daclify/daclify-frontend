@@ -3,6 +3,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { PublicKey, Signature } from '@wharfkit/antelope';
 import {
   AccountSchema,
+  JoinIdentitySchema,
   ApiRoutes,
   DaoSummarySchema,
   defaultDaoSetup,
@@ -651,4 +652,101 @@ test('workspace and configuration remain usable at phone, tablet, landscape and 
   await expect(signing).not.toHaveAttribute('open');
   await page.keyboard.press('Enter');
   await expect(signing).toHaveAttribute('open', '');
+});
+
+test('unlocks the original account inside Join and shares only its public identity', async ({
+  page,
+}) => {
+  const password = 'one account join fixture password';
+  const vault = await createVault(password);
+  const original = AccountSchema.parse({
+    ...account,
+    signingKey: vault.signingPublicKey,
+    encryptionKey: vault.encryptionPublicKey,
+  });
+  await fixture(page, { signedIn: true, account: original });
+  await page.addInitScript(
+    (record) => localStorage.setItem('daclify.vault.v1', JSON.stringify(record)),
+    RecoveryKitSchema.parse({
+      version: 1,
+      localEnvelope: vault.localEnvelope,
+      recoveryEnvelope: vault.recoveryEnvelope,
+      signingPublicKey: vault.signingPublicKey,
+      encryptionPublicKey: vault.encryptionPublicKey,
+    }),
+  );
+  let message = '';
+  await page.route('**/v1/auth/challenge', (route) => {
+    const identity = ApiRoutes.challenge.input.parse(route.request().postDataJSON()),
+      origin = new URL(route.request().url()).origin;
+    const id = crypto.randomUUID(),
+      expires = new Date(Date.now() + 120000).toISOString();
+    message = JSON.stringify(
+      LoginMessageSchema.parse({
+        domain: 'daclify.login.v3',
+        origin,
+        audience: origin,
+        challenge: id,
+        expires,
+        ...identity,
+      }),
+    );
+    return route.fulfill({ json: { id, expires, message } });
+  });
+  await page.route('**/v1/auth/login', (route) => {
+    const input = ApiRoutes.login.input.parse(route.request().postDataJSON());
+    expect(
+      Signature.from(input.signature).verifyMessage(
+        new TextEncoder().encode(message),
+        PublicKey.from(vault.signingPublicKey),
+      ),
+    ).toBe(true);
+    return route.fulfill({
+      json: ApiRoutes.login.response.parse({ account: original, csrfToken: 'ab'.repeat(32) }),
+    });
+  });
+  let recoveryUnavailable = true;
+  await page.route('**/v1/account/recovery', (route) =>
+    recoveryUnavailable
+      ? route.fulfill({ status: 503, json: unavailable })
+      : route.fulfill({
+          json: ApiRoutes.recoveryMethods.response.parse({
+            methods: [],
+            assistedEver: false,
+            configured: true,
+            reason: null,
+          }),
+        }),
+  );
+  await page.goto('/dao/1/members');
+  await expect(
+    page.getByRole('heading', { name: 'Enable full access to join', exact: true }),
+  ).toBeVisible();
+  await page.getByLabel('Vault password', { exact: true }).fill(password);
+  await page.getByRole('button', { name: 'Unlock and sign in', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: 'Retry recovery check', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Copy public join identity', exact: true }),
+  ).toBeDisabled();
+  recoveryUnavailable = false;
+  await page.getByRole('button', { name: 'Retry recovery check', exact: true }).click();
+  await expect(page.getByLabel('Public join identity JSON', { exact: true })).toHaveValue(
+    JSON.stringify(
+      JoinIdentitySchema.parse({
+        version: 1,
+        signingKey: vault.signingPublicKey,
+        encryptionKey: vault.encryptionPublicKey,
+        custody: 'user-controlled',
+      }),
+      null,
+      2,
+    ),
+  );
+  await expect(page).toHaveURL(/\/dao\/1\/members$/);
+  await expect(
+    page.getByRole('button', { name: 'Copy public join identity', exact: true }),
+  ).toBeEnabled();
+  await accessible(page);
 });

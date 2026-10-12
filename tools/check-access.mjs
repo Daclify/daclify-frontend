@@ -409,7 +409,7 @@ const { createVault } = await server.ssrLoadModule('/src/auth/vault.ts');
 const created = await createVault('disposable audit fixture password');
 session.saveVault(created);
 api.challenge = async () => ({ message: 'audit fixture' });
-api.login = async () => ({ id: 'fixture', signingKey: created.signingPublicKey });
+api.login = async () => ({ id: 'fixture', custody: 'user-controlled', signingKey: created.signingPublicKey, encryptionKey: created.encryptionPublicKey });
 await session.unlockAndLogin('disposable audit fixture password');
 const finishBranding = [];
 let brandingWrites = 0;

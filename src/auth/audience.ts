@@ -6,6 +6,7 @@ import {
   AccountControlMessageSchema,
   AccountControlRequestSchema,
   VaultAttachMessageSchema,
+  AccountReconnectMessageSchema,
   NativeSignInMessageSchema,
   NativeChallengeSchema,
   NativeIntentSchema,
@@ -22,6 +23,7 @@ export const AuthChallengePaths = [
   SignupRoutes.signupPrepare.path,
   '/v1/account/control',
   ApiRoutes.vaultAttachChallenge.path,
+  ApiRoutes.accountReconnectChallenge.path,
   '/v1/account/native/challenge',
   '/v1/account/evm/sign-in/challenge',
 ];
@@ -111,8 +113,14 @@ export function validateAuthChallenge(
       context.bodyHash !== request.bodyHash
     )
       throw new Error('AUTH_AUDIENCE');
-  } else if (path === ApiRoutes.vaultAttachChallenge.path) {
-    const context = VaultAttachMessageSchema.parse(raw),
+  } else if (
+    path === ApiRoutes.vaultAttachChallenge.path ||
+    path === ApiRoutes.accountReconnectChallenge.path
+  ) {
+    const context =
+        path === ApiRoutes.accountReconnectChallenge.path
+          ? AccountReconnectMessageSchema.parse(raw)
+          : VaultAttachMessageSchema.parse(raw),
       request = ApiRoutes.vaultAttachChallenge.input.parse(input);
     if (
       context.origin !== origin ||
