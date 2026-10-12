@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createPinia, setActivePinia } from 'pinia';
 function memoryStorage(): Storage {
   const values = new Map<string, string>();
   return {
@@ -60,6 +61,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   configureNetworks(null);
+  setActivePinia(undefined);
 });
 describe('provider sessions leave the user-controlled vault locked', () => {
   it.each(['removed', 'replaced'] as const)(
@@ -404,3 +406,138 @@ it.each(['legacy', 'substituted'] as const)(
     expect(sessionStorage.getItem('daclify.csrf')).toBeNull();
   },
 );
+
+it.each(['identity', 'context'] as const)(
+  'rejects a native reconnect with changed %s before replacing session material',
+  async (fault) => {
+    setActivePinia(createPinia());
+    const created = await createVault(password);
+    saveVault(created);
+    const owned = {
+      ...account(created.signingPublicKey),
+      encryptionKey: created.encryptionPublicKey,
+    };
+    const { useWorkspace } = await import('../../src/state/workspace');
+    const state = useWorkspace();
+    state.account = owned;
+    vi.stubGlobal('window', { location: { origin: 'http://localhost:5178' } });
+    vi.spyOn(api, 'challenge').mockResolvedValue({
+      id: randomUUID(),
+      message: 'fixture',
+      expires: new Date(Date.now() + 60000).toISOString(),
+    });
+    vi.spyOn(api, 'login').mockResolvedValue(owned);
+    await unlockAndLogin(password);
+    sessionStorage.setItem('daclify.csrf', 'original-session-token-material-000');
+    vi.spyOn(api, 'reconnectNativeAccount').mockImplementation(async () => {
+      if (fault === 'context')
+        state.account = account(PrivateKey.generate('K1').toPublic().toString());
+      return {
+        account: fault === 'identity' ? { ...owned, id: randomUUID() } : owned,
+        csrfToken: 'new-session-token-material-000000000',
+      };
+    });
+    const { completeNativeReconnect } = await import('../../src/auth/session');
+    await expect(
+      completeNativeReconnect(
+        owned,
+        randomUUID(),
+        {
+          packedTransaction: '00',
+          signatures: [
+            PrivateKey.generate('K1').signMessage(new TextEncoder().encode('fixture')).toString(),
+          ],
+        },
+        () => {},
+      ),
+    ).rejects.toThrow();
+    expect(sessionStorage.getItem('daclify.csrf')).toBe('original-session-token-material-000');
+  },
+);
+
+it('signs native reconnection with the restored root even when an EVM signer is selected', async () => {
+  setActivePinia(createPinia());
+  const origin = 'http://localhost:5178';
+  vi.stubGlobal('window', { location: { origin } });
+  const created = await createVault(password);
+  saveVault(created);
+  const owned = {
+    ...account(created.signingPublicKey),
+    encryptionKey: created.encryptionPublicKey,
+  };
+  const { useWorkspace } = await import('../../src/state/workspace');
+  useWorkspace().account = owned;
+  vi.spyOn(api, 'challenge').mockResolvedValue({
+    id: randomUUID(),
+    message: 'fixture',
+    expires: new Date(Date.now() + 60000).toISOString(),
+  });
+  vi.spyOn(api, 'login').mockResolvedValue(owned);
+  await unlockAndLogin(password);
+  const { selectedSigner } = await import('../../src/auth/action-signer');
+  selectedSigner.value = 'evm';
+  const {
+    ApiRoutes,
+    AccountControlMessageSchema,
+    AccountControlRequestSchema,
+    AccountControlProofSchema,
+  } = await import('@daclify/core-protocol');
+  let message = '',
+    submitted = false;
+  vi.stubGlobal('fetch', async (url: string | URL | Request, options?: RequestInit) => {
+    if (String(url) === '/v1/account/control') {
+      const request = AccountControlRequestSchema.parse(JSON.parse(String(options?.body)));
+      expect(request.path).toBe(ApiRoutes.accountReconnectNative.path);
+      const id = randomUUID(),
+        expires = new Date(Date.now() + 60000).toISOString();
+      message = JSON.stringify(
+        AccountControlMessageSchema.parse({
+          ...request,
+          domain: 'daclify.account-control.v2',
+          origin,
+          audience: origin,
+          accountId: owned.id,
+          signingKey: owned.signingKey,
+          challengeId: id,
+          expires,
+        }),
+      );
+      return Response.json({ id, message, expires });
+    }
+    expect(String(url)).toBe(ApiRoutes.accountReconnectNative.path);
+    const headers = new Headers(options?.headers);
+    const proof = AccountControlProofSchema.parse({
+      kind: 'root',
+      signature: headers.get('x-account-signature'),
+    });
+    expect(headers.has('x-account-proof')).toBe(false);
+    expect(proof.kind).toBe('root');
+    if (proof.kind !== 'root') throw new Error('Restored root proof required');
+    expect(
+      Signature.from(proof.signature).verifyMessage(
+        new TextEncoder().encode(message),
+        PublicKey.from(created.signingPublicKey),
+      ),
+    ).toBe(true);
+    submitted = true;
+    return Response.json({ account: owned, csrfToken: csrf });
+  });
+  const { completeNativeReconnect } = await import('../../src/auth/session');
+  expect(
+    await completeNativeReconnect(
+      owned,
+      randomUUID(),
+      {
+        packedTransaction: '00',
+        signatures: [
+          PrivateKey.generate('K1').signMessage(new TextEncoder().encode('fixture')).toString(),
+        ],
+      },
+      () => {},
+    ),
+  ).toEqual(owned);
+  expect(submitted).toBe(true);
+  expect(vaultUnlocked.value).toBe(true);
+  expect(sessionStorage.getItem('daclify.csrf')).toBe(csrf);
+  selectedSigner.value = 'vault';
+});

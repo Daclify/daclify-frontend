@@ -122,6 +122,26 @@ test('keeps account tasks compact and all paired methods reachable by keyboard',
     page.getByRole('button', { name: 'Pair Telos EVM wallet', exact: true }),
   ).toBeVisible();
   await expect(page.getByRole('button', { name: 'Pair Telos Zero', exact: true })).toBeVisible();
+  const reconnect = page.getByRole('button', { name: 'Reconnect existing sign-ins', exact: true });
+  await expect(reconnect).toBeVisible();
+  let nativeMutations = 0;
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && new URL(request.url()).pathname.startsWith('/v1/account/'))
+      nativeMutations++;
+  });
+  page.removeAllListeners('dialog');
+  page.once('dialog', (dialog) => {
+    expect(dialog.message()).toContain('Reconnect all sign-ins');
+    void dialog.dismiss();
+  });
+  await reconnect.focus();
+  await page.keyboard.press('Enter');
+  await expect(reconnect).toBeEnabled();
+  expect(nativeMutations).toBe(0);
+  page.on('dialog', (dialog) => void dialog.accept());
+  await reconnect.click();
+  await expect(page.getByRole('alert')).toHaveText('Unlock your vault to use your keys.');
+  expect(nativeMutations).toBe(0);
   await page.getByRole('button', { name: 'Pair Telos EVM wallet', exact: true }).click();
   await expect(page.locator('section[aria-label="Telos Zero sign-in"]')).toHaveAttribute(
     'inert',

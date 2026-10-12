@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { NativeLinksSchema, SessionSchema, type Account } from '@daclify/core-protocol';
 import { api, friendlyError } from '../api/client';
-import { acceptProviderSession } from '../auth/session';
+import { acceptProviderSession, canUseVaultKey, completeNativeReconnect } from '../auth/session';
 import { connectNative, nativeWallet, nativeIdentity, nativeIntentProof } from '../auth/telos-zero';
 import { useRouter } from 'vue-router';
 import { lockVault } from '../auth/session';
@@ -10,7 +10,11 @@ import { useWorkspace } from '../state/workspace';
 import { selectedSigner } from '../auth/action-signer';
 import { z } from 'zod';
 const props = defineProps<{ mode: 'enter' | 'manage' | 'signup' }>(),
-  emit = defineEmits<{ authenticated: [account: Account]; busy: [active: boolean] }>();
+  emit = defineEmits<{
+    authenticated: [account: Account];
+    busy: [active: boolean];
+    reconnected: [];
+  }>();
 const state = useWorkspace(),
   links = ref<z.infer<typeof NativeLinksSchema>['links']>([]),
   busy = ref(false),
@@ -27,7 +31,14 @@ const router = useRouter();
 watch(busy, (active) => emit('busy', active), { flush: 'sync' });
 let disposed = false,
   revision = 0;
-const context = () => JSON.stringify([props.mode, state.account?.id]);
+const context = () =>
+  JSON.stringify([
+    props.mode,
+    state.account?.id,
+    state.network?.chainId,
+    state.network?.runtime,
+    router.currentRoute.value.fullPath,
+  ]);
 function guard(stamp: string, generation: number) {
   if (disposed || revision !== generation || context() !== stamp)
     throw new Error('WALLET_CONTEXT_CHANGED');
@@ -60,13 +71,15 @@ onUnmounted(() => {
   revision++;
   emit('busy', false);
 });
-async function useWallet() {
+async function useWallet(reconnect = false) {
   const stamp = context(),
     generation = revision;
   if (
     props.mode === 'manage' &&
     !window.confirm(
-      'Pair the native account selected in Anchor with this Daclify account? DAO governance must be activated separately.',
+      reconnect
+        ? 'Reconnect all sign-ins from the wallet-only account controlled by your Telos Zero wallet to this restored account? This brings over its email, Telegram, passkeys and wallets, keeps your current methods, and signs out other devices. Your account keys and DAO memberships are preserved.'
+        : 'Pair the native account selected in Anchor with this Daclify account? DAO governance must be activated separately.',
     )
   )
     return;
@@ -74,6 +87,9 @@ async function useWallet() {
   error.value = '';
   notice.value = '';
   try {
+    const current = state.account;
+    if (reconnect && (!current?.signingKey || !canUseVaultKey(current.signingKey)))
+      throw new Error('VAULT_LOCKED');
     await connectNative();
     guard(stamp, generation);
     const identity = nativeIdentity(),
@@ -87,6 +103,17 @@ async function useWallet() {
       throw new Error('WALLET_CONTEXT_CHANGED');
     const proof = await nativeIntentProof(challenge.runtime, challenge.message);
     guard(stamp, generation);
+    if (reconnect && current) {
+      state.account = await completeNativeReconnect(current, challenge.id, proof, () =>
+        guard(stamp, generation),
+      );
+      await load();
+      guard(stamp, generation);
+      notice.value =
+        'Your existing sign-ins are reconnected. Use any paired method to open this account.';
+      emit('reconnected');
+      return;
+    }
     const result = await api.nativeFinish(purpose, challenge.id, proof);
     guard(stamp, generation);
     if (purpose !== 'pair') {
@@ -199,9 +226,20 @@ async function useControl() {
     <p v-if="nativeWallet" class="muted">
       Connected wallet: {{ nativeWallet.actor }}@{{ nativeWallet.permission }}
     </p>
-    <button type="button" :disabled="busy" @click="useWallet">
+    <button type="button" :disabled="busy" @click="useWallet()">
       {{ busy ? 'Waiting for wallet…' : label }}
     </button>
+    <div v-if="mode === 'manage' && state.account?.signingKey" class="reconnect-sign-ins">
+      <h3>Already paired your sign-ins before restoring your kit?</h3>
+      <p>
+        Unlock your keys in Access &amp; recovery, then approve with your previously paired Telos
+        Zero wallet. This reconnects its existing email, Telegram, passkeys and wallets to your
+        restored account and keeps the methods you have added here.
+      </p>
+      <button type="button" class="secondary" :disabled="busy" @click="useWallet(true)">
+        Reconnect existing sign-ins
+      </button>
+    </div>
     <button
       v-if="mode === 'manage' && links.length"
       type="button"
@@ -213,3 +251,10 @@ async function useControl() {
     </button>
   </section>
 </template>
+<style scoped>
+.reconnect-sign-ins {
+  margin-top: 24px;
+  border-top: 1px solid var(--border-default);
+  padding-top: 16px;
+}
+</style>

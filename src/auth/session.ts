@@ -15,6 +15,8 @@ import {
   EncryptionPublicKeySchema,
   type VaultSecrets,
   type Account,
+  type NativeProof,
+  ApiRoutes,
   AccountControlMessageSchema,
   VaultAttachMessageSchema,
   AccountReconnectMessageSchema,
@@ -65,7 +67,8 @@ setAccountControlSigner(async (challenge) => {
   if (message.origin !== window.location.origin || message.accountId !== useWorkspace().account?.id)
     throw new Error('ACCOUNT_KEY_MISMATCH');
   const { selectedSigner } = await import('./action-signer');
-  if (selectedSigner.value === 'native') {
+  const rootRequired = message.path === ApiRoutes.accountReconnectNative.path;
+  if (!rootRequired && selectedSigner.value === 'native') {
     const { nativeIdentity, nativeIntentProof } = await import('./telos-zero');
     const identity = nativeIdentity(),
       network = await api.network(),
@@ -84,7 +87,7 @@ setAccountControlSigner(async (challenge) => {
       proof: await nativeIntentProof(network.runtime, challenge.message),
     };
   }
-  if (selectedSigner.value === 'evm') {
+  if (!rootRequired && selectedSigner.value === 'evm') {
     const { evmWallet, signEvmMessage } = await import('./telos-evm');
     const wallet = evmWallet.value;
     if (!wallet) throw new Error('EVM_WALLET_MISSING');
@@ -160,6 +163,28 @@ export function acceptProviderSession(account: Account, csrfToken: string): Acco
   )
     lockVault();
   return account;
+}
+export async function completeNativeReconnect(
+  current: Account,
+  id: string,
+  proof: NativeProof,
+  check: () => void,
+): Promise<Account> {
+  const guard = recoveryContextGuard(current);
+  guard();
+  check();
+  if (!current.signingKey || !canUseVaultKey(current.signingKey)) throw new Error('VAULT_LOCKED');
+  const session = await api.reconnectNativeAccount(id, proof);
+  guard();
+  check();
+  if (
+    session.account.id !== current.id ||
+    session.account.signingKey !== current.signingKey ||
+    JSON.stringify(session.account.encryptionKey) !== JSON.stringify(current.encryptionKey) ||
+    session.account.custody !== current.custody
+  )
+    throw new Error('ACCOUNT_KEY_MISMATCH');
+  return acceptProviderSession(session.account, session.csrfToken);
 }
 export function recoveryContextGuard(account: Account): () => void {
   const state = useWorkspace(),

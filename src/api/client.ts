@@ -1081,6 +1081,12 @@ export const api = {
       CredentialHistorySchema,
     ),
   nativeLinks: () => request('/v1/account/native', NativeLinksSchema),
+  reconnectNativeAccount: (id: string, proof: NativeProof) =>
+    request(
+      ApiRoutes.accountReconnectNative.path,
+      ApiRoutes.accountReconnectNative.response,
+      ApiRoutes.accountReconnectNative.input.parse({ id, proof }),
+    ),
   nativeChallenge: (purpose: 'login' | 'pair' | 'signup', account: string) =>
     request(
       '/v1/account/native/challenge',
@@ -1456,7 +1462,14 @@ export function friendlyError(error: unknown): string {
       EMAIL_UNAVAILABLE: 'Email delivery is not configured on this server.',
       EMAIL_DELIVERY_FAILED: 'The email could not be sent. Try again or use another paired method.',
       EMAIL_INVALID: 'That email code is not valid anymore.',
-      CREDENTIAL_LINKED: 'That sign-in method is already paired with another account.',
+      CREDENTIAL_LINKED:
+        'That sign-in method belongs to another account. If you just restored your kit, use Reconnect existing sign-ins under Telos Zero to bring back your previous methods.',
+      NATIVE_LINKED:
+        'That Telos Zero wallet belongs to another account. If you just restored your kit, use Reconnect existing sign-ins below to bring back your previous methods.',
+      ACCOUNT_RECONNECT_REGISTERED:
+        'That wallet belongs to an account with its own keys. Sign in to that account with its original kit; accounts with different keys cannot be combined here.',
+      ACCOUNT_RECONNECT_NOT_NEEDED:
+        'This wallet is already paired with this account. Its sign-ins are already available here.',
       CREDENTIAL_UNKNOWN: 'That sign-in method is not paired with this account.',
       PASSKEY_INVALID: 'The passkey could not be verified. Try again.',
       PASSKEY_LINKED: 'That passkey is already paired with an account.',

@@ -430,6 +430,7 @@ onUnmounted(() => {
         :inert="working"
         @authenticated="emit('authenticated', $event)"
         @busy="walletBusy = $event"
+        @reconnected="loadOptions"
       />
     </component>
     <component
