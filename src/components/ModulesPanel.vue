@@ -210,9 +210,9 @@ async function load(more = false) {
   const request = ++generation;
   const domain = context.value;
   loading.value = true;
-  if (['works', 'payroll'].includes(props.section)) void loadMemberChoices();
+  if (['works', 'payroll', 'grants-rounds'].includes(props.section)) void loadMemberChoices();
   try {
-    const [modules, records, policy, documents] = await Promise.all([
+    const [modules, records, policy] = await Promise.all([
       api.moduleState(props.dao.reference.daoId, {
         ...(props.member ? { memberId: props.member.memberId } : {}),
         ...(more && data.value
@@ -238,18 +238,12 @@ async function load(more = false) {
       workspace.network?.capabilities.includes('governance-policy')
         ? api.governance(props.dao.reference.daoId)
         : Promise.resolve(undefined),
-      props.section === 'grants-rounds'
-        ? api.content(props.dao.reference.daoId)
-        : Promise.resolve(undefined),
     ]);
     if (disposed || request !== generation || domain !== context.value) return;
     if (
-      [
-        modules.dao,
-        records.dao,
-        ...(policy ? [policy.dao] : []),
-        ...(documents ? [documents.dao] : []),
-      ].some((reference) => JSON.stringify(reference) !== JSON.stringify(props.dao.reference))
+      [modules.dao, records.dao, ...(policy ? [policy.dao] : [])].some(
+        (reference) => JSON.stringify(reference) !== JSON.stringify(props.dao.reference),
+      )
     )
       throw new Error('DAO_REFERENCE');
     if (more && data.value) {
@@ -287,7 +281,6 @@ async function load(more = false) {
     data.value = modules;
     treasury.value = records;
     governance.value = policy;
-    if (!['works', 'payroll'].includes(props.section)) content.value = documents;
     if (policy?.policy) {
       const saved = policy.policy.config;
       weight.value = saved.kind === 0 ? 'member' : saved.kind === 1 ? 'credit' : 'native-stake';
@@ -1143,7 +1136,10 @@ const selectedProject = computed(() =>
     </p></template
   >
   <template v-else
-    ><div v-if="!['decide', 'works', 'payroll'].includes(section)" class="section-toolbar">
+    ><div
+      v-if="!['decide', 'works', 'payroll', 'grants-rounds'].includes(section)"
+      class="section-toolbar"
+    >
       <h2>{{ current ? names[current.deployment.id] : 'Module workspace' }}</h2>
       <RouterLink :to="helpLink(section)">Rules &amp; help ↗</RouterLink>
     </div>
@@ -1446,6 +1442,21 @@ const selectedProject = computed(() =>
       :data="data"
       :policy="governance"
       :can-sign="canSign"
+      :content="content"
+      :member-names="
+        Object.fromEntries([
+          ...(content?.members ?? []).map((person) => [person.id, memberLabel(person.id)]),
+          ...profiles.map((person) => [person.memberId, memberLabel(person.memberId)]),
+        ])
+      "
+      :choices-loading="choicesLoading"
+      :choices-error="choicesError"
+      :profiles-error="profilesError"
+      :refresh-choices="loadMemberChoices"
+      :busy="busy"
+      :action-error="error"
+      :action-success="success"
+      :now="now"
       :run="run"
     />
     <template v-else-if="section === 'works'">

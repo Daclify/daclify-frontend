@@ -42,16 +42,37 @@ test('authors grant consent, an election and enforced admission through real sig
     await expect(page.getByText(name + ' enabled', { exact: true })).toBeVisible();
   }
   await page.getByRole('link', { name: 'Grants', exact: true }).click();
-  await page.getByText('Create a round', { exact: true }).click();
-  await page.getByLabel('Rules document ID', { exact: true }).fill('1');
-  await page.getByRole('button', { name: 'Sign and create round' }).click();
+  await page.getByRole('button', { name: 'Create grant round', exact: true }).click();
+  const grantRound = page.getByRole('dialog', { name: 'Create grant round', exact: true });
+  await grantRound
+    .getByLabel('Round rules', { exact: true })
+    .selectOption({ label: 'Reviewed public module terms · version 1' });
+  await grantRound.getByRole('button', { name: 'Next', exact: true }).click();
+  await grantRound.getByLabel('Funding limit (TLOS)', { exact: true }).fill('5');
+  await grantRound.getByRole('button', { name: 'Next', exact: true }).click();
+  await grantRound
+    .getByLabel('I checked the rules, funding limit and deadlines', { exact: true })
+    .check();
+  await grantRound.getByRole('button', { name: 'Create round', exact: true }).click();
   await expect(
     page.getByText('Grant round created. Its cap reserves no funds.', { exact: true }),
   ).toBeVisible();
   await page.getByRole('button', { name: 'Apply to this round' }).click();
-  await page.getByLabel('Application document ID', { exact: true }).fill('1');
-  await page.getByRole('button', { name: 'Sign and save draft' }).click();
+  const grantApplication = page.getByRole('dialog', { name: 'Apply for a grant', exact: true });
+  await grantApplication
+    .getByLabel('Proposal document', { exact: true })
+    .selectOption({ label: 'Reviewed public module terms · version 1' });
+  await grantApplication.getByLabel('Milestone 1 amount (TLOS)', { exact: true }).fill('1');
+  const due = new Date(Date.now() + 14 * 86400000);
+  await grantApplication
+    .getByLabel('Milestone 1 due date', { exact: true })
+    .fill(new Date(due.getTime() - due.getTimezoneOffset() * 60000).toISOString().slice(0, 16));
+  await grantApplication
+    .getByLabel('I checked the proposal, milestone dates and total', { exact: true })
+    .check();
+  await grantApplication.getByRole('button', { name: 'Save draft', exact: true }).click();
   await expect(page.getByText(/Draft application created/)).toBeVisible();
+  await page.getByRole('button', { name: 'Review and submit', exact: true }).click();
   await page
     .getByLabel(
       'I reviewed this exact application document, compensation, term, review and cancellation rules',
@@ -59,10 +80,22 @@ test('authors grant consent, an election and enforced admission through real sig
     .check();
   await page.getByRole('button', { name: 'Sign consent and submit' }).click();
   await expect(page.getByText(/Application submitted with explicit consent/)).toBeVisible();
-  await page.getByLabel('Decision document ID', { exact: true }).fill('1');
-  await page.getByRole('button', { name: 'Mark eligible' }).click();
+  await page.getByRole('button', { name: 'Review application', exact: true }).click();
+  const review = page.getByRole('dialog', { name: 'Review application', exact: true });
+  await review
+    .getByLabel('Review record', { exact: true })
+    .selectOption({ label: 'Reviewed public module terms · version 1' });
+  await review
+    .getByLabel('I checked this application and its review record', { exact: true })
+    .check();
+  await review.getByRole('button', { name: 'Save eligibility decision', exact: true }).click();
   await expect(page.getByText(/Eligibility reviewed/)).toBeVisible();
-  await page.getByRole('button', { name: 'Propose award vote' }).click();
+  await page.getByRole('button', { name: 'Propose funding vote', exact: true }).click();
+  const fundingVote = page.getByRole('dialog', { name: 'Propose funding vote', exact: true });
+  await fundingVote
+    .getByLabel('I checked the application total and funding terms', { exact: true })
+    .check();
+  await fundingVote.getByRole('button', { name: 'Open funding vote', exact: true }).click();
   await expect(page.getByText(/Award vote opened/)).toBeVisible();
   await page.getByRole('link', { name: 'Decide', exact: true }).click();
   await page.getByRole('button', { name: 'Vote Approve', exact: true }).click();

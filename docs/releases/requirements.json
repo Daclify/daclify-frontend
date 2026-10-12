@@ -1,6 +1,15 @@
 {
   "requirements": [
     {
+      "id": "GRANTS-READABLE-ROUNDS-APPLICATIONS-AND-SIGNED-POPUPS",
+      "tests": [
+        "tests/unit/grants-inputs.test.ts",
+        "tests/e2e/grants-design.spec.ts",
+        "tests/e2e/module-authoring.spec.ts",
+        "tests/e2e/research-modules.spec.ts"
+      ]
+    },
+    {
       "id": "WORKS-PROPOSAL-POPUP-NAMED-CHOICES-AND-FILTERS",
       "tests": [
         "tests/e2e/works-design.spec.ts",
