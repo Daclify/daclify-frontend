@@ -37,6 +37,7 @@ const apps = ref<z.infer<typeof ApiRoutes.connectedApps.response>>([]),
   origins = ref(''),
   callbacks = ref(''),
   sourceApi = ref(''),
+  cleanupUrl = ref(''),
   scoped = ref<z.infer<typeof ApiRoutes.governance.response>>(),
   sourceDetails = ref(new Map<string, z.infer<typeof AppSourceRecordSchema>>()),
   grantAppId = ref('1'),
@@ -174,6 +175,9 @@ async function register() {
     const old = apps.value.find((app) => app.config.appId === appId.value);
     await configure(
       ConnectedAppConfigSchema.parse({
+        ...((old?.config && 'schemaVersion' in old.config) || cleanupUrl.value
+          ? { schemaVersion: 2 }
+          : {}),
         dao: props.dao.reference,
         appId: appId.value,
         revision: (BigInt(old?.native?.revision ?? '0') + 1n).toString(),
@@ -182,6 +186,7 @@ async function register() {
         redirectUris: callbacks.value.split(/\s+/).filter(Boolean),
         activityAccount: deployed.deployment.account,
         ...(sourceApi.value ? { sourceApiBase: sourceApi.value } : {}),
+        ...(cleanupUrl.value ? { cleanupUrl: cleanupUrl.value } : {}),
         enabled: true,
       }),
     );
@@ -202,6 +207,7 @@ function edit(app: z.infer<typeof ApiRoutes.connectedApps.response>[number]) {
   origins.value = app.config.origins.join('\n');
   callbacks.value = app.config.redirectUris.join('\n');
   sourceApi.value = app.config.sourceApiBase ?? '';
+  cleanupUrl.value = 'cleanupUrl' in app.config ? (app.config.cleanupUrl ?? '') : '';
 }
 async function review(receipt: ModuleState['activities'][number], accepted: boolean) {
   const member = props.member,
@@ -542,6 +548,16 @@ async function more() {
               type="url"
               placeholder="https://garden.example"
           /></label>
+          <label
+            >Cleanup endpoint (optional)<input
+              v-model="cleanupUrl"
+              type="url"
+              maxlength="512"
+              placeholder="https://garden.example/v1/cleanup"
+          /></label>
+          <p>
+            Cleanup acknowledgment comes from the app operator. Required shared evidence may remain.
+          </p>
           <p>
             Saving signs a new native configuration revision. Existing app sign-ins and recording
             grants must be renewed.

@@ -217,3 +217,27 @@ test('existing DAO apps page links to the global connection guide', async ({ pag
     page.getByRole('link', { name: 'Mini apps connection guide ↗', exact: true }),
   ).toBeVisible();
 });
+
+test('lets administrators specify an approved cleanup endpoint without signing on field changes', async ({
+  page,
+}) => {
+  let writes = 0;
+  await page.route('**/v1/**', async (route) => {
+    if (route.request().method() === 'POST') writes++;
+    await route.fallback();
+  });
+  await page.route('**' + ApiRoutes.memberships.path, (route) =>
+    route.fulfill({ json: { memberships: [{ ...member, admin: true }] } }),
+  );
+  await page.goto('/dao/1/apps');
+  await page.getByText('Register or update an app', { exact: true }).click();
+  const field = page.getByLabel('Cleanup endpoint (optional)', { exact: true });
+  await expect(field).toBeVisible();
+  await field.fill('https://app1.example/v1/cleanup');
+  await expect(
+    page.getByText(
+      'Cleanup acknowledgment comes from the app operator. Required shared evidence may remain.',
+    ),
+  ).toBeVisible();
+  expect(writes).toBe(0);
+});
