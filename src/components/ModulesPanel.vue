@@ -7,6 +7,7 @@ import VotingDurationInput from './VotingDurationInput.vue';
 import PercentageInput from './PercentageInput.vue';
 import { percentageText } from '../content/governance-inputs';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import { Plus, CircleHelp, X } from '@lucide/vue';
 import { z } from 'zod';
 import {
   parseUnits,
@@ -62,6 +63,7 @@ const decideTabs = [
   { id: 'elections', label: 'Elections' },
 ] as const;
 const decideTab = ref<(typeof decideTabs)[number]['id']>('ballots');
+const ballotDialog = ref<HTMLDialogElement>();
 const visibleBallots = computed(
   () =>
     data.value?.ballots.filter(
@@ -159,6 +161,10 @@ function fundAllowed() {
 }
 function allowed(action: string) {
   return canAct.value && !!current.value?.actions.includes(action);
+}
+function showBallotDialog() {
+  if (!busy.value && props.member?.active && current.value?.enabled)
+    ballotDialog.value?.showModal();
 }
 const canSettle = computed(() => !!workspace.account && !busy.value);
 function helpLink(topic: string) {
@@ -283,6 +289,7 @@ async function load(more = false) {
 watch(
   context,
   () => {
+    ballotDialog.value?.close();
     generation++;
     data.value = undefined;
     treasury.value = undefined;
@@ -305,6 +312,7 @@ watch(
 watch(
   () => props.section,
   () => {
+    ballotDialog.value?.close();
     void load();
   },
 );
@@ -382,7 +390,8 @@ async function disable(module: ModuleState['modules'][number]) {
   );
 }
 async function open() {
-  if (!current.value) return;
+  if (!current.value || !allowed('open')) return;
+  const domain = context.value;
   try {
     const config = DecideConfigSchema.parse({
       configVersion: 1,
@@ -408,9 +417,13 @@ async function open() {
       }),
       'Ballot opened',
     );
-    title.value = '';
+    if (!disposed && domain === context.value && success.value === 'Ballot opened') {
+      title.value = '';
+      decideTab.value = 'ballots';
+      ballotDialog.value?.close();
+    }
   } catch (cause) {
-    error.value = friendlyError(cause);
+    if (!disposed && domain === context.value) error.value = friendlyError(cause);
   }
 }
 async function vote(id: string, choice: number) {
@@ -828,7 +841,7 @@ const selectedProject = computed(() =>
     </p></template
   >
   <template v-else
-    ><div class="section-toolbar">
+    ><div v-if="section !== 'decide'" class="section-toolbar">
       <h2>{{ current ? names[current.deployment.id] : 'Module workspace' }}</h2>
       <RouterLink :to="helpLink(section)">Rules &amp; help ↗</RouterLink>
     </div>
@@ -842,7 +855,7 @@ const selectedProject = computed(() =>
       Modules; unavailable actions remain disabled.
     </p>
     <section v-if="!current?.enabled" class="panel">
-      <h3>Enable this module</h3>
+      <h2>Enable this module</h2>
       <p>
         A DAO administrator must grant its contract permissions before member actions become
         available.
@@ -852,26 +865,131 @@ const selectedProject = computed(() =>
       >
     </section>
     <template v-if="section === 'decide'">
-      <div
-        class="account-tabs decide-tabs"
-        role="tablist"
-        aria-label="Decide sections"
-        @keydown="navigateDecideTabs"
-      >
-        <button
-          v-for="tab in decideTabs"
-          :id="'decide-tab-' + tab.id"
-          :key="tab.id"
-          type="button"
-          role="tab"
-          :aria-selected="decideTab === tab.id"
-          :aria-controls="'decide-panel-' + tab.id"
-          :tabindex="decideTab === tab.id ? 0 : -1"
-          @click="decideTab = tab.id"
+      <div class="decide-toolbar" role="group" aria-label="Decide tools">
+        <div
+          class="account-tabs decide-tabs"
+          role="tablist"
+          aria-label="Decide sections"
+          @keydown="navigateDecideTabs"
         >
-          {{ tab.label }}
-        </button>
+          <button
+            v-for="tab in decideTabs"
+            :id="'decide-tab-' + tab.id"
+            :key="tab.id"
+            type="button"
+            role="tab"
+            :aria-selected="decideTab === tab.id"
+            :aria-controls="'decide-panel-' + tab.id"
+            :tabindex="decideTab === tab.id ? 0 : -1"
+            @click="decideTab = tab.id"
+          >
+            {{ tab.label }}
+          </button>
+        </div>
+        <div class="decide-toolbar-actions">
+          <button
+            type="button"
+            class="decide-icon"
+            aria-label="Open a ballot"
+            title="Open a ballot"
+            aria-haspopup="dialog"
+            :disabled="!member?.active || !current?.enabled || busy"
+            @click="showBallotDialog"
+          >
+            <Plus :size="32" aria-hidden="true" />
+          </button>
+          <RouterLink
+            class="decide-icon"
+            :to="helpLink('decide')"
+            aria-label="Ballot rules and help"
+            title="Ballot rules and help"
+            ><CircleHelp :size="24" aria-hidden="true"
+          /></RouterLink>
+        </div>
       </div>
+      <dialog
+        v-if="member?.active && current?.enabled"
+        ref="ballotDialog"
+        class="panel ballot-dialog"
+        aria-labelledby="ballot-dialog-title"
+        @cancel="busy && $event.preventDefault()"
+      >
+        <header class="ballot-dialog-heading">
+          <h2 id="ballot-dialog-title">Open a ballot</h2>
+          <button
+            type="button"
+            class="decide-icon"
+            aria-label="Close ballot form"
+            :disabled="busy"
+            @click="ballotDialog?.close()"
+          >
+            <X :size="24" aria-hidden="true" />
+          </button>
+        </header>
+        <p v-if="error" class="alert" role="alert">{{ error }}</p>
+        <p v-if="busy" role="status">Opening ballot…</p>
+        <p v-else-if="!signerReady" class="notice">
+          Choose an authorized signer in Signing &amp; wallets before opening this ballot.
+        </p>
+        <form @submit.prevent="open">
+          <fieldset :disabled="busy">
+            <label for="ballot-title">Public ballot title</label
+            ><input id="ballot-title" v-model="title" maxlength="160" autofocus />
+            <p class="field-help">
+              This label is public on chain. Leave it blank to avoid publishing a title.
+            </p>
+            <div class="three-column">
+              <div>
+                <label for="weight">Voting weight</label
+                ><select id="weight" v-model="weight" :disabled="!!governance?.policy || busy">
+                  <option value="member">Equal active members</option>
+                  <option value="credit">Governance credits</option>
+                  <option value="native-stake">Escrowed native stake</option>
+                </select>
+              </div>
+              <VotingDurationInput
+                id="duration"
+                v-model="duration"
+                label="Duration"
+                :disabled="!!governance?.policy || busy"
+                allow-date
+                :now="now"
+              />
+              <PercentageInput
+                id="quorum"
+                v-model="quorum"
+                label="Quorum (%)"
+                kind="quorum"
+                :disabled="!!governance?.policy || busy"
+              />
+            </div>
+            <PercentageInput
+              id="approval"
+              v-model="approval"
+              label="Approval (%)"
+              kind="approval"
+              :disabled="!!governance?.policy || busy"
+            />
+            <p v-if="governance?.policy" class="field-help">
+              These settings follow your DAO’s saved governance policy.
+            </p>
+            <p class="field-help">
+              Weight is frozen at opening. New members cannot vote in an existing ballot.
+            </p>
+            <div class="button-row">
+              <button :disabled="!allowed('open')">Open ballot</button>
+              <button
+                type="button"
+                class="secondary"
+                :disabled="busy"
+                @click="ballotDialog?.close()"
+              >
+                Cancel
+              </button>
+            </div>
+          </fieldset>
+        </form>
+      </dialog>
       <div
         v-show="decideTab === 'ballots'"
         id="decide-panel-ballots"
@@ -879,64 +997,13 @@ const selectedProject = computed(() =>
         aria-labelledby="decide-tab-ballots"
         tabindex="0"
       >
-        <form
-          v-if="member?.active && current?.enabled"
-          class="panel form-panel"
-          @submit.prevent="open"
-        >
-          <h3>Open a binary ballot</h3>
-          <label for="ballot-title">Public ballot title</label
-          ><input id="ballot-title" v-model="title" maxlength="160" />
-          <p class="field-help">
-            This label is public on chain. Leave it blank to avoid publishing a title.
-          </p>
-          <div class="three-column">
-            <div>
-              <label for="weight">Voting weight</label
-              ><select id="weight" v-model="weight" :disabled="!!governance?.policy">
-                <option value="member">Equal active members</option>
-                <option value="credit">Governance credits</option>
-                <option value="native-stake">Escrowed native stake</option>
-              </select>
-            </div>
-            <VotingDurationInput
-              id="duration"
-              v-model="duration"
-              label="Duration"
-              :disabled="!!governance?.policy"
-              allow-date
-              :now="now"
-            />
-            <PercentageInput
-              id="quorum"
-              v-model="quorum"
-              label="Quorum (%)"
-              kind="quorum"
-              :disabled="!!governance?.policy"
-            />
-          </div>
-          <PercentageInput
-            id="approval"
-            v-model="approval"
-            label="Approval (%)"
-            kind="approval"
-            :disabled="!!governance?.policy"
-          />
-          <p v-if="governance?.policy" class="field-help">
-            These settings follow your DAO’s saved governance policy.
-          </p>
-          <p class="field-help">
-            Weight is frozen at opening. New members cannot vote in an existing ballot.
-          </p>
-          <button :disabled="!allowed('open')">Open ballot</button>
-        </form>
         <div v-if="!visibleBallots.length" class="empty-state">
-          <h3>No ballots yet</h3>
+          <h2>No ballots yet</h2>
           <p>Open a decision with an explicit weight, quorum, and closing time.</p>
         </div>
         <article v-for="ballot in visibleBallots" :key="ballot.id" class="panel">
           <div class="panel-heading">
-            <h3>{{ ballotTitle(ballot) }}</h3>
+            <h2>{{ ballotTitle(ballot) }}</h2>
             <span class="pill">{{
               ballot.status === 0
                 ? ballot.closes <= now
@@ -1398,8 +1465,67 @@ const selectedProject = computed(() =>
   </button>
 </template>
 <style scoped>
+.decide-toolbar,
+.decide-toolbar-actions,
+.ballot-dialog-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.decide-toolbar {
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+.decide-tabs {
+  margin: 0;
+}
 .decide-tabs button {
   min-height: 44px;
+}
+.decide-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  padding: 6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  color: var(--accent-amber);
+  background: transparent;
+  box-shadow: none;
+}
+.decide-icon:hover {
+  transform: none;
+  background: var(--accent-soft);
+  box-shadow: none;
+}
+.ballot-dialog {
+  width: min(840px, calc(100% - 32px));
+  max-height: calc(100dvh - 48px);
+  overflow: auto;
+  margin: auto;
+  color: var(--text-primary);
+}
+.ballot-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(6px);
+}
+.ballot-dialog-heading {
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+.ballot-dialog-heading h2 {
+  margin: 0;
+}
+.ballot-dialog fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+.ballot-dialog :deep(.duration-fields select) {
+  padding-inline: 10px;
 }
 @media (max-width: 640px) {
   .three-column .voting-duration {

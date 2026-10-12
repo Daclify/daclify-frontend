@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.14.0-alpha.10 development
+
+Put Ballots and Elections first in a compact toolbar, followed by a large plus and help icon. Show the ballot list immediately and open creation in an accessible popup. Preserve drafts on cancellation and failed requests; close after confirmed creation. Keep pending controls, signer requirements and saved governance policy checks.
+
 ## 0.14.0-alpha.9 development
 
 Separate the Decide module into Ballots and Elections tabs, preserving drafts and keyboard navigation. Show voting durations in minutes, hours, days or weeks and quorum/approval as exact percentages across ballots, DAO setup and governance settings. Custom ballot timing also offers a local closing date. Saved DAO policies continue to determine ballot settings.

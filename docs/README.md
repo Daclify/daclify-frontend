@@ -1,10 +1,10 @@
 # Frontend documentation
 
-Current development application: **0.14.0-alpha.9**, consuming core **0.14.0-alpha.5** and modules **0.10.0-alpha.5** SDK/help packages. Development uses `dev`. See the [repository README](../README.md) for routes, local development, account recovery and test phases, and the [Netlify dev guide](netlify-dev.md) for the separate testnet site.
+Current development application: **0.14.0-alpha.10**, consuming core **0.14.0-alpha.5** and modules **0.10.0-alpha.5** SDK/help packages. Development uses `dev`. See the [repository README](../README.md) for routes, local development, account recovery and test phases, and the [Netlify dev guide](netlify-dev.md) for the separate testnet site.
 
 ## Help inside the application
 
-The [Decide guide](users/decide.md) explains the Ballots and Elections tabs, duration units, closing dates and percentage thresholds. The same duration and percentage controls appear in DAO setup and governance settings.
+The [Decide guide](users/decide.md) explains the Ballots and Elections tabs, the plus-button creation popup, duration units, closing dates and percentage thresholds. The same duration and percentage controls appear in DAO setup and governance settings.
 
 The app starts at `/` with a welcome page; DAO discovery is at `/hub`, and My DAO
 opens `/hub?mine=1`. The brand returns to the welcome page. Previous root URLs

@@ -207,10 +207,15 @@ try {
       });
       await expect(page.getByRole('heading', { name: 'Daclify DAO', exact: true })).toBeVisible();
       await page.getByRole('link', { name: 'Decide', exact: true }).click();
-      await expect(main.getByRole('heading', { name: 'Decide', exact: true })).toBeVisible();
       const ballots = main.getByRole('tab', { name: 'Ballots', exact: true });
       const elections = main.getByRole('tab', { name: 'Elections', exact: true });
       await expect(ballots).toHaveAttribute('aria-selected', 'true');
+      await expect(main.getByRole('heading', { name: 'Decide', exact: true })).toHaveCount(0);
+      await expect(
+        main.getByRole('link', { name: 'Ballot rules and help', exact: true }),
+      ).toBeVisible();
+      await expect(main.getByRole('button', { name: 'Open a ballot', exact: true })).toBeDisabled();
+      await expect(main.getByRole('dialog', { name: 'Open a ballot', exact: true })).toHaveCount(0);
       await elections.click();
       await expect(elections).toHaveAttribute('aria-selected', 'true');
       await expect(main.getByRole('heading', { name: 'DAO elections', exact: true })).toBeVisible();
