@@ -52,6 +52,6 @@
 **Files:** docs/users/grants-rounds.md, docs/evidence/2026-10-12-grants-experience.md, docs/evidence/2026-10-12-grants-experience-testnet.json, package.json, package-lock.json, requirement register.
 
 - [x] Review the whole diff and run formatting, lint, Vue/TS, full unit suite, Grants desktop/mobile and adjacent module regressions, then the testnet build.
-- [ ] Update the user guide and evidence with passed/failed/unrun distinctions; bump a fresh frontend prerelease; commit and push dev.
-- [ ] Archive exact source into an immutable runtime release packet, compare tracked bytes, install locked dependencies and publish only the frontend to testnet.
-- [ ] Verify HTTPS index/assets, actual public desktop/mobile and compiled-assets popup flows; save hashes/evidence, push documentation follow-up and verify clean dev.
+- [x] Update the user guide and evidence with passed/failed/unrun distinctions; bump a fresh frontend prerelease; commit and push dev.
+- [x] Archive exact source into an immutable runtime release packet, compare tracked bytes, install locked dependencies and publish only the frontend to testnet.
+- [x] Verify HTTPS index/assets, actual public desktop/mobile and compiled-assets popup flows; save hashes/evidence, push documentation follow-up and verify clean dev.

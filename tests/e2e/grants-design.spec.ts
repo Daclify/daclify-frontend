@@ -345,13 +345,14 @@ async function authenticate(page: Page, state: Awaited<ReturnType<typeof fixture
     const input = ApiRoutes.challenge.input.parse(route.request().postDataJSON()),
       id = crypto.randomUUID(),
       expires = new Date(Date.now() + 120000).toISOString(),
-      origin = new URL(route.request().url()).origin;
+      origin = new URL(page.url()).origin,
+      audience = new URL(route.request().url()).origin;
     message = JSON.stringify(
       LoginMessageSchema.parse({
         ...input,
         domain: 'daclify.login.v3',
         origin,
-        audience: origin,
+        audience,
         challenge: id,
         expires,
       }),
