@@ -25,7 +25,7 @@
 - [x] Reorganize ContentPanel.vue, FilePanel.vue and GoverningDocumentsPanel.vue into document sections and contextual popups; retain immutable publication and adoption paths.
 - [x] Extend PeopleGrid.vue/PersonCard.vue/MemberDirectory.vue slots for inline tools and named management. Separate AdmissionPanel.vue creation/policy forms from application rows and replace document/version IDs with choices.
 - [x] Run full lint/type/unit verification and focused plus affected browser suites, review diff inline, update user guide/requirements/evidence.
-- [ ] Commit/push dev; build and publish immutable verified frontend to testnet; check public artifacts and compiled UI.
+- [x] Commit/push dev; build and publish immutable verified frontend to testnet; check public artifacts and compiled UI.
 
 ## Execution record
 
@@ -34,3 +34,5 @@
 
 - Final source review: inline. Corrected shared-component navigation and adopted-version naming with RED→GREEN browser checks; retained original financial, membership and encryption authority.
 - Final source qualification: lint/type/335 unit tests PASS; 48 desktop/mobile browser cases PASS; testnet build PASS; formatting and diff checks PASS. Provider/native payment suites remain unrun.
+
+- Delivery: e6c2383 pushed to dev and frontend 0.15.0-alpha.13 published to testnet from a 425-file verified archive. Public index/22 assets match the candidate, 6 public guest views and 24 compiled browser cases PASS. No backend/contract deployment; final evidence is a docs-only follow-up.

@@ -22,4 +22,10 @@ The three affected hosted-file browser workflows were updated for generated iden
 
 ## Delivery
 
-Pending immutable snapshot publication and checks of the published artifacts and compiled UI. Only the previously authorized testnet frontend will be published.
+Published the previously authorized testnet frontend from immutable source commit `e6c2383de4c5b98efd789be270f869e4a3fe3cc5`. All 425 tracked source files matched the archive byte-for-byte. The operator packet is `/data/daclify-runtime/releases/20261012-workspace-tools/`; it contains the candidate build, clean install/publication logs and verification artifacts.
+
+The public entry point and all 22 linked assets matched the candidate hashes. Index SHA-256: `cb9f95591d4b5603defa34002c5b695619e28f9dfabc87230efea99c57762438`. Public Core remains 0.15.0-alpha.7. Six actual guest views (three tabs on desktop/mobile) passed with zero Axe violations, zero page errors and no horizontal overflow. Screenshots were inspected for layout.
+
+All 24 additional browser cases against the published compiled app passed, including exact constitution acceptance, cross-device private-history preservation, signed JSON/admission failure handling and in-app navigation. These use real disposable signatures and synthetic API replies; the six guest views use the actual public API.
+
+Frontend-only publication retained older hashed assets and replaced the entry point last. No backend/API restart or contract publication occurred. The final follow-up commit records only delivery evidence and plan completion; its production source and package metadata match the published commit.
