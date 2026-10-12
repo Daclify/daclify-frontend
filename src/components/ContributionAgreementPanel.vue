@@ -38,7 +38,7 @@ function offer() {
 <template>
   <section aria-label="Contribution agreement" class="agreement-consent">
     <template v-if="agreement"
-      ><h4>Contribution agreement</h4>
+      ><h3>Contribution agreement</h3>
       <p>{{ date(agreement.term_start) }} — {{ date(agreement.term_end) }}</p>
       <p>
         Contributor {{ project.contributor }} ·

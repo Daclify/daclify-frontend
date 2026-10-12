@@ -1,10 +1,10 @@
 # Frontend documentation
 
-Current development application: **0.14.0-alpha.11**, consuming core **0.14.0-alpha.5** and modules **0.10.0-alpha.5** SDK/help packages. Development uses `dev`. See the [repository README](../README.md) for routes, local development, account recovery and test phases, and the [Netlify dev guide](netlify-dev.md) for the separate testnet site.
+Current development application: **0.14.0-alpha.13**, consuming core **0.14.0-alpha.5** and modules **0.10.0-alpha.5** SDK/help packages. Development uses `dev`. See the [repository README](../README.md) for routes, local development, account recovery and test phases, and the [Netlify dev guide](netlify-dev.md) for the separate testnet site.
 
 ## Help inside the application
 
-The [Decide guide](users/decide.md) explains the Ballots and Elections tabs, the plus-button creation popup, duration units, closing dates and percentage thresholds. The same duration and percentage controls appear in DAO setup and governance settings.
+The [Decide guide](users/decide.md) explains the Ballots and Elections tabs, the tab-specific creation popups and election document choices, duration units, closing dates and percentage thresholds. The same duration and percentage controls appear in DAO setup and governance settings.
 
 The app starts at `/` with a welcome page; DAO discovery is at `/hub`, and My DAO
 opens `/hub?mine=1`. The brand returns to the welcome page. Previous root URLs
@@ -70,3 +70,5 @@ See core [payment operations](../../daclify-backend-core/docs/operations/connect
 Resources → Archive now shows the configured encrypted backup option, exact manifest commitment and saved restore-verification receipt. Backup creation and reload are covered by desktop/mobile browser tests; native approval/pruning require the separate configured availability, authority and release gates; export alone does not enable them. Operator key/path details never enter this UI.
 
 - [Public Users directory](users/public-directory.md) explains profiles, community links, identity grouping and DAO activity.
+
+Works now separates **Work proposals** and **Member services**. The toolbar’s **+** opens a milestone proposal popup; the help icon opens the existing Works rules. Named contributor/document choices replace numeric inputs, including evidence and review. Search and status/contributor/agreement filters apply to loaded projects; **Load more** extends the list. See [Works instructions](users/works.md) and the [verification ledger](evidence/2026-10-12-works-experience.md).

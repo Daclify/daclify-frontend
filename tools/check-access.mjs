@@ -35,6 +35,13 @@ const renderer = createRenderer({
     parent: null,
     text: '',
     value: '',
+    style: { display: '' },
+    showModal() {
+      this.props.open = true;
+    },
+    close() {
+      delete this.props.open;
+    },
     getRootNode: () => globalThis.document,
     get options() {
       return this.children.filter((node) => node.tag === 'option');
@@ -292,6 +299,7 @@ const moduleData = ModuleStateSchema.parse({
   votes: [],
   entries: [],
 });
+api.people = async () => ({ profiles: [], next: null });
 api.moduleState = async () => moduleData;
 api.treasury = async (id) => ({ dao: reference(id), obligations: [] });
 const modules = mount(
@@ -325,7 +333,7 @@ lateProps.member = member('2');
 await flush();
 releaseModules({ ...moduleData, projects: [{ ...moduleData.projects[0], id: '123456789' }] });
 await flush();
-const staleProject = textOf(late.container).includes('Project 123456789');
+const staleProject = textOf(late.container).includes('123456789');
 late.app.unmount();
 api.moduleState = async () => ({
   ...moduleData,
@@ -409,7 +417,12 @@ const { createVault } = await server.ssrLoadModule('/src/auth/vault.ts');
 const created = await createVault('disposable audit fixture password');
 session.saveVault(created);
 api.challenge = async () => ({ message: 'audit fixture' });
-api.login = async () => ({ id: 'fixture', custody: 'user-controlled', signingKey: created.signingPublicKey, encryptionKey: created.encryptionPublicKey });
+api.login = async () => ({
+  id: 'fixture',
+  custody: 'user-controlled',
+  signingKey: created.signingPublicKey,
+  encryptionKey: created.encryptionPublicKey,
+});
 await session.unlockAndLogin('disposable audit fixture password');
 const finishBranding = [];
 let brandingWrites = 0;

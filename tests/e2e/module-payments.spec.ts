@@ -47,10 +47,15 @@ test('reserves and cancels work, then settles disabled payroll and withdraws the
   await page.getByRole('button', { name: 'Enable Works', exact: true }).click();
   await expect(page.getByText('Works enabled', { exact: true })).toBeVisible();
   await page.getByRole('link', { name: 'Works', exact: true }).click();
-  await page.getByLabel('Contributor member ID', { exact: true }).fill('1');
-  await page.getByLabel('Proposal document ID', { exact: true }).fill('1');
+  await page.getByRole('button', { name: 'Propose milestone work', exact: true }).click();
+  await page.getByLabel('Contributor', { exact: true }).selectOption('1');
+  await page
+    .getByLabel('Proposal document', { exact: true })
+    .selectOption({ label: 'Synthetic proposal and delivery evidence · version 1' });
   await page.getByRole('button', { name: 'Propose work', exact: true }).click();
-  await expect(page.getByRole('heading', { name: /^Project / })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Synthetic proposal and delivery evidence · version 1' }),
+  ).toBeVisible();
   await page.getByRole('button', { name: 'Accept and reserve funds', exact: true }).click();
   await expect(page.getByText('Milestone funds reserved', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: /^Cancel project / }).click();

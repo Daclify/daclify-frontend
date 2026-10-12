@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.14.0-alpha.14 development
+
+Give Works a Work proposals / Member services toolbar with plus and help icons. Open milestone proposals in a popup using named active members and published document versions. Add proposal search, status/contributor/agreements filters, readable cards and empty states. Service offers preselect their provider in the same popup. Evidence and review use document choices; failures preserve drafts and optional metadata failures leave work browseable.
+
+## 0.14.0-alpha.13 development
+
+Remove the DAO elections heading, introductory paragraph and Representative terms heading from the Elections tab. Keep record and empty-state headings in a valid accessible hierarchy.
+
+## 0.14.0-alpha.12 development
+
+Make Decide’s plus button follow the active Ballots or Elections tab. Move election setup into an Election and term rules popup with purpose, seats, published document choices and local dates. Preserve selected versions, drafts and signing rules; show recall reasons beside their terms and explain document/loading/policy requirements.
+
 ## 0.14.0-alpha.11 development
 
 Put Ballots and Elections first in a compact toolbar, followed by a large plus and help icon. Show the ballot list immediately and open creation in an accessible popup. Preserve drafts on cancellation and failed requests; close after confirmed creation. Keep pending controls, signer requirements and saved governance policy checks.

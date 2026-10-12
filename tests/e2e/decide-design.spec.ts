@@ -1,159 +1,20 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import {
   AccountSchema,
   ApiRoutes,
-  DaoSummarySchema,
-  GovernanceStateSchema,
   LoginMessageSchema,
-  NetworkSchema,
   RecoveryKitSchema,
-  TreasurySchema,
-  UserMembershipSchema,
-  VERSION,
-  defaultDaoSetup,
 } from '@daclify/core-protocol';
-import { governanceSettings, instructionDigest } from '@daclify/core-protocol/sdk';
-import { Catalog, ModulePermissions, ModuleStateSchema } from '@daclify/modules';
-import { ModuleCodeHashes, DecideActionSchemas, decideAbi } from '@daclify/modules/sdk';
+import { instructionDigest } from '@daclify/core-protocol/sdk';
+import { DecideActionSchemas, decideAbi } from '@daclify/modules/sdk';
 import { ABI, PublicKey, Serializer, Signature } from '@wharfkit/antelope';
 import { createVault } from '../../src/auth/vault';
 import { z } from 'zod';
 
-test.use({ timezoneId: 'Atlantic/Canary' });
+import { moduleFixture as fixture } from './fixtures/module-design';
 
-async function fixture(page: Page, savedPolicy = true, visitor = false) {
-  const network = NetworkSchema.parse({
-    chainId: 'ab'.repeat(32),
-    rpcUrl: 'https://rpc.example',
-    runtime: 'daclifycore',
-    hub: null,
-    environment: 'testnet',
-    interfaceVersion: 1,
-    coreVersion: VERSION,
-    capabilities: ['governance-policy'],
-  });
-  const dao = {
-    chainId: network.chainId,
-    contract: network.runtime,
-    daoId: '1',
-    interfaceVersion: 1,
-  };
-  const summary = DaoSummarySchema.parse({
-    reference: dao,
-    title: 'Design fixture DAO',
-    description: 'Synthetic governance UI',
-    privacy: 'public',
-    owner: 'alice',
-    token: { chainId: dao.chainId, contract: 'eosio.token', symbol: 'TLOS', precision: 4 },
-    members: 1,
-    available: '0',
-    reserved: '0',
-    claims: '0',
-    keyEpoch: '1',
-    purpose: 'community',
-  });
-  const account = AccountSchema.parse({
-    id: '11111111-1111-4111-8111-111111111111',
-    custody: 'user-controlled',
-    signingKey: null,
-    encryptionKey: null,
-  });
-  const member = UserMembershipSchema.parse({
-    dao,
-    memberId: '1',
-    nonce: '0',
-    active: true,
-    admin: true,
-    reviewer: false,
-    credits: '0',
-    stake: '0',
-    claim: '0',
-    nativeAccount: '',
-    custody: 'user-controlled',
-  });
-  const manifest = Catalog.find((m) => m.id === 'decide');
-  if (!manifest) throw new Error('Decide manifest missing');
-  const modules = ModuleStateSchema.parse({
-    dao,
-    modules: [
-      {
-        manifest,
-        deployment: {
-          id: 'decide',
-          account: 'decide',
-          version: manifest.version,
-          codeHash: ModuleCodeHashes.decide,
-        },
-        enabled: true,
-        installed: true,
-        compatible: true,
-        codeVerified: true,
-        actions: ModulePermissions.decide.actions,
-        grants: ModulePermissions.decide.grants,
-      },
-    ],
-    ballots: [
-      {
-        id: '9',
-        dao_id: '1',
-        creator: '1',
-        kind: 0,
-        choices: 2,
-        closes: Math.floor(Date.now() / 1000) + 86400,
-        quorum: 5000,
-        approval: 5001,
-        denominator: '1',
-        max_member: '1',
-        cast: '0',
-        tallies: ['0', '0'],
-        status: 0,
-        winner: 0,
-        metadata: JSON.stringify({
-          schemaVersion: 1,
-          title: 'Community decision',
-          options: ['Reject', 'Approve'],
-        }),
-      },
-    ],
-    votes: [],
-    projects: [],
-    milestones: [],
-    schedules: [],
-    controls: [],
-    executions: [],
-    entries: [],
-  });
-  const governance = GovernanceStateSchema.parse({
-    dao,
-    policy: savedPolicy
-      ? { dao_id: '1', revision: '1', config: governanceSettings(defaultDaoSetup(), 'decide') }
-      : null,
-    actors: [],
-    sessions: [],
-    guardian: null,
-    budget: null,
-  });
-  await page.route('**/v1/**', (route) => {
-    const path = new URL(route.request().url()).pathname;
-    if (path === '/v1/network') return route.fulfill({ json: network });
-    if (path === '/v1/daos') return route.fulfill({ json: { daos: [summary], next: null } });
-    if (path === '/v1/me') return route.fulfill({ json: { account } });
-    if (path === '/v1/me/memberships')
-      return route.fulfill({ json: { memberships: visitor ? [] : [member] } });
-    if (path === '/v1/daos/1/modules') return route.fulfill({ json: modules });
-    if (path === '/v1/daos/1/governance') return route.fulfill({ json: governance });
-    if (path === '/v1/daos/1/treasury')
-      return route.fulfill({ json: TreasurySchema.parse({ dao, obligations: [], evidence: [] }) });
-    if (path === '/v1/hub/directory')
-      return route.fulfill({ json: { entries: [], next: null, skipped: 0 } });
-    return route.fulfill({
-      status: 404,
-      json: { code: 'NOT_FOUND', message: 'Fixture route unavailable.' },
-    });
-  });
-  return { account, member, modules };
-}
+test.use({ timezoneId: 'Atlantic/Canary' });
 
 test('ballot creation opens from the compact toolbar and preserves its draft across closing and switching tabs', async ({
   page,
@@ -176,7 +37,7 @@ test('ballot creation opens from the compact toolbar and preserves its draft acr
     page.getByRole('heading', { name: 'Community decision', exact: true }),
   ).toBeVisible();
   await expect(ballots).toHaveAttribute('aria-selected', 'true');
-  await expect(page.getByRole('heading', { name: 'DAO elections' })).not.toBeVisible();
+  await expect(page.getByRole('tabpanel', { name: 'Elections' })).not.toBeVisible();
   await page.screenshot({ path: test.info().outputPath('ballots-list.png'), fullPage: true });
   await add.click();
   await expect(dialog).toBeVisible();
@@ -191,7 +52,7 @@ test('ballot creation opens from the compact toolbar and preserves its draft acr
   await page.keyboard.press('ArrowRight');
   await expect(elections).toBeFocused();
   await expect(elections).toHaveAttribute('aria-selected', 'true');
-  await expect(page.getByRole('heading', { name: 'DAO elections' })).toBeVisible();
+  await expect(page.getByRole('tabpanel', { name: 'Elections' })).toBeVisible();
   await expect(dialog).not.toBeVisible();
   await page.keyboard.press('Home');
   await expect(ballots).toBeFocused();
@@ -313,130 +174,318 @@ test('visitors can browse decisions and help but cannot open the ballot creation
   ).toHaveAttribute('href', '/docs/decide?dao=1');
 });
 
-test('failed submission preserves the draft and retry closes the popup only after confirmed success', async ({
-  page,
-}) => {
-  const state = await fixture(page),
-    password = 'disposable ballot popup fixture';
-  const vault = await createVault(password);
-  Object.assign(
-    state.account,
-    AccountSchema.parse({
-      ...state.account,
-      signingKey: vault.signingPublicKey,
-      encryptionKey: vault.encryptionPublicKey,
-    }),
-  );
-  state.member.signingKey = vault.signingPublicKey;
-  await page.addInitScript(
-    (kit) => localStorage.setItem('daclify.vault.v1', JSON.stringify(kit)),
-    RecoveryKitSchema.parse({
-      version: 1,
-      localEnvelope: vault.localEnvelope,
-      recoveryEnvelope: vault.recoveryEnvelope,
-      signingPublicKey: vault.signingPublicKey,
-      encryptionPublicKey: vault.encryptionPublicKey,
-    }),
-  );
-  let message = '',
-    attempts = 0,
-    release = () => {};
-  const held = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  await page.route('**/v1/auth/challenge', (route) => {
-    const input = ApiRoutes.challenge.input.parse(route.request().postDataJSON()),
-      id = crypto.randomUUID(),
-      expires = new Date(Date.now() + 120000).toISOString(),
-      origin = new URL(route.request().url()).origin;
-    message = JSON.stringify(
-      LoginMessageSchema.parse({
-        ...input,
-        domain: 'daclify.login.v3',
-        origin,
-        audience: origin,
-        challenge: id,
-        expires,
+for (const action of ['open', 'newelect'] as const) {
+  test(`${action} submission preserves the draft and closes its popup only after confirmed success`, async ({
+    page,
+  }) => {
+    const state = await fixture(page),
+      password = 'disposable ballot popup fixture';
+    const vault = await createVault(password);
+    Object.assign(
+      state.account,
+      AccountSchema.parse({
+        ...state.account,
+        signingKey: vault.signingPublicKey,
+        encryptionKey: vault.encryptionPublicKey,
       }),
     );
-    return route.fulfill({ json: { id, expires, message } });
-  });
-  await page.route('**/v1/auth/login', (route) => {
-    const input = ApiRoutes.login.input.parse(route.request().postDataJSON());
-    expect(
-      Signature.from(input.signature).verifyMessage(
-        new TextEncoder().encode(message),
-        PublicKey.from(vault.signingPublicKey),
-      ),
-    ).toBe(true);
-    return route.fulfill({ json: { account: state.account, csrfToken: 'c'.repeat(43) } });
-  });
-  await page.route('**/v1/relay', async (route) => {
-    const input = ApiRoutes.relay.input.parse(route.request().postDataJSON());
-    expect(input.request.action).toBe('open');
-    expect(input.request.target).toBe('decide');
-    expect(
-      Signature.from(input.sig).verifyDigest(
-        instructionDigest(input.request),
-        PublicKey.from(vault.signingPublicKey),
-      ),
-    ).toBe(true);
-    const fields = z.record(z.string(), z.unknown()).parse(
-      Serializer.objectify(
-        Serializer.decode({
-          abi: ABI.from(decideAbi),
-          type: 'open',
-          data: input.request.data,
-        }),
-      ),
+    state.member.signingKey = vault.signingPublicKey;
+    await page.addInitScript(
+      (kit) => localStorage.setItem('daclify.vault.v1', JSON.stringify(kit)),
+      RecoveryKitSchema.parse({
+        version: 1,
+        localEnvelope: vault.localEnvelope,
+        recoveryEnvelope: vault.recoveryEnvelope,
+        signingPublicKey: vault.signingPublicKey,
+        encryptionPublicKey: vault.encryptionPublicKey,
+      }),
     );
-    for (const key of ['dao_id', 'member_id', 'ballot_id'])
-      if (typeof fields[key] === 'number') fields[key] = String(fields[key]);
-    const decoded = DecideActionSchemas.open.parse(fields);
-    expect(decoded).toMatchObject({
-      dao_id: '1',
-      member_id: '1',
-      duration: 259200,
-      quorum: 5000,
-      approval: 5001,
+    let message = '',
+      attempts = 0,
+      release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
     });
-    attempts++;
-    if (attempts === 1)
-      return route.fulfill({
-        status: 503,
-        json: { code: 'SERVICE_UNAVAILABLE', message: 'Synthetic unavailable relay' },
-      });
-    await held;
-    const existing = state.modules.ballots[0];
-    if (!existing) throw new Error('Fixture ballot missing');
-    state.modules.ballots.push({ ...existing, id: decoded.ballot_id, metadata: decoded.metadata });
-    state.member.nonce = '1';
-    return route.fulfill({ json: { transactionId: 'ab'.repeat(32) } });
+    await page.route('**/v1/auth/challenge', (route) => {
+      const input = ApiRoutes.challenge.input.parse(route.request().postDataJSON()),
+        id = crypto.randomUUID(),
+        expires = new Date(Date.now() + 120000).toISOString(),
+        origin = new URL(route.request().url()).origin;
+      message = JSON.stringify(
+        LoginMessageSchema.parse({
+          ...input,
+          domain: 'daclify.login.v3',
+          origin,
+          audience: origin,
+          challenge: id,
+          expires,
+        }),
+      );
+      return route.fulfill({ json: { id, expires, message } });
+    });
+    await page.route('**/v1/auth/login', (route) => {
+      const input = ApiRoutes.login.input.parse(route.request().postDataJSON());
+      expect(
+        Signature.from(input.signature).verifyMessage(
+          new TextEncoder().encode(message),
+          PublicKey.from(vault.signingPublicKey),
+        ),
+      ).toBe(true);
+      return route.fulfill({ json: { account: state.account, csrfToken: 'c'.repeat(43) } });
+    });
+    await page.route('**/v1/relay', async (route) => {
+      const input = ApiRoutes.relay.input.parse(route.request().postDataJSON());
+      expect(input.request.action).toBe(action);
+      expect(input.request.target).toBe('decide');
+      expect(
+        Signature.from(input.sig).verifyDigest(
+          instructionDigest(input.request),
+          PublicKey.from(vault.signingPublicKey),
+        ),
+      ).toBe(true);
+      const fields = z.record(z.string(), z.unknown()).parse(
+        Serializer.objectify(
+          Serializer.decode({
+            abi: ABI.from(decideAbi),
+            type: action,
+            data: input.request.data,
+          }),
+        ),
+      );
+      for (const key of ['dao_id', 'member_id', 'ballot_id', 'election_id', 'document_id'])
+        if (typeof fields[key] === 'number') fields[key] = String(fields[key]);
+      if (action === 'open') {
+        expect(DecideActionSchemas.open.parse(fields)).toMatchObject({
+          dao_id: '1',
+          member_id: '1',
+          duration: 259200,
+          quorum: 5000,
+          approval: 5001,
+        });
+      } else {
+        expect(DecideActionSchemas.newelect.parse(fields)).toMatchObject({
+          dao_id: '1',
+          member_id: '1',
+          title: 'Retry decision',
+          document_id: '42',
+          document_version: 2,
+          seats: 1,
+        });
+      }
+      attempts++;
+      if (attempts === 1)
+        return route.fulfill({
+          status: 503,
+          json: { code: 'SERVICE_UNAVAILABLE', message: 'Synthetic unavailable relay' },
+        });
+      await held;
+      if (action === 'open') {
+        const decoded = DecideActionSchemas.open.parse(fields);
+        const existing = state.modules.ballots[0];
+        if (!existing) throw new Error('Fixture ballot missing');
+        state.modules.ballots.push({
+          ...existing,
+          id: decoded.ballot_id,
+          metadata: decoded.metadata,
+        });
+      } else {
+        const decoded = DecideActionSchemas.newelect.parse(fields);
+        state.modules.elections.push({
+          id: decoded.election_id,
+          dao_id: '1',
+          creator: '1',
+          title: decoded.title,
+          document_id: decoded.document_id,
+          document_version: decoded.document_version,
+          document_commitment: 'bb'.repeat(32),
+          policy_revision: '1',
+          nomination_close: decoded.nomination_close,
+          term_start: decoded.term_start,
+          term_end: decoded.term_end,
+          seats: decoded.seats,
+          status: 0,
+          candidates: [],
+        });
+      }
+      state.member.nonce = '1';
+      return route.fulfill({ json: { transactionId: 'ab'.repeat(32) } });
+    });
+    await page.goto('/account');
+    await page.getByLabel('Vault password', { exact: true }).fill(password);
+    await page.getByRole('button', { name: 'Unlock and sign in', exact: true }).click();
+    await expect(page.getByText('Keys unlocked', { exact: true })).toBeVisible();
+    const menu = page.getByRole('button', { name: 'Menu', exact: true });
+    if (await menu.isVisible()) await menu.click();
+    await page.getByRole('link', { name: 'My DAO', exact: true }).click();
+    await page
+      .getByRole('link', { name: /Design fixture DAO/ })
+      .first()
+      .click();
+    await page.getByRole('link', { name: 'Decide', exact: true }).click();
+    const popupName = action === 'open' ? 'Open a ballot' : 'Election and term rules';
+    if (action === 'newelect')
+      await page.getByRole('tab', { name: 'Elections', exact: true }).click();
+    await page.getByRole('button', { name: popupName, exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: popupName, exact: true });
+    const title = dialog.getByLabel(
+      action === 'open' ? 'Public ballot title' : 'Representative title',
+    );
+    const submit = dialog.getByRole('button', {
+      name: action === 'open' ? 'Open ballot' : 'Schedule election',
+      exact: true,
+    });
+    await title.fill('Retry decision');
+    if (action === 'newelect') {
+      await dialog.getByLabel('Election rules', { exact: true }).selectOption('12');
+      const original = await dialog.getByLabel('Term starts', { exact: true }).inputValue();
+      await dialog
+        .getByLabel('Term starts', { exact: true })
+        .fill(await dialog.getByLabel('Nominations close', { exact: true }).inputValue());
+      await expect(submit).toBeDisabled();
+      await expect(dialog.getByRole('alert')).toBeVisible();
+      await dialog.getByLabel('Term starts', { exact: true }).fill(original);
+    }
+    await submit.click();
+    await expect(dialog.getByRole('alert')).toBeVisible();
+    await expect(title).toHaveValue('Retry decision');
+    if (action === 'newelect')
+      await expect(dialog.getByLabel('Election rules', { exact: true })).toHaveValue('12');
+    await submit.click();
+    await expect.poll(() => attempts).toBe(2);
+    await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeDisabled();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeVisible();
+    release();
+    await expect(dialog).not.toBeVisible();
+    await expect(
+      page.getByRole('article').getByRole('heading', { name: /^Retry decision/ }),
+    ).toBeVisible();
   });
-  await page.goto('/account');
-  await page.getByLabel('Vault password', { exact: true }).fill(password);
-  await page.getByRole('button', { name: 'Unlock and sign in', exact: true }).click();
-  await expect(page.getByText('Keys unlocked', { exact: true })).toBeVisible();
-  const menu = page.getByRole('button', { name: 'Menu', exact: true });
-  if (await menu.isVisible()) await menu.click();
-  await page.getByRole('link', { name: 'My DAO', exact: true }).click();
-  await page
-    .getByRole('link', { name: /Design fixture DAO/ })
-    .first()
-    .click();
-  await page.getByRole('link', { name: 'Decide', exact: true }).click();
-  await page.getByRole('button', { name: 'Open a ballot', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: 'Open a ballot', exact: true });
-  await dialog.getByLabel('Public ballot title').fill('Retry decision');
-  await dialog.getByRole('button', { name: 'Open ballot', exact: true }).click();
-  await expect(dialog.getByRole('alert')).toBeVisible();
-  await expect(dialog.getByLabel('Public ballot title')).toHaveValue('Retry decision');
-  await dialog.getByRole('button', { name: 'Open ballot', exact: true }).click();
-  await expect.poll(() => attempts).toBe(2);
-  await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeDisabled();
-  await page.keyboard.press('Escape');
-  await expect(dialog).toBeVisible();
-  release();
+}
+
+test('Elections plus opens friendly election setup and preserves its selected document version', async ({
+  page,
+}) => {
+  await fixture(page);
+  await page.goto('/dao/1/decide');
+  await page.getByRole('tab', { name: 'Elections', exact: true }).click();
+  const add = page.getByRole('button', { name: 'Election and term rules', exact: true });
+  const dialog = page.getByRole('dialog', { name: 'Election and term rules', exact: true });
   await expect(dialog).not.toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Retry decision', exact: true })).toBeVisible();
+  await add.click();
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel('Election purpose')).toBeFocused();
+  await expect(page.getByRole('dialog', { name: 'Open a ballot', exact: true })).not.toBeVisible();
+  const rules = dialog.getByLabel('Election rules', { exact: true });
+  await expect(rules.locator('option')).toContainText([
+    'Choose a published document',
+    'Council rules · version 2',
+    'Council rules · version 1',
+    'Private document #43 · version 1',
+  ]);
+  await expect(dialog.getByText('Private title must stay hidden', { exact: false })).toHaveCount(0);
+  await rules.selectOption('12');
+  await dialog.getByLabel('Representative title').fill('Neighbourhood council');
+  await expect(
+    dialog.getByRole('button', { name: 'Schedule election', exact: true }),
+  ).toBeDisabled();
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: test.info().outputPath('election-popup.png'), fullPage: true });
+  await page.keyboard.press('Escape');
+  await expect(add).toBeFocused();
+  await add.click();
+  await expect(rules).toHaveValue('12');
+  await expect(dialog.getByLabel('Representative title')).toHaveValue('Neighbourhood council');
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.getByRole('tab', { name: 'Ballots', exact: true }).click();
+  await page.getByRole('button', { name: 'Open a ballot', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Open a ballot', exact: true })).toBeVisible();
+});
+
+test('ordinary members can vote in Elections but cannot open administrator election setup', async ({
+  page,
+}) => {
+  const state = await fixture(page);
+  state.member.admin = false;
+  await page.goto('/dao/1/decide');
+  await expect(page.getByRole('button', { name: 'Open a ballot', exact: true })).toBeEnabled();
+  await page.getByRole('tab', { name: 'Elections', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: 'Election and term rules', exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole('dialog', { name: 'Election and term rules', exact: true }),
+  ).toHaveCount(0);
+});
+
+test('election documents recover from a failed read and explain an empty document library', async ({
+  page,
+}) => {
+  const state = await fixture(page);
+  let fail = true;
+  await page.route('**/v1/daos/1/content', (route) =>
+    route.fulfill(
+      fail
+        ? {
+            status: 503,
+            json: { code: 'SERVICE_UNAVAILABLE', message: 'Synthetic document outage' },
+          }
+        : { json: { ...state.content, documents: [] } },
+    ),
+  );
+  await page.goto('/dao/1/decide');
+  await page.getByRole('tab', { name: 'Elections', exact: true }).click();
+  await page.getByRole('button', { name: 'Election and term rules', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Election and term rules', exact: true });
+  await expect(dialog.getByRole('alert')).toBeVisible();
+  fail = false;
+  await dialog.getByRole('button', { name: 'Retry documents', exact: true }).click();
+  await expect(dialog.getByText('No published documents yet.', { exact: true })).toBeVisible();
+  await expect(
+    dialog.getByRole('link', { name: 'Open DAO documents', exact: true }),
+  ).toHaveAttribute('href', '/dao/1/documents');
+  await expect(
+    dialog.getByRole('button', { name: 'Schedule election', exact: true }),
+  ).toBeDisabled();
+});
+
+test('term recall chooses a published reason beside the term and keeps identifiers out of inputs', async ({
+  page,
+}) => {
+  const state = await fixture(page);
+  state.modules.terms.push({
+    id: '77',
+    dao_id: '1',
+    election_id: '50',
+    member_id: '1',
+    title: 'Neighbourhood council',
+    starts: Math.floor(Date.now() / 1000) - 600,
+    ends: Math.floor(Date.now() / 1000) + 86400,
+    recalled: false,
+    recalled_at: 0,
+    recall_doc: '0',
+    recall_version: 0,
+  });
+  const first = state.modules.terms[0];
+  if (!first) throw new Error('Fixture term missing');
+  state.modules.terms.push({ ...first, id: '78', member_id: '2' });
+  await page.goto('/dao/1/decide');
+  await page.getByRole('tab', { name: 'Elections', exact: true }).click();
+  const term = page.getByRole('article').filter({
+    has: page.getByRole('heading', { name: 'Neighbourhood council · member 1', exact: true }),
+  });
+  await expect(term.getByLabel('Reason for ending the term', { exact: true })).not.toBeVisible();
+  await term.getByText('End this term early', { exact: true }).click();
+  await term.getByLabel('Reason for ending the term', { exact: true }).selectOption('12');
+  await expect(term.getByLabel('Reason for ending the term', { exact: true })).toHaveValue('12');
+  await expect(term.getByRole('button', { name: 'End term', exact: true })).toBeDisabled();
+  const other = page.getByRole('article').filter({
+    has: page.getByRole('heading', { name: 'Neighbourhood council · member 2', exact: true }),
+  });
+  await other.getByText('End this term early', { exact: true }).click();
+  await expect(other.getByLabel('Reason for ending the term', { exact: true })).toHaveValue('');
+  await expect(term.getByLabel('Reason for ending the term', { exact: true })).toHaveValue('12');
+  await expect(page.getByLabel('Recall reason document ID')).toHaveCount(0);
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 });

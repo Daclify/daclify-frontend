@@ -221,7 +221,16 @@ try {
       await expect(main.getByRole('dialog', { name: 'Open a ballot', exact: true })).toHaveCount(0);
       await elections.click();
       await expect(elections).toHaveAttribute('aria-selected', 'true');
-      await expect(main.getByRole('heading', { name: 'DAO elections', exact: true })).toBeVisible();
+      await expect(
+        main.getByRole('button', { name: 'Election and term rules', exact: true }),
+      ).toBeDisabled();
+      await expect(
+        main.getByRole('dialog', { name: 'Election and term rules', exact: true }),
+      ).toHaveCount(0);
+      await expect(
+        main.getByRole('link', { name: 'Election rules and help', exact: true }),
+      ).toHaveAttribute('href', '/docs/representative-elections?dao=1');
+      await expect(main.getByRole('tabpanel', { name: 'Elections', exact: true })).toBeVisible();
       await expect(main.getByRole('button', { name: 'Sign and schedule election' })).toHaveCount(0);
       await checkLayout();
       await page.screenshot({
@@ -231,7 +240,7 @@ try {
       await ballots.click();
       await expect(ballots).toHaveAttribute('aria-selected', 'true');
       await expect(
-        main.getByRole('heading', { name: 'DAO elections', exact: true }),
+        main.getByRole('tabpanel', { name: 'Elections', exact: true }),
       ).not.toBeVisible();
       await checkLayout();
       await page.screenshot({

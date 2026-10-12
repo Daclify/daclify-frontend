@@ -90,15 +90,20 @@ test('hands work between two internal accounts, requests a revision, approves an
     await page.getByRole('button', { name: 'Enable Works', exact: true }).click();
     await expect(page.getByText('Works enabled', { exact: true })).toBeVisible();
     await page.getByRole('link', { name: 'Works', exact: true }).click();
-    await page.getByLabel('Contributor member ID').fill('2');
-    await page.getByLabel('Proposal document ID', { exact: true }).fill('1');
+    await page.getByRole('button', { name: 'Propose milestone work', exact: true }).click();
+    await page.getByLabel('Contributor', { exact: true }).selectOption('2');
+    await page
+      .getByLabel('Proposal document', { exact: true })
+      .selectOption({ label: 'Synthetic work proposal · version 1' });
     await page.getByRole('button', { name: 'Propose work', exact: true }).click();
     await page.getByRole('button', { name: 'Accept and reserve funds', exact: true }).click();
     await expect(page.getByText('Milestone funds reserved', { exact: true })).toBeVisible();
     await document(contributor, '2', 'Synthetic first delivery');
     await contributor.getByRole('link', { name: 'Works', exact: true }).click();
     await contributor.getByRole('button', { name: /^Submit evidence for milestone / }).click();
-    await contributor.getByLabel('Submission document ID').fill('2');
+    await contributor
+      .getByLabel('Evidence document', { exact: true })
+      .selectOption({ label: 'Synthetic first delivery · version 1' });
     await contributor
       .getByRole('button', { name: 'Submit milestone evidence', exact: true })
       .click();
@@ -111,14 +116,17 @@ test('hands work between two internal accounts, requests a revision, approves an
     await document(page, '3', 'Synthetic independent review');
     await page.getByRole('link', { name: 'Works', exact: true }).click();
     await page.getByRole('button', { name: /^Review milestone / }).click();
-    await page.getByLabel('Review document ID').fill('3');
+    await page
+      .getByLabel('Review document', { exact: true })
+      .selectOption({ label: 'Synthetic independent review · version 1' });
     await page.getByRole('button', { name: 'Request changes', exact: true }).click();
     await expect(page.getByText('Changes requested', { exact: true })).toBeVisible();
     await document(contributor, '2', 'Synthetic revised delivery');
     await contributor.getByRole('link', { name: 'Works', exact: true }).click();
     await contributor.getByRole('button', { name: /^Submit evidence for milestone / }).click();
-    await contributor.getByLabel('Submission document ID').fill('2');
-    await contributor.getByLabel('Submission document version').fill('2');
+    await contributor
+      .getByLabel('Evidence document', { exact: true })
+      .selectOption({ label: 'Synthetic revised delivery · version 2' });
     await contributor
       .getByRole('button', { name: 'Submit milestone evidence', exact: true })
       .click();
@@ -128,7 +136,9 @@ test('hands work between two internal accounts, requests a revision, approves an
     await page.getByRole('link', { name: 'Documents', exact: true }).click();
     await page.getByRole('link', { name: 'Works', exact: true }).click();
     await page.getByRole('button', { name: /^Review milestone / }).click();
-    await page.getByLabel('Review document ID').fill('3');
+    await page
+      .getByLabel('Review document', { exact: true })
+      .selectOption({ label: 'Synthetic independent review · version 1' });
     await page.getByRole('button', { name: 'Approve milestone', exact: true }).click();
     await expect(
       page.getByText('Milestone approved. Payment remains to be settled.', { exact: true }),
