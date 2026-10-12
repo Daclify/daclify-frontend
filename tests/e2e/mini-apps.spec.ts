@@ -262,6 +262,9 @@ test('native administrator registers exact callbacks and downloads bound configu
   );
   await page.getByRole('button', { name: 'Decline', exact: true }).click();
   expect((await declined).status()).toBe(200);
+  await expect(
+    page.getByRole('heading', { name: 'Owned cancelled callback', exact: true }),
+  ).toBeVisible();
   expect(signedWhileCancelling).toBe(0);
   page.off('request', onRequest);
   const access = await approve(page, bundle, delegate);
