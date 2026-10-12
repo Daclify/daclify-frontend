@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import ExecutivePanel from './ExecutivePanel.vue';
+import VotingDurationInput from './VotingDurationInput.vue';
+import PercentageInput from './PercentageInput.vue';
+import { readableDuration, percentageText } from '../content/governance-inputs';
 import { Checksum256 } from '@wharfkit/antelope';
 import {
   DaoSetupSchema,
@@ -260,8 +263,11 @@ function prepareGuardian() {
           {{
             ['Approved members', 'Governance credits', 'Deposited native stake'][policy.config.kind]
           }}
-          · {{ policy.config.quorum / 100 }}% quorum · {{ policy.config.approval / 100 }}% approval
+          · {{ percentageText(policy.config.quorum) }}% quorum ·
+          {{ percentageText(policy.config.approval) }}% approval
         </dd>
+        <dt>Voting duration</dt>
+        <dd>{{ readableDuration(policy.config.duration) }}</dd>
         <dt>Funding approval</dt>
         <dd>
           {{
@@ -310,32 +316,22 @@ function prepareGuardian() {
             <option value="credit">Governance credits</option>
             <option value="native-stake">Native stake</option>
           </select>
-          <label for="policy-duration">Policy duration (seconds)</label
-          ><input
+          <VotingDurationInput
             id="policy-duration"
-            v-model.number="draft.duration"
-            type="number"
-            min="60"
-            max="2592000"
-            required
+            v-model="draft.duration"
+            label="Policy duration"
           />
-          <label for="policy-quorum">Policy quorum (basis points)</label
-          ><input
+          <PercentageInput
             id="policy-quorum"
-            v-model.number="draft.quorumBasisPoints"
-            type="number"
-            min="1"
-            max="10000"
-            required
+            v-model="draft.quorumBasisPoints"
+            label="Policy quorum (%)"
+            kind="quorum"
           />
-          <label for="policy-approval">Policy approval (basis points)</label
-          ><input
+          <PercentageInput
             id="policy-approval"
-            v-model.number="draft.approvalBasisPoints"
-            type="number"
-            min="5001"
-            max="10000"
-            required
+            v-model="draft.approvalBasisPoints"
+            label="Policy approval (%)"
+            kind="approval"
           />
           <label class="choice"
             ><input

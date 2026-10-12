@@ -3,7 +3,10 @@ import ElectionPanel from './ElectionPanel.vue';
 import GrantsPanel from './GrantsPanel.vue';
 import ContributionAgreementPanel from './ContributionAgreementPanel.vue';
 import ServiceCatalogue from './ServiceCatalogue.vue';
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import VotingDurationInput from './VotingDurationInput.vue';
+import PercentageInput from './PercentageInput.vue';
+import { percentageText } from '../content/governance-inputs';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { z } from 'zod';
 import {
   parseUnits,
@@ -54,6 +57,36 @@ const weight = ref<'member' | 'credit' | 'native-stake'>('member');
 const duration = ref(300);
 const quorum = ref(5000);
 const approval = ref(5001);
+const decideTabs = [
+  { id: 'ballots', label: 'Ballots' },
+  { id: 'elections', label: 'Elections' },
+] as const;
+const decideTab = ref<(typeof decideTabs)[number]['id']>('ballots');
+const visibleBallots = computed(
+  () =>
+    data.value?.ballots.filter(
+      (ballot) => !data.value?.elections.some((election) => election.id === ballot.id),
+    ) ?? [],
+);
+function navigateDecideTabs(event: KeyboardEvent) {
+  const current = decideTabs.findIndex((tab) => tab.id === decideTab.value);
+  const index =
+    event.key === 'ArrowRight'
+      ? (current + 1) % decideTabs.length
+      : event.key === 'ArrowLeft'
+        ? (current + decideTabs.length - 1) % decideTabs.length
+        : event.key === 'Home'
+          ? 0
+          : event.key === 'End'
+            ? decideTabs.length - 1
+            : undefined;
+  if (index === undefined) return;
+  const tab = decideTabs[index];
+  if (!tab) return;
+  event.preventDefault();
+  decideTab.value = tab.id;
+  void nextTick(() => document.getElementById('decide-tab-' + tab.id)?.focus());
+}
 const contributor = ref('1');
 const documentId = ref('1');
 const documentVersion = ref(1);
@@ -818,148 +851,179 @@ const selectedProject = computed(() =>
         >Configure modules</RouterLink
       >
     </section>
-    <template v-if="section === 'decide'"
-      ><form
-        v-if="member?.active && current?.enabled"
-        class="panel form-panel"
-        @submit.prevent="open"
+    <template v-if="section === 'decide'">
+      <div
+        class="account-tabs decide-tabs"
+        role="tablist"
+        aria-label="Decide sections"
+        @keydown="navigateDecideTabs"
       >
-        <h3>Open a binary ballot</h3>
-        <label for="ballot-title">Public ballot title</label
-        ><input id="ballot-title" v-model="title" maxlength="160" />
-        <p class="field-help">
-          This label is public on chain. Leave it blank to avoid publishing a title.
-        </p>
-        <div class="three-column">
-          <div>
-            <label for="weight">Voting weight</label
-            ><select id="weight" v-model="weight" :disabled="!!governance?.policy">
-              <option value="member">Equal active members</option>
-              <option value="credit">Governance credits</option>
-              <option value="native-stake">Escrowed native stake</option>
-            </select>
-          </div>
-          <div>
-            <label for="duration">Duration (seconds)</label
-            ><input
-              id="duration"
-              v-model.number="duration"
-              :disabled="!!governance?.policy"
-              type="number"
-              min="60"
-              max="2592000"
-              required
-            />
-          </div>
-          <div>
-            <label for="quorum">Quorum (basis points)</label
-            ><input
-              id="quorum"
-              v-model.number="quorum"
-              :disabled="!!governance?.policy"
-              type="number"
-              min="1"
-              max="10000"
-              required
-            />
-          </div>
-        </div>
-        <label for="approval">Approval (basis points)</label
-        ><input
-          id="approval"
-          v-model.number="approval"
-          :disabled="!!governance?.policy"
-          type="number"
-          min="5001"
-          max="10000"
-          required
-        />
-        <p class="field-help">
-          5000 = 50%. Weight is frozen at opening. New members cannot vote in an existing ballot.
-        </p>
-        <button :disabled="!allowed('open')">Open ballot</button>
-      </form>
-      <div v-if="!data?.ballots.length" class="empty-state">
-        <h3>No ballots yet</h3>
-        <p>Open a decision with an explicit weight, quorum, and closing time.</p>
-      </div>
-      <ElectionPanel
-        v-if="data"
-        :key="context"
-        :dao="dao"
-        :member="member"
-        :data="data"
-        :governance="governance"
-        :can-sign="canSign"
-        :can-finalize="canSettle"
-        :now="now"
-        :run="run"
-        :finalize="finalize"
-      />
-      <article
-        v-for="ballot in data?.ballots.filter((b) => !data?.elections.some((e) => e.id === b.id))"
-        :key="ballot.id"
-        class="panel"
-      >
-        <div class="panel-heading">
-          <h3>{{ ballotTitle(ballot) }}</h3>
-          <span class="pill">{{
-            ballot.status === 0
-              ? ballot.closes <= now
-                ? 'Awaiting finalization'
-                : 'Open'
-              : ballot.status === 1
-                ? 'Passed'
-                : 'Not passed'
-          }}</span>
-        </div>
-        <p>
-          {{ ballot.cast }} / {{ ballot.denominator }} eligible weight cast. Closes
-          {{ new Date(ballot.closes * 1000).toLocaleString() }}.
-        </p>
-        <p v-if="ownVote(ballot.id)">
-          Your vote: {{ ownVote(ballot.id)?.choice === 1 ? 'Approve' : 'Reject' }}
-        </p>
-        <div
-          v-else-if="ballot.status === 0 && ballot.closes > now && current?.enabled"
-          class="button-row"
-        >
-          <button class="secondary" :disabled="!allowed('vote')" @click="vote(ballot.id, 0)">
-            Vote Reject</button
-          ><button :disabled="!allowed('vote')" @click="vote(ballot.id, 1)">Vote Approve</button>
-        </div>
         <button
-          v-if="ballot.status === 0 && ballot.closes <= now"
-          :disabled="!canSettle || !current?.codeVerified || !current.compatible"
-          @click="finalize(ballot.id)"
+          v-for="tab in decideTabs"
+          :id="'decide-tab-' + tab.id"
+          :key="tab.id"
+          type="button"
+          role="tab"
+          :aria-selected="decideTab === tab.id"
+          :aria-controls="'decide-panel-' + tab.id"
+          :tabindex="decideTab === tab.id ? 0 : -1"
+          @click="decideTab = tab.id"
         >
-          Finalize ballot {{ ballot.id }}
+          {{ tab.label }}
         </button>
-        <p class="field-help">
-          Reject {{ ballot.tallies[0] ?? '0' }} · Approve {{ ballot.tallies[1] ?? '0' }}
-        </p>
-        <template
-          v-for="execution in [...(data?.executions ?? []), ...(data?.grantPlans ?? [])].filter(
-            (execution) => execution.ballot_id === ballot.id,
-          )"
-          :key="execution.ballot_id"
+      </div>
+      <div
+        v-show="decideTab === 'ballots'"
+        id="decide-panel-ballots"
+        role="tabpanel"
+        aria-labelledby="decide-tab-ballots"
+        tabindex="0"
+      >
+        <form
+          v-if="member?.active && current?.enabled"
+          class="panel form-panel"
+          @submit.prevent="open"
         >
+          <h3>Open a binary ballot</h3>
+          <label for="ballot-title">Public ballot title</label
+          ><input id="ballot-title" v-model="title" maxlength="160" />
           <p class="field-help">
-            Funds Works project {{ execution.project_id }} · policy revision
-            {{ execution.policy_revision }} · execute by
-            {{ new Date(execution.deadline * 1000).toISOString() }}.
+            This label is public on chain. Leave it blank to avoid publishing a title.
           </p>
-          <p v-if="execution.executed" role="status">Funding executed</p>
-          <button
-            v-else-if="ballot.status === 1"
-            :disabled="!canSettle"
-            @click="execute(ballot.id)"
+          <div class="three-column">
+            <div>
+              <label for="weight">Voting weight</label
+              ><select id="weight" v-model="weight" :disabled="!!governance?.policy">
+                <option value="member">Equal active members</option>
+                <option value="credit">Governance credits</option>
+                <option value="native-stake">Escrowed native stake</option>
+              </select>
+            </div>
+            <VotingDurationInput
+              id="duration"
+              v-model="duration"
+              label="Duration"
+              :disabled="!!governance?.policy"
+              allow-date
+              :now="now"
+            />
+            <PercentageInput
+              id="quorum"
+              v-model="quorum"
+              label="Quorum (%)"
+              kind="quorum"
+              :disabled="!!governance?.policy"
+            />
+          </div>
+          <PercentageInput
+            id="approval"
+            v-model="approval"
+            label="Approval (%)"
+            kind="approval"
+            :disabled="!!governance?.policy"
+          />
+          <p v-if="governance?.policy" class="field-help">
+            These settings follow your DAO’s saved governance policy.
+          </p>
+          <p class="field-help">
+            Weight is frozen at opening. New members cannot vote in an existing ballot.
+          </p>
+          <button :disabled="!allowed('open')">Open ballot</button>
+        </form>
+        <div v-if="!visibleBallots.length" class="empty-state">
+          <h3>No ballots yet</h3>
+          <p>Open a decision with an explicit weight, quorum, and closing time.</p>
+        </div>
+        <article v-for="ballot in visibleBallots" :key="ballot.id" class="panel">
+          <div class="panel-heading">
+            <h3>{{ ballotTitle(ballot) }}</h3>
+            <span class="pill">{{
+              ballot.status === 0
+                ? ballot.closes <= now
+                  ? 'Awaiting finalization'
+                  : 'Open'
+                : ballot.status === 1
+                  ? 'Passed'
+                  : 'Not passed'
+            }}</span>
+          </div>
+          <p>
+            {{ ballot.cast }} / {{ ballot.denominator }} eligible weight cast. Closes
+            {{ new Date(ballot.closes * 1000).toLocaleString() }}.
+          </p>
+          <p class="field-help">
+            Quorum {{ percentageText(ballot.quorum) }}% · Approval
+            {{ percentageText(ballot.approval) }}%
+          </p>
+          <p v-if="ownVote(ballot.id)">
+            Your vote: {{ ownVote(ballot.id)?.choice === 1 ? 'Approve' : 'Reject' }}
+          </p>
+          <div
+            v-else-if="ballot.status === 0 && ballot.closes > now && current?.enabled"
+            class="button-row"
           >
-            Execute approved funding
+            <button class="secondary" :disabled="!allowed('vote')" @click="vote(ballot.id, 0)">
+              Vote Reject</button
+            ><button :disabled="!allowed('vote')" @click="vote(ballot.id, 1)">Vote Approve</button>
+          </div>
+          <button
+            v-if="ballot.status === 0 && ballot.closes <= now"
+            :disabled="!canSettle || !current?.codeVerified || !current.compatible"
+            @click="finalize(ballot.id)"
+          >
+            Finalize ballot {{ ballot.id }}
           </button>
-        </template>
-      </article></template
-    >
+          <p class="field-help">
+            Reject {{ ballot.tallies[0] ?? '0' }} · Approve {{ ballot.tallies[1] ?? '0' }}
+          </p>
+          <template
+            v-for="execution in [...(data?.executions ?? []), ...(data?.grantPlans ?? [])].filter(
+              (execution) => execution.ballot_id === ballot.id,
+            )"
+            :key="execution.ballot_id"
+          >
+            <p class="field-help">
+              Funds Works project {{ execution.project_id }} · policy revision
+              {{ execution.policy_revision }} · execute by
+              {{ new Date(execution.deadline * 1000).toISOString() }}.
+            </p>
+            <p v-if="execution.executed" role="status">Funding executed</p>
+            <button
+              v-else-if="ballot.status === 1"
+              :disabled="!canSettle"
+              @click="execute(ballot.id)"
+            >
+              Execute approved funding
+            </button>
+          </template>
+        </article>
+      </div>
+      <div
+        v-show="decideTab === 'elections'"
+        id="decide-panel-elections"
+        role="tabpanel"
+        aria-labelledby="decide-tab-elections"
+        tabindex="0"
+      >
+        <ElectionPanel
+          v-if="data"
+          :key="context"
+          :dao="dao"
+          :member="member"
+          :data="data"
+          :governance="governance"
+          :can-sign="canSign"
+          :can-finalize="canSettle"
+          :now="now"
+          :run="run"
+          :finalize="finalize"
+        />
+        <div v-if="!data?.elections.length" class="empty-state">
+          <h3>No elections yet</h3>
+          <p>Schedule an election to choose representatives or executives for a fixed term.</p>
+        </div>
+      </div>
+    </template>
     <GrantsPanel
       v-else-if="section === 'grants-rounds' && data"
       :key="context"
@@ -1333,3 +1397,8 @@ const selectedProject = computed(() =>
     {{ current ? names[current.deployment.id] : 'Module' }} records
   </button>
 </template>
+<style scoped>
+.decide-tabs button {
+  min-height: 44px;
+}
+</style>
