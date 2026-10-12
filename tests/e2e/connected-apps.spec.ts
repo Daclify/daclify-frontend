@@ -210,3 +210,10 @@ test('nonmembers cannot read connected apps', async ({ page }) => {
   ).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Garden', exact: true })).toHaveCount(0);
 });
+
+test('existing DAO apps page links to the global connection guide', async ({ page }) => {
+  await page.goto('/dao/1/apps');
+  await expect(
+    page.getByRole('link', { name: 'Mini apps connection guide ↗', exact: true }),
+  ).toBeVisible();
+});

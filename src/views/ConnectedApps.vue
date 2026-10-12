@@ -26,6 +26,7 @@ import { canSignMember } from '../auth/action-signer';
 import { useWorkspace } from '../state/workspace';
 const props = defineProps<{ dao: DaoSummary; member: UserMembership | undefined }>(),
   state = useWorkspace();
+const emit = defineEmits<{ registrationChanged: [] }>();
 const apps = ref<z.infer<typeof ApiRoutes.connectedApps.response>>([]),
   modules = ref<ModuleState>(),
   busy = ref(false),
@@ -159,6 +160,7 @@ async function configure(value: z.infer<typeof ConnectedAppConfigSchema>) {
     if (started !== generation) return;
     notice.value = value.enabled ? 'App registration confirmed.' : 'App suspended.';
     await load();
+    if (started === generation) emit('registrationChanged');
   } catch (cause) {
     if (started === generation) error.value = friendlyError(cause);
   } finally {
@@ -475,6 +477,7 @@ async function more() {
       <h2>Connected apps</h2>
       <RouterLink to="/docs/connected-apps">Developer guide ↗</RouterLink>
     </div>
+    <p><RouterLink to="/mini-apps">Mini apps connection guide ↗</RouterLink></p>
     <p v-if="!member?.active">Sign in as an active DAO member to use connected apps.</p>
     <template v-else>
       <p>Use one DAO membership across your community’s apps. Each app keeps its own database.</p>

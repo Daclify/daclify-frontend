@@ -76,6 +76,7 @@ import {
   RecoveryRoutes,
   SignupRoutes,
   RecoveryGrantSchema,
+  MiniAppsRoutes,
 } from '@daclify/core-protocol';
 import type { instruction } from '@daclify/core-protocol/sdk';
 import {
@@ -320,6 +321,21 @@ export const api = {
     request(
       ApiRoutes.connectedApps.path.replace(':id', IdSchema.parse(daoId)),
       ApiRoutes.connectedApps.response,
+    ),
+  miniAppConnection: (daoId: string, appId: string) =>
+    request(
+      MiniAppsRoutes.miniAppConnection.path
+        .replace(':daoId', IdSchema.parse(daoId))
+        .replace(':appId', IdSchema.parse(appId)),
+      MiniAppsRoutes.miniAppConnection.response,
+    ),
+  checkMiniAppConnection: (daoId: string, appId: string) =>
+    request(
+      MiniAppsRoutes.checkMiniAppConnection.path
+        .replace(':daoId', IdSchema.parse(daoId))
+        .replace(':appId', IdSchema.parse(appId)),
+      MiniAppsRoutes.checkMiniAppConnection.response,
+      {},
     ),
   stageConnectedApp: (input: z.infer<typeof ApiRoutes.stageConnectedApp.input>) =>
     request(
@@ -1235,6 +1251,25 @@ export function friendlyError(error: unknown): string {
   const code =
     error instanceof ApiFailure ? error.code : error instanceof Error ? error.message : undefined;
   if (code && telosMessages[code]) return telosMessages[code];
+  const appMessages: Record<string, string> = {
+    MINI_APP_RELEASE_UNAVAILABLE:
+      'This deployment has no verified mini app starter. Ask its operator to install the matching release.',
+    MINI_APP_RELEASE_VERSION:
+      'The starter differs from this deployment. Ask its operator for the matching release.',
+    APP_BINDING:
+      'This configuration belongs to a different app or DAO. Choose your community and refresh it.',
+    APP_CALLBACK: 'Use the exact HTTPS callback registered by your community administrator.',
+    APP_REQUEST_EXPIRED: 'This consent request expired. Return to the app and sign in again.',
+    APP_REVISED:
+      'Your administrator changed the app registration. Return to the app and sign in again.',
+    APP_DISABLED: 'Your community has suspended this app. Contact its administrator.',
+    APP_UNKNOWN: 'No registered app was found. Refresh or ask your administrator to register it.',
+    APP_GRANT_REQUIRED:
+      'The recording grant could not be verified. Refresh your membership and approve it again.',
+    ADMIN_REQUIRED: 'Ask an active community administrator to register or configure this app.',
+    MEMBERSHIP_REQUIRED: 'Sign in as an active member of this community before continuing.',
+  };
+  if (code && appMessages[code]) return appMessages[code];
   if (error instanceof ApiFailure) {
     const messages: Record<string, string> = {
       MODULE_BILLING_UNCONFIGURED: 'Module access payments are not configured on this service.',

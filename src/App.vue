@@ -143,6 +143,11 @@ onMounted(() => {
             >Users</span
           ></RouterLink
         >
+        <RouterLink to="/mini-apps" aria-label="Mini apps" @click="mobileOpen = false"
+          ><Blocks class="nav-icon" aria-hidden="true" /><span class="nav-text"
+            >Mini apps</span
+          ></RouterLink
+        >
         <RouterLink to="/docs" aria-label="Documentation" @click="mobileOpen = false"
           ><BookOpen class="nav-icon" aria-hidden="true" /><span class="nav-text"
             >Documentation</span
