@@ -1305,7 +1305,7 @@ export function friendlyError(error: unknown): string {
       ACCOUNT_RECONNECT_IDENTITY:
         'This kit does not match a registered account. Use the original recovery kit for the account you want to restore.',
       ACCOUNT_RECONNECT_CONFLICT:
-        'These accounts have conflicting wallet links, memberships or connected-app identities. Your accounts and sign-ins were kept intact. You can restore the original account without reconnecting sign-ins.',
+        'These accounts have conflicting sign-in methods, memberships or saved requests, or would exceed the passkey limit. Their access was kept intact. You can restore the original account without reconnecting sign-ins.',
       ACCOUNT_RECONNECT_CHANGED:
         'Account access changed while you were restoring it. Refresh and try again.',
       PRIVATE_HANDOVER_REQUIRED:
