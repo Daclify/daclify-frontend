@@ -206,6 +206,38 @@ try {
         timeout: 20000,
       });
       await expect(page.getByRole('heading', { name: 'Daclify DAO', exact: true })).toBeVisible();
+      await page.getByRole('link', { name: 'Decide', exact: true }).click();
+      const ballots = main.getByRole('tab', { name: 'Ballots', exact: true });
+      const elections = main.getByRole('tab', { name: 'Elections', exact: true });
+      await expect(ballots).toHaveAttribute('aria-selected', 'true');
+      await expect(main.getByRole('heading', { name: 'Decide', exact: true })).toHaveCount(0);
+      await expect(
+        main.getByRole('link', { name: 'Ballot rules and help', exact: true }),
+      ).toBeVisible();
+      const addBallot = main.getByRole('button', { name: 'Open a ballot', exact: true });
+      await expect(addBallot).toBeDisabled();
+      await expect(addBallot.locator('svg')).toHaveCSS('width', '32px');
+      await expect(addBallot.locator('svg')).toHaveCSS('height', '32px');
+      await expect(main.getByRole('dialog', { name: 'Open a ballot', exact: true })).toHaveCount(0);
+      await elections.click();
+      await expect(elections).toHaveAttribute('aria-selected', 'true');
+      await expect(main.getByRole('heading', { name: 'DAO elections', exact: true })).toBeVisible();
+      await expect(main.getByRole('button', { name: 'Sign and schedule election' })).toHaveCount(0);
+      await checkLayout();
+      await page.screenshot({
+        path: `.artifacts/public/decide-elections-${viewport.width}.png`,
+        fullPage: true,
+      });
+      await ballots.click();
+      await expect(ballots).toHaveAttribute('aria-selected', 'true');
+      await expect(
+        main.getByRole('heading', { name: 'DAO elections', exact: true }),
+      ).not.toBeVisible();
+      await checkLayout();
+      await page.screenshot({
+        path: `.artifacts/public/decide-ballots-${viewport.width}.png`,
+        fullPage: true,
+      });
       for (const path of [
         '/v1/network',
         '/v1/daos',

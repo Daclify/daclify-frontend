@@ -49,7 +49,8 @@ export async function payCreation(page: Page, preset?: 'custom') {
   if (preset) {
     await page.getByLabel('DAO purpose').selectOption(preset);
     await page.getByText('Advanced governance and emergency safeguards', { exact: true }).click();
-    await page.getByLabel('Ballot duration (seconds)').fill('60');
+    await page.getByLabel('Ballot duration unit', { exact: true }).selectOption('minutes');
+    await page.getByLabel('Ballot duration', { exact: true }).fill('1');
   }
   const response = page.waitForResponse(
     (r) => r.url().endsWith('/v1/dao-orders') && r.request().method() === 'POST',

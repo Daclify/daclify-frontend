@@ -1,6 +1,15 @@
 {
   "requirements": [
     {
+      "id": "DECIDE-TABS-HUMAN-DURATION-AND-PERCENTAGES",
+      "tests": [
+        "tests/unit/governance-inputs.test.ts",
+        "tests/e2e/decide-design.spec.ts",
+        "tests/e2e/dao-presets.spec.ts",
+        "tests/e2e/executives.spec.ts"
+      ]
+    },
+    {
       "id": "CONTRACT-RESOURCE-VALUES-AND-ANCHOR-TOPUPS",
       "tests": [
         "tests/unit/contract-resources.test.ts",

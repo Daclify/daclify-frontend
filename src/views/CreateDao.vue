@@ -17,6 +17,9 @@ import { useWorkspace } from '../state/workspace';
 import { api, friendlyError } from '../api/client';
 import { canUseVaultKey } from '../auth/session';
 import Account from './Account.vue';
+import VotingDurationInput from '../components/VotingDurationInput.vue';
+import PercentageInput from '../components/PercentageInput.vue';
+import { readableDuration, percentageText } from '../content/governance-inputs';
 const state = useWorkspace();
 const router = useRouter();
 const route = useRoute();
@@ -70,18 +73,6 @@ const dailyAmount = ref('');
 const agentSigningKey = ref('');
 const agentEncryptionKey = ref('');
 const agentOperator = ref('');
-const quorumPercent = computed({
-  get: () => setup.value.governance.quorumBasisPoints / 100,
-  set: (value: number) => {
-    setup.value.governance.quorumBasisPoints = Math.round(value * 100);
-  },
-});
-const approvalPercent = computed({
-  get: () => setup.value.governance.approvalBasisPoints / 100,
-  set: (value: number) => {
-    setup.value.governance.approvalBasisPoints = Math.round(value * 100);
-  },
-});
 const preset = computed(() => DaoPresets.find((preset) => preset.id === setup.value.presetId));
 watch(
   () => setup.value.presetId,
@@ -423,9 +414,9 @@ onBeforeUnmount(() => {
         ><dt>Voting</dt>
         <dd>
           {{ order.setup.setup.governance.weight }} · quorum
-          {{ order.setup.setup.governance.quorumBasisPoints / 100 }}% · approval
-          {{ order.setup.setup.governance.approvalBasisPoints / 100 }}% ·
-          {{ order.setup.setup.governance.duration }} seconds
+          {{ percentageText(order.setup.setup.governance.quorumBasisPoints) }}% · approval
+          {{ percentageText(order.setup.setup.governance.approvalBasisPoints) }}% ·
+          {{ readableDuration(order.setup.setup.governance.duration) }}
         </dd>
         <dt>Funding policy</dt>
         <dd>
@@ -635,34 +626,22 @@ onBeforeUnmount(() => {
           <p class="field-help">
             Credit and stake voting require eligible balances before a ballot can open.
           </p>
-          <label for="ballot-duration">Ballot duration (seconds)</label
-          ><input
+          <VotingDurationInput
             id="ballot-duration"
-            v-model.number="setup.governance.duration"
-            type="number"
-            min="60"
-            max="2592000"
-            required
+            v-model="setup.governance.duration"
+            label="Ballot duration"
           />
-          <label for="quorum">Quorum (%)</label
-          ><input
+          <PercentageInput
             id="quorum"
-            v-model.number="quorumPercent"
-            type="number"
-            min="0.01"
-            max="100"
-            step="0.01"
-            required
+            v-model="setup.governance.quorumBasisPoints"
+            label="Quorum (%)"
+            kind="quorum"
           />
-          <label for="approval">Approval (%)</label
-          ><input
+          <PercentageInput
             id="approval"
-            v-model.number="approvalPercent"
-            type="number"
-            min="50.01"
-            max="100"
-            step="0.01"
-            required
+            v-model="setup.governance.approvalBasisPoints"
+            label="Approval (%)"
+            kind="approval"
           />
           <p class="field-help">Every ballot must use the saved weight, duration and thresholds.</p>
           <label class="choice"
@@ -793,7 +772,9 @@ onBeforeUnmount(() => {
               : setup.governance.weight === 'credit'
                 ? 'Governance credits'
                 : 'Native stake'
-          }}<br />{{ quorumPercent }}% quorum · {{ approvalPercent }}% approval
+          }}<br />{{ percentageText(setup.governance.quorumBasisPoints) }}% quorum ·
+          {{ percentageText(setup.governance.approvalBasisPoints) }}% approval ·
+          {{ readableDuration(setup.governance.duration) }}
         </dd>
       </dl>
       <p class="field-help">

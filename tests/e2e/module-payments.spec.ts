@@ -36,8 +36,10 @@ test('reserves and cancels work, then settles disabled payroll and withdraws the
   await page.getByRole('link', { name: 'Modules', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Disable Decide', exact: true })).toBeVisible();
   await page.getByRole('link', { name: 'Decide', exact: true }).click();
+  await page.getByRole('button', { name: 'Open a ballot', exact: true }).click();
   await page.getByLabel('Public ballot title').fill('Settlement journey decision');
-  await expect(page.getByLabel('Duration (seconds)')).toHaveValue('60');
+  await expect(page.getByLabel('Duration', { exact: true })).toHaveValue('1');
+  await expect(page.getByLabel('Duration unit', { exact: true })).toHaveValue('minutes');
   await page.getByRole('button', { name: 'Open ballot', exact: true }).click();
   await page.getByRole('button', { name: 'Vote Approve', exact: true }).click();
   await expect(page.getByText('Your vote: Approve', { exact: true })).toBeVisible();

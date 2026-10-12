@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.14.0-alpha.11 development
+
+Put Ballots and Elections first in a compact toolbar, followed by a large plus and help icon. Show the ballot list immediately and open creation in an accessible popup. Preserve drafts on cancellation and failed requests; close after confirmed creation. Keep pending controls, signer requirements and saved governance policy checks.
+
+## 0.14.0-alpha.9 development
+
+Separate the Decide module into Ballots and Elections tabs, preserving drafts and keyboard navigation. Show voting durations in minutes, hours, days or weeks and quorum/approval as exact percentages across ballots, DAO setup and governance settings. Custom ballot timing also offers a local closing date. Saved DAO policies continue to determine ballot settings.
+
 ## 0.14.0-alpha.5 development
 
 Keep Telos vote checkboxes compact and next to their labels, with 44-pixel clickable rows. Show vote controls only during an open voting period; retain recorded totals and pending-transaction confirmation after the period ends.
