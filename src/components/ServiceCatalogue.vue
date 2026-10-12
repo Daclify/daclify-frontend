@@ -2,7 +2,12 @@
 import { computed, ref } from 'vue';
 import { ServiceOfferDocumentSchema } from '@daclify/modules';
 import type { DaoContent, DaoRef } from '@daclify/core-protocol';
-const props = defineProps<{ content: DaoContent | undefined; dao: DaoRef; canPropose: boolean }>(),
+const props = defineProps<{
+    content: DaoContent | undefined;
+    dao: DaoRef;
+    canPropose: boolean;
+    memberLabels?: Record<string, string>;
+  }>(),
   emit = defineEmits<{ choose: [member: string] }>();
 const query = ref('');
 const offers = computed(() => {
@@ -36,11 +41,11 @@ const offers = computed(() => {
 });
 </script>
 <template>
-  <details class="panel">
-    <summary>Member service catalogue</summary>
+  <section class="panel" aria-label="Member services">
     <p>
-      Find member offers and start a Works proposal. A service listing holds no funds and grants no
-      roles. Publish a version 1 service-offer document to list a service.
+      Member services are a directory of skills and offers. A work proposal is a specific project
+      with agreed deliverables and milestone payments. Choose a provider here, then propose the work
+      and request funding separately.
     </p>
     <label for="service-search">Search member services</label
     ><input id="service-search" v-model="query" type="search" />
@@ -48,9 +53,12 @@ const offers = computed(() => {
       No matching public offers. Private narratives remain in Documents.
     </p>
     <article v-for="offer in offers" :key="offer.document">
-      <h3>{{ offer.title }}</h3>
+      <h2>{{ offer.title }}</h2>
       <p>{{ offer.summary }}</p>
-      <p>Member {{ offer.memberId }} · {{ offer.skills.join(', ') }}</p>
+      <p>
+        {{ memberLabels?.[offer.memberId] ?? `Member ${offer.memberId}` }} ·
+        {{ offer.skills.join(', ') }}
+      </p>
       <button
         type="button"
         class="secondary"
@@ -63,5 +71,15 @@ const offers = computed(() => {
     <RouterLink to="/docs/contribution-agreements" class="help-link"
       >Agreement and service templates ↗</RouterLink
     >
-  </details>
+  </section>
 </template>
+
+<style scoped>
+h2 {
+  font-size: 1.15rem;
+}
+article {
+  padding-block: 20px;
+  border-bottom: 1px solid var(--border-default);
+}
+</style>

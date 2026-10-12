@@ -1,6 +1,16 @@
 {
   "requirements": [
     {
+      "id": "WORKS-PROPOSAL-POPUP-NAMED-CHOICES-AND-FILTERS",
+      "tests": [
+        "tests/e2e/works-design.spec.ts",
+        "tests/unit/document-labels.test.ts",
+        "tests/unit/access-components.test.ts",
+        "tests/e2e/works-review.spec.ts",
+        "tests/e2e/module-payments.spec.ts"
+      ]
+    },
+    {
       "id": "DECIDE-TABS-HUMAN-DURATION-AND-PERCENTAGES",
       "tests": [
         "tests/unit/governance-inputs.test.ts",

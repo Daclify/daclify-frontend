@@ -1,7 +1,7 @@
 <script setup lang="ts">
+import { documentLabel } from '../content/document-labels';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { X } from '@lucide/vue';
-import { z } from 'zod';
 import { readableDuration } from '../content/governance-inputs';
 import type {
   DaoContent,
@@ -46,28 +46,6 @@ onBeforeUnmount(() => {
   documentRequest++;
   dialog.value?.close();
 });
-const documentLabelSchema = z.object({
-  title: z.string().optional(),
-  name: z.string().optional(),
-  filename: z.string().optional(),
-  text: z.string().optional(),
-});
-function documentLabel(document: DaoContent['documents'][number]) {
-  const fallback = `${document.envelope_version === 0 ? 'DAO' : 'Private'} document #${document.document_id}`;
-  let name = fallback;
-  if (document.envelope_version === 0) {
-    try {
-      const value = documentLabelSchema.parse(JSON.parse(document.metadata));
-      name =
-        (value.title || value.name || value.filename || value.text || fallback)
-          .trim()
-          .slice(0, 100) || fallback;
-    } catch {
-      /* Untitled documents keep a stable reference. */
-    }
-  }
-  return `${name} · version ${document.version}`;
-}
 const documentOptions = computed(() =>
   [...(documents.value?.documents ?? [])].sort((a, b) =>
     a.document_id === b.document_id

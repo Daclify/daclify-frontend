@@ -5,6 +5,7 @@ import ContributionAgreementPanel from './ContributionAgreementPanel.vue';
 import ServiceCatalogue from './ServiceCatalogue.vue';
 import VotingDurationInput from './VotingDurationInput.vue';
 import PercentageInput from './PercentageInput.vue';
+import { documentLabel } from '../content/document-labels';
 import { percentageText } from '../content/governance-inputs';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { Plus, CircleHelp, X } from '@lucide/vue';
@@ -12,6 +13,7 @@ import { z } from 'zod';
 import {
   parseUnits,
   formatUnits,
+  type PublicPerson,
   type Treasury,
   type DaoContent,
   type DaoSummary,
@@ -94,8 +96,16 @@ function navigateDecideTabs(event: KeyboardEvent) {
   void nextTick(() => document.getElementById('decide-tab-' + tab.id)?.focus());
 }
 const contributor = ref('1');
-const documentId = ref('1');
-const documentVersion = ref(1);
+const workDocument = ref('');
+const worksDialog = ref<HTMLDialogElement>();
+const worksTab = ref<'proposals' | 'services'>('proposals');
+const projectStatus = ref('');
+const projectContributor = ref('');
+const choicesLoading = ref(false);
+const choicesError = ref('');
+const profiles = ref<PublicPerson[]>([]);
+const profilesError = ref('');
+let choicesRequest = 0;
 const milestoneAmounts = ref('1.0000');
 const milestoneDue = ref('');
 const agreementSearch = ref('');
@@ -111,12 +121,12 @@ onBeforeUnmount(() => {
   disposed = true;
   emit('busy', false);
   generation++;
+  choicesRequest++;
+  worksDialog.value?.close();
   clearInterval(clock);
 });
 const submissionDoc = ref('');
-const submissionVersion = ref(1);
 const reviewDoc = ref('');
-const reviewVersion = ref(1);
 const selectedMilestone = ref('');
 const payrollStarts = ref(new Date(Date.now() + 60000).toISOString().slice(0, 19));
 const payrollQuery = ref('');
@@ -193,6 +203,7 @@ async function load(more = false) {
   const request = ++generation;
   const domain = context.value;
   loading.value = true;
+  if (props.section === 'works') void loadWorksChoices();
   try {
     const [modules, records, policy, documents] = await Promise.all([
       api.moduleState(props.dao.reference.daoId, {
@@ -220,7 +231,7 @@ async function load(more = false) {
       workspace.network?.capabilities.includes('governance-policy')
         ? api.governance(props.dao.reference.daoId)
         : Promise.resolve(undefined),
-      ['works', 'payroll', 'grants-rounds'].includes(props.section)
+      ['payroll', 'grants-rounds'].includes(props.section)
         ? api.content(props.dao.reference.daoId)
         : Promise.resolve(undefined),
     ]);
@@ -269,7 +280,7 @@ async function load(more = false) {
     data.value = modules;
     treasury.value = records;
     governance.value = policy;
-    content.value = documents;
+    if (props.section !== 'works') content.value = documents;
     if (policy?.policy) {
       const saved = policy.policy.config;
       weight.value = saved.kind === 0 ? 'member' : saved.kind === 1 ? 'credit' : 'native-stake';
@@ -297,6 +308,16 @@ watch(
   context,
   () => {
     ballotDialog.value?.close();
+    worksDialog.value?.close();
+    choicesRequest++;
+    profiles.value = [];
+    profilesError.value = '';
+    choicesError.value = '';
+    choicesLoading.value = false;
+    worksTab.value = 'proposals';
+    clearWorkFilters();
+    milestoneAmounts.value = '1.0000';
+    milestoneDue.value = '';
     generation++;
     data.value = undefined;
     treasury.value = undefined;
@@ -304,7 +325,7 @@ watch(
     content.value = undefined;
     title.value = '';
     contributor.value = '';
-    documentId.value = '';
+    workDocument.value = '';
     submissionDoc.value = '';
     reviewDoc.value = '';
     selectedMilestone.value = '';
@@ -320,6 +341,8 @@ watch(
   () => props.section,
   () => {
     ballotDialog.value?.close();
+    worksDialog.value?.close();
+    choicesRequest++;
     void load();
   },
 );
@@ -456,13 +479,125 @@ function ownVote(id: string) {
 function asset(value: string): string {
   return `${formatUnits(parseUnits(value.trim(), props.dao.token.precision), props.dao.token.precision)} ${props.dao.token.symbol}`;
 }
+async function loadWorksChoices() {
+  const request = ++choicesRequest,
+    domain = context.value;
+  choicesLoading.value = true;
+  choicesError.value = '';
+  profilesError.value = '';
+  const reference = props.dao.reference;
+  async function people() {
+    const rows: PublicPerson[] = [],
+      cursors = new Set<string>();
+    let after: string | undefined;
+    do {
+      const result = await api.people({ daoId: reference.daoId, ...(after ? { after } : {}) });
+      if (result.profiles.some((row) => JSON.stringify(row.dao) !== JSON.stringify(reference)))
+        throw new Error('DAO_REFERENCE');
+      rows.push(...result.profiles);
+      after = result.next ?? undefined;
+      if (after && cursors.has(after)) throw new Error('INVALID_CURSOR');
+      if (after) cursors.add(after);
+    } while (after);
+    return rows;
+  }
+  const [documents, names] = await Promise.allSettled([api.content(reference.daoId), people()]);
+  if (
+    disposed ||
+    request !== choicesRequest ||
+    domain !== context.value ||
+    props.section !== 'works'
+  )
+    return;
+  if (
+    documents.status === 'fulfilled' &&
+    JSON.stringify(documents.value.dao) === JSON.stringify(reference)
+  )
+    content.value = documents.value;
+  else {
+    content.value = undefined;
+    choicesError.value =
+      documents.status === 'rejected'
+        ? friendlyError(documents.reason)
+        : friendlyError(new Error('DAO_REFERENCE'));
+  }
+  profiles.value = names.status === 'fulfilled' ? names.value : [];
+  if (names.status === 'rejected')
+    profilesError.value =
+      'Member names are unavailable. Wallet names or member references are shown.';
+  choicesLoading.value = false;
+}
+function memberLabel(id: string) {
+  const profile = profiles.value.find((row) => row.memberId === id)?.profile;
+  return (
+    (profile?.fullName ? `${profile.fullName} · ${profile.name}` : profile?.name) ||
+    content.value?.members.find((row) => row.id === id)?.native_account ||
+    `Member ${id}`
+  );
+}
+const contributorOptions = computed(() =>
+  (content.value?.members ?? [])
+    .filter((row) => row.active)
+    .sort((a, b) => memberLabel(a.id).localeCompare(memberLabel(b.id))),
+);
+const documentOptions = computed(() =>
+  [...(content.value?.documents ?? [])].sort((a, b) =>
+    a.document_id === b.document_id
+      ? b.version - a.version
+      : BigInt(a.document_id) < BigInt(b.document_id)
+        ? -1
+        : 1,
+  ),
+);
+function selectedDocument(id: string) {
+  return content.value?.documents.find((row) => row.id === id);
+}
+const proposalDocument = computed(() => selectedDocument(workDocument.value));
+const proposalReady = computed(
+  () =>
+    !choicesLoading.value &&
+    !!proposalDocument.value &&
+    contributorOptions.value.some((row) => row.id === contributor.value),
+);
+function showWorkDialog(memberId?: string) {
+  if (busy.value || !props.member?.active || !current.value?.enabled) return;
+  if (memberId) contributor.value = memberId;
+  error.value = '';
+  success.value = '';
+  worksDialog.value?.showModal();
+}
+function navigateWorksTabs(event: KeyboardEvent) {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+  event.preventDefault();
+  worksTab.value =
+    event.key === 'Home'
+      ? 'proposals'
+      : event.key === 'End'
+        ? 'services'
+        : worksTab.value === 'proposals'
+          ? 'services'
+          : 'proposals';
+  void nextTick(() => document.getElementById('works-tab-' + worksTab.value)?.focus());
+}
 async function propose() {
-  if (!current.value) return;
+  const document = proposalDocument.value,
+    domain = context.value;
+  if (!current.value || !document || !proposalReady.value || !allowed('propose')) return;
   try {
     const payments = milestoneAmounts.value
       .split('\n')
       .filter((v) => v.trim())
       .map(asset);
+    if (
+      !payments.length ||
+      payments.length > 16 ||
+      payments.some(
+        (value) => parseUnits(value.split(' ')[0] ?? '', props.dao.token.precision) <= 0n,
+      )
+    ) {
+      error.value = 'Add between 1 and 16 milestones, each with a positive payment amount.';
+      return;
+    }
     await run(
       current.value.deployment.account,
       'propose',
@@ -470,8 +605,8 @@ async function propose() {
         ...actor(),
         project_id: newId(),
         contributor: contributor.value,
-        document_id: documentId.value,
-        document_version: documentVersion.value,
+        document_id: document.document_id,
+        document_version: document.version,
         payments,
         dues: payments.map(() =>
           milestoneDue.value ? Math.floor(new Date(milestoneDue.value).getTime() / 1000) : 0,
@@ -479,17 +614,50 @@ async function propose() {
       }),
       'Work proposed',
     );
+    if (!disposed && domain === context.value && success.value === 'Work proposed') {
+      worksDialog.value?.close();
+      worksTab.value = 'proposals';
+      workDocument.value = '';
+      contributor.value = '';
+      milestoneAmounts.value = '1.0000';
+      milestoneDue.value = '';
+      clearWorkFilters();
+    }
   } catch (cause) {
     error.value = friendlyError(cause);
   }
 }
+function projectTitle(project: ModuleState['projects'][number]) {
+  const document = content.value?.documents.find(
+    (row) => row.document_id === project.document_id && row.version === project.document_version,
+  );
+  return document ? documentLabel(document) : `Work proposal #${project.id}`;
+}
+function workStatus(status: number) {
+  return ['Proposed', 'Accepted', 'Cancelled'][status] ?? 'Unknown';
+}
+function clearWorkFilters() {
+  agreementSearch.value = '';
+  projectStatus.value = '';
+  projectContributor.value = '';
+  agreementsOnly.value = false;
+}
+const projectContributors = computed(() =>
+  [...new Set(data.value?.projects.map((row) => row.contributor) ?? [])].sort((a, b) =>
+    memberLabel(a).localeCompare(memberLabel(b)),
+  ),
+);
 const visibleProjects = computed(
   () =>
     data.value?.projects.filter(
       (project) =>
         (!agreementsOnly.value ||
           data.value?.agreements.some((a) => a.project_id === project.id)) &&
-        `${project.id} ${project.contributor}`.includes(agreementSearch.value.trim()),
+        (!projectStatus.value || String(project.status) === projectStatus.value) &&
+        (!projectContributor.value || project.contributor === projectContributor.value) &&
+        `${projectTitle(project)} ${memberLabel(project.contributor)} ${project.id} ${project.contributor}`
+          .toLocaleLowerCase()
+          .includes(agreementSearch.value.trim().toLocaleLowerCase()),
     ) ?? [],
 );
 function consentReady(project: string) {
@@ -696,7 +864,8 @@ async function finalize(id: string) {
   }
 }
 async function submitWork() {
-  if (!current.value) return;
+  const document = selectedDocument(submissionDoc.value);
+  if (!current.value || !document) return;
   try {
     await run(
       current.value.deployment.account,
@@ -704,8 +873,8 @@ async function submitWork() {
       encodeWorks('submitwork', {
         ...actor(),
         milestone_id: selectedMilestone.value,
-        document_id: submissionDoc.value,
-        document_version: submissionVersion.value,
+        document_id: document.document_id,
+        document_version: document.version,
       }),
       'Milestone submitted for review',
     );
@@ -714,7 +883,8 @@ async function submitWork() {
   }
 }
 async function reviewWork(approve: boolean) {
-  if (!current.value) return;
+  const document = selectedDocument(reviewDoc.value);
+  if (!current.value || !document) return;
   try {
     await run(
       current.value.deployment.account,
@@ -723,8 +893,8 @@ async function reviewWork(approve: boolean) {
         ...actor(),
         milestone_id: selectedMilestone.value,
         approve,
-        document_id: reviewDoc.value,
-        document_version: reviewVersion.value,
+        document_id: document.document_id,
+        document_version: document.version,
       }),
       approve ? 'Milestone approved. Payment remains to be settled.' : 'Changes requested',
     );
@@ -756,11 +926,6 @@ const selectedProject = computed(() =>
       :value="person.id"
     >
       Member {{ person.id }} {{ person.native_account }}
-    </option>
-  </datalist>
-  <datalist id="work-documents">
-    <option v-for="document in content?.documents" :key="document.id" :value="document.document_id">
-      Document {{ document.document_id }} · version {{ document.version }}
     </option>
   </datalist>
 
@@ -848,7 +1013,7 @@ const selectedProject = computed(() =>
     </p></template
   >
   <template v-else
-    ><div v-if="section !== 'decide'" class="section-toolbar">
+    ><div v-if="!['decide', 'works'].includes(section)" class="section-toolbar">
       <h2>{{ current ? names[current.deployment.id] : 'Module workspace' }}</h2>
       <RouterLink :to="helpLink(section)">Rules &amp; help ↗</RouterLink>
     </div>
@@ -1119,235 +1284,439 @@ const selectedProject = computed(() =>
       :can-sign="canSign"
       :run="run"
     />
-    <template v-else-if="section === 'works'"
-      ><form
-        v-if="member?.active && current?.enabled"
-        class="panel form-panel"
-        @submit.prevent="propose"
-      >
-        <h3>Propose milestone work</h3>
-        <p>
-          1. Publish the proposal document. 2. Choose a contributor, offer an agreement if needed,
-          then request funding. 3. Submit evidence. 4. An independent reviewer approves payment.
-        </p>
-        <RouterLink :to="`/dao/${dao.reference.daoId}/documents`">Open DAO documents</RouterLink>
-        <label for="contributor">Contributor member ID</label
-        ><input
-          id="contributor"
-          v-model="contributor"
-          list="work-members"
-          inputmode="numeric"
-          required
-        />
-        <div class="two-column">
-          <div>
-            <label for="work-document">Proposal document ID</label
-            ><input
-              id="work-document"
-              v-model="documentId"
-              list="work-documents"
-              inputmode="numeric"
-              required
-            />
-          </div>
-          <div>
-            <label for="work-version">Document version</label
-            ><input
-              id="work-version"
-              v-model.number="documentVersion"
-              type="number"
-              min="1"
-              required
-            />
-          </div>
-        </div>
-        <label for="milestones">Milestone amounts · one per line ({{ dao.token.symbol }})</label
-        ><textarea id="milestones" v-model="milestoneAmounts" rows="3" required></textarea>
-        <label for="work-due">Milestone due date (optional; applies to each milestone)</label
-        ><input id="work-due" v-model="milestoneDue" type="datetime-local" />
-        <p class="field-help">
-          Use due dates when offering a contribution agreement. For different milestone due dates,
-          use the documented native action.
-        </p>
-        <p class="field-help">
-          Use an existing durable document. Acceptance reserves the full project amount; review
-          approves each payment.
-        </p>
-        <button :disabled="!allowed('propose')">Propose work</button>
-      </form>
-      <ServiceCatalogue
-        :content="content"
-        :dao="dao.reference"
-        :can-propose="allowed('propose')"
-        @choose="contributor = $event"
-      />
-      <div class="section-toolbar">
-        <label>Find project or contributor<input v-model="agreementSearch" type="search" /></label
-        ><label class="checkbox"
-          ><input v-model="agreementsOnly" type="checkbox" />Contribution agreements only</label
+    <template v-else-if="section === 'works'">
+      <div class="decide-toolbar works-toolbar">
+        <div
+          class="account-tabs decide-tabs"
+          role="tablist"
+          aria-label="Works sections"
+          @keydown="navigateWorksTabs"
         >
-      </div>
-      <article v-for="project in visibleProjects" :key="project.id" class="panel">
-        <h3>Project {{ project.id }}</h3>
-        <p>
-          Contributor {{ project.contributor }} · Document {{ project.document_id }} / v{{
-            project.document_version
-          }}
-          ·
-          {{ project.status === 0 ? 'Proposed' : project.status === 1 ? 'Accepted' : 'Cancelled' }}
-        </p>
-        <ContributionAgreementPanel
-          :project="project"
-          :milestones="data?.milestones.filter((m) => m.project_id === project.id) ?? []"
-          :agreement="data?.agreements.find((a) => a.project_id === project.id)"
-          :member="member"
-          :offer-allowed="allowed('offeragr')"
-          :accept-allowed="allowed('acceptagr')"
-          :busy="busy"
-          @offer="offerAgreement"
-          @accept="acceptAgreement"
-        />
-        <button
-          v-if="project.status === 0 && !governedWorks && member?.active && member.admin"
-          :disabled="!allowed('accept') || !consentReady(project.id)"
-          @click="accept(project.id)"
-        >
-          Accept and reserve funds</button
-        ><button
-          v-if="project.status === 0 && governedWorks && member?.active"
-          :disabled="!fundAllowed() || !consentReady(project.id)"
-          @click="fund(project.id)"
-        >
-          Propose funding vote</button
-        ><button
-          v-if="project.status <= 1 && member?.active && member.admin"
-          class="secondary"
-          :disabled="!allowed('cancel')"
-          @click="cancelWork(project.id)"
-        >
-          Cancel project {{ project.id }}
-        </button>
-        <ul class="milestone-list">
-          <li
-            v-for="milestone in data?.milestones.filter((m) => m.project_id === project.id)"
-            :key="milestone.id"
+          <button
+            v-for="tab in [
+              { id: 'proposals', label: 'Work proposals' },
+              { id: 'services', label: 'Member services' },
+            ]"
+            :id="'works-tab-' + tab.id"
+            :key="tab.id"
+            type="button"
+            role="tab"
+            :aria-selected="worksTab === tab.id"
+            :aria-controls="'works-panel-' + tab.id"
+            :tabindex="worksTab === tab.id ? 0 : -1"
+            @click="worksTab = tab.id === 'proposals' ? 'proposals' : 'services'"
           >
-            <p>
-              Milestone {{ milestone.id }} · {{ milestone.quantity }} ·
-              {{
-                ['Proposed', 'Reserved', 'Submitted', 'Changes requested', 'Approved', 'Cancelled'][
-                  milestone.status
-                ]
-              }}
-            </p>
-            <p>
-              Payment: {{ paymentStatus(milestone.id)
-              }}<span v-if="milestone.due">
-                · Due {{ new Date(milestone.due * 1000).toLocaleString() }}</span
-              >
-            </p>
-            <p v-if="milestone.submission_doc !== '0'">
-              Submission document {{ milestone.submission_doc }} / v{{
-                milestone.submission_version
-              }}
-            </p>
-            <p v-if="milestone.review_doc !== '0'">
-              Review document {{ milestone.review_doc }} / v{{ milestone.review_version }} ·
-              reviewer {{ milestone.reviewer }}
-            </p>
-            <button
-              v-if="
-                project.status === 1 &&
-                ((project.contributor === member?.memberId && [1, 3].includes(milestone.status)) ||
-                  (member?.active &&
-                    (member.admin || member.reviewer) &&
-                    member.memberId !== project.contributor &&
-                    milestone.status === 2))
-              "
-              class="secondary"
-              :disabled="!allowed(milestone.status === 2 ? 'review' : 'submitwork')"
-              @click="selectedMilestone = milestone.id"
-            >
-              {{ milestone.status === 2 ? 'Review' : 'Submit evidence for' }} milestone
-              {{ milestone.id }}</button
-            ><button
-              v-if="payable(milestone.id)"
-              :disabled="!canSettle"
-              @click="settle(milestone.id)"
-            >
-              Settle milestone {{ milestone.id }}
-            </button>
-          </li>
-        </ul>
-      </article>
-      <section
-        v-if="selectedWork && selectedProject && selectedProject.status === 1"
-        class="panel narrow"
+            {{ tab.label }}
+          </button>
+        </div>
+        <div class="decide-toolbar-actions">
+          <button
+            type="button"
+            class="decide-icon decide-add"
+            aria-label="Propose milestone work"
+            aria-haspopup="dialog"
+            title="Propose milestone work"
+            :disabled="busy || !member?.active || !current?.enabled"
+            @click="showWorkDialog()"
+          >
+            <Plus aria-hidden="true" />
+          </button>
+          <RouterLink
+            :to="helpLink('works')"
+            class="decide-icon"
+            aria-label="Work rules and help"
+            title="Work rules and help"
+            ><CircleHelp aria-hidden="true"
+          /></RouterLink>
+        </div>
+      </div>
+      <p v-if="profilesError" class="field-help">
+        {{ profilesError }}
+        <button
+          type="button"
+          class="secondary"
+          :disabled="choicesLoading || busy"
+          @click="loadWorksChoices"
+        >
+          Retry member names
+        </button>
+      </p>
+      <p v-if="choicesError" class="field-help">
+        Members and documents are unavailable. Work references are shown.
+        <button
+          type="button"
+          class="secondary"
+          :disabled="choicesLoading || busy"
+          @click="loadWorksChoices"
+        >
+          Retry members and documents
+        </button>
+      </p>
+      <dialog
+        v-if="member?.active && current?.enabled"
+        ref="worksDialog"
+        class="panel form-panel ballot-dialog"
+        aria-labelledby="work-dialog-title"
+        @cancel="busy && $event.preventDefault()"
       >
-        <h3>Milestone {{ selectedWork.id }}</h3>
-        <form
-          v-if="
-            selectedProject.contributor === member?.memberId && [1, 3].includes(selectedWork.status)
-          "
-          @submit.prevent="submitWork"
+        <div class="ballot-dialog-heading">
+          <h2 id="work-dialog-title">Propose milestone work</h2>
+          <button
+            type="button"
+            class="decide-icon"
+            aria-label="Close work proposal"
+            :disabled="busy"
+            @click="worksDialog?.close()"
+          >
+            <X aria-hidden="true" />
+          </button>
+        </div>
+        <p>
+          Choose who will do the work, its proposal and the payment for each milestone. Funding is
+          approved separately; an independent reviewer approves completed milestones for payment.
+        </p>
+        <p v-if="error" role="alert" class="notice danger">{{ error }}</p>
+        <p v-if="choicesError" role="alert" class="notice danger">
+          {{ choicesError }}
+          <button
+            type="button"
+            class="secondary"
+            :disabled="busy || choicesLoading"
+            @click="loadWorksChoices"
+          >
+            Retry members and documents
+          </button>
+        </p>
+        <p v-if="choicesLoading" role="status">Loading members and documents…</p>
+        <button
+          type="button"
+          class="secondary"
+          :disabled="busy || choicesLoading"
+          @click="loadWorksChoices"
         >
-          <label for="submission-doc">Submission document ID</label
-          ><input
-            id="submission-doc"
-            list="work-documents"
-            v-model="submissionDoc"
-            inputmode="numeric"
-            pattern="[1-9][0-9]*"
-            required
-          /><label for="submission-version">Submission document version</label
-          ><input
-            id="submission-version"
-            v-model.number="submissionVersion"
-            type="number"
-            min="1"
-            required
-          /><button :disabled="!allowed('submitwork')">Submit milestone evidence</button>
-        </form>
-        <form
-          v-else-if="
-            member?.active &&
-            (member.admin || member.reviewer) &&
-            member.memberId !== selectedProject.contributor &&
-            selectedWork.status === 2
-          "
-          @submit.prevent="reviewWork(true)"
-        >
-          <label for="review-doc">Review document ID</label
-          ><input
-            id="review-doc"
-            list="work-documents"
-            v-model="reviewDoc"
-            inputmode="numeric"
-            pattern="[1-9][0-9]*"
-            required
-          /><label for="review-version">Review document version</label
-          ><input
-            id="review-version"
-            v-model.number="reviewVersion"
-            type="number"
-            min="1"
-            required
-          />
-          <div class="button-row">
-            <button :disabled="!allowed('review')">Approve milestone</button
-            ><button
-              type="button"
-              class="secondary"
-              :disabled="!allowed('review') || !reviewDoc"
-              @click="reviewWork(false)"
+          Refresh members and documents
+        </button>
+        <form @submit.prevent="propose">
+          <fieldset :disabled="busy">
+            <label for="contributor">Contributor</label>
+            <select
+              id="contributor"
+              v-model="contributor"
+              required
+              autofocus
+              :disabled="choicesLoading"
             >
-              Request changes
+              <option value="" disabled>Choose a member</option>
+              <option v-for="person in contributorOptions" :key="person.id" :value="person.id">
+                {{ memberLabel(person.id) }}{{ person.id === member?.memberId ? ' (you)' : '' }}
+              </option>
+            </select>
+            <p
+              v-if="!choicesLoading && !choicesError && !contributorOptions.length"
+              class="field-help"
+            >
+              No active members are available.
+            </p>
+            <label for="work-document">Proposal document</label>
+            <select id="work-document" v-model="workDocument" required :disabled="choicesLoading">
+              <option value="" disabled>Choose a published document</option>
+              <option v-for="document in documentOptions" :key="document.id" :value="document.id">
+                {{ documentLabel(document) }}
+              </option>
+            </select>
+            <p
+              v-if="!choicesLoading && !choicesError && !documentOptions.length"
+              class="field-help"
+            >
+              No published documents yet.
+            </p>
+            <p class="field-help">
+              Select the version describing the scope and deliverables.
+              <RouterLink :to="`/dao/${dao.reference.daoId}/documents`"
+                >Open DAO documents</RouterLink
+              >
+              to publish a proposal first.
+            </p>
+            <label for="milestones">Milestone amounts · one per line ({{ dao.token.symbol }})</label
+            ><textarea
+              id="milestones"
+              v-model="milestoneAmounts"
+              rows="3"
+              required
+              placeholder="For example: 10 on the first line, 25 on the second"
+            ></textarea>
+            <p class="field-help">
+              Each line creates one milestone payment. You can add up to 16 milestones.
+            </p>
+            <label for="work-due">Milestone due date (optional; applies to each milestone)</label
+            ><input id="work-due" v-model="milestoneDue" type="datetime-local" />
+            <p class="field-help">
+              Accepting a project reserves its full amount. You can offer a contribution agreement
+              before requesting funding.
+            </p>
+          </fieldset>
+          <p v-if="!signerReady" class="field-help">
+            Unlock your signing keys to submit this proposal.
+          </p>
+          <div class="work-actions">
+            <button :disabled="!allowed('propose') || !proposalReady">
+              {{ busy ? 'Submitting…' : 'Propose work' }}</button
+            ><button type="button" class="secondary" :disabled="busy" @click="worksDialog?.close()">
+              Cancel
             </button>
           </div>
-          <p class="field-help">
-            Approval creates a payable obligation. Cancellation preserves approved payments.
-          </p>
         </form>
+      </dialog>
+      <section
+        id="works-panel-services"
+        role="tabpanel"
+        aria-labelledby="works-tab-services"
+        v-show="worksTab === 'services'"
+      >
+        <ServiceCatalogue
+          :content="content"
+          :dao="dao.reference"
+          :member-labels="
+            Object.fromEntries((content?.members ?? []).map((row) => [row.id, memberLabel(row.id)]))
+          "
+          :can-propose="!busy && !!member?.active && !!current?.enabled"
+          @choose="showWorkDialog"
+        />
+      </section>
+      <section
+        id="works-panel-proposals"
+        role="tabpanel"
+        aria-labelledby="works-tab-proposals"
+        v-show="worksTab === 'proposals'"
+      >
+        <div class="panel work-filters">
+          <label
+            >Search work<input
+              v-model="agreementSearch"
+              type="search"
+              placeholder="Proposal or contributor"
+          /></label>
+          <label
+            >Work status<select v-model="projectStatus">
+              <option value="">All statuses</option>
+              <option value="0">Proposed</option>
+              <option value="1">Accepted</option>
+              <option value="2">Cancelled</option>
+            </select></label
+          >
+          <label
+            >Filter by contributor<select v-model="projectContributor">
+              <option value="">All contributors</option>
+              <option v-for="id in projectContributors" :key="id" :value="id">
+                {{ memberLabel(id) }}
+              </option>
+            </select></label
+          >
+          <label class="checkbox"
+            ><input v-model="agreementsOnly" type="checkbox" />Contribution agreements only</label
+          >
+          <button
+            v-if="agreementSearch || projectStatus || projectContributor || agreementsOnly"
+            type="button"
+            class="secondary"
+            @click="clearWorkFilters"
+          >
+            Clear filters
+          </button>
+        </div>
+        <p class="field-help" role="status">
+          {{ visibleProjects.length }} of {{ data?.projects.length ?? 0 }} loaded work
+          proposals<span v-if="data?.next.projects"> · Load more below to search older work.</span>
+        </p>
+        <section v-if="!visibleProjects.length" class="empty-state">
+          <h2>{{ data?.projects.length ? 'No matching work' : 'No work proposals yet' }}</h2>
+          <p>
+            {{
+              data?.projects.length
+                ? 'Try changing or clearing your filters.'
+                : 'Use + to propose work with a contributor and milestone payments.'
+            }}
+          </p>
+        </section>
+        <article v-for="project in visibleProjects" :key="project.id" class="panel work-project">
+          <div class="work-project-heading">
+            <h2>{{ projectTitle(project) }}</h2>
+            <span class="status-pill">{{ workStatus(project.status) }}</span>
+          </div>
+          <p class="muted">
+            {{ memberLabel(project.contributor) }} · {{ project.milestones.length }} milestone{{
+              project.milestones.length === 1 ? '' : 's'
+            }}
+            · Work reference {{ project.id }}
+          </p>
+          <ContributionAgreementPanel
+            :project="project"
+            :milestones="data?.milestones.filter((m) => m.project_id === project.id) ?? []"
+            :agreement="data?.agreements.find((a) => a.project_id === project.id)"
+            :member="member"
+            :offer-allowed="allowed('offeragr')"
+            :accept-allowed="allowed('acceptagr')"
+            :busy="busy"
+            @offer="offerAgreement"
+            @accept="acceptAgreement"
+          />
+          <button
+            v-if="project.status === 0 && !governedWorks && member?.active && member.admin"
+            :disabled="!allowed('accept') || !consentReady(project.id)"
+            @click="accept(project.id)"
+          >
+            Accept and reserve funds</button
+          ><button
+            v-if="project.status === 0 && governedWorks && member?.active"
+            :disabled="!fundAllowed() || !consentReady(project.id)"
+            @click="fund(project.id)"
+          >
+            Propose funding vote</button
+          ><button
+            v-if="project.status <= 1 && member?.active && member.admin"
+            class="secondary"
+            :disabled="!allowed('cancel')"
+            @click="cancelWork(project.id)"
+          >
+            Cancel project {{ project.id }}
+          </button>
+          <ul class="milestone-list">
+            <li
+              v-for="milestone in data?.milestones.filter((m) => m.project_id === project.id)"
+              :key="milestone.id"
+            >
+              <p>
+                Milestone {{ milestone.id }} · {{ milestone.quantity }} ·
+                {{
+                  [
+                    'Proposed',
+                    'Reserved',
+                    'Submitted',
+                    'Changes requested',
+                    'Approved',
+                    'Cancelled',
+                  ][milestone.status]
+                }}
+              </p>
+              <p>
+                Payment: {{ paymentStatus(milestone.id)
+                }}<span v-if="milestone.due">
+                  · Due {{ new Date(milestone.due * 1000).toLocaleString() }}</span
+                >
+              </p>
+              <p v-if="milestone.submission_doc !== '0'">
+                Submission document {{ milestone.submission_doc }} / v{{
+                  milestone.submission_version
+                }}
+              </p>
+              <p v-if="milestone.review_doc !== '0'">
+                Review document {{ milestone.review_doc }} / v{{ milestone.review_version }} ·
+                reviewer {{ milestone.reviewer }}
+              </p>
+              <button
+                v-if="
+                  project.status === 1 &&
+                  ((project.contributor === member?.memberId &&
+                    [1, 3].includes(milestone.status)) ||
+                    (member?.active &&
+                      (member.admin || member.reviewer) &&
+                      member.memberId !== project.contributor &&
+                      milestone.status === 2))
+                "
+                class="secondary"
+                :disabled="!allowed(milestone.status === 2 ? 'review' : 'submitwork')"
+                @click="selectedMilestone = milestone.id"
+              >
+                {{ milestone.status === 2 ? 'Review' : 'Submit evidence for' }} milestone
+                {{ milestone.id }}</button
+              ><button
+                v-if="payable(milestone.id)"
+                :disabled="!canSettle"
+                @click="settle(milestone.id)"
+              >
+                Settle milestone {{ milestone.id }}
+              </button>
+            </li>
+          </ul>
+        </article>
+        <section
+          v-if="selectedWork && selectedProject && selectedProject.status === 1"
+          class="panel narrow"
+        >
+          <h3>Milestone {{ selectedWork.id }}</h3>
+          <form
+            v-if="
+              selectedProject.contributor === member?.memberId &&
+              [1, 3].includes(selectedWork.status)
+            "
+            @submit.prevent="submitWork"
+          >
+            <label for="submission-doc">Evidence document</label
+            ><select
+              id="submission-doc"
+              v-model="submissionDoc"
+              required
+              :disabled="busy || choicesLoading"
+            >
+              <option value="" disabled>Choose a published document</option>
+              <option v-for="document in documentOptions" :key="document.id" :value="document.id">
+                {{ documentLabel(document) }}
+              </option>
+            </select>
+            <p class="field-help">
+              <RouterLink :to="`/dao/${dao.reference.daoId}/documents`"
+                >Open DAO documents</RouterLink
+              >
+              to publish your evidence.
+            </p>
+            <button :disabled="!allowed('submitwork') || !selectedDocument(submissionDoc)">
+              Submit milestone evidence
+            </button>
+          </form>
+          <form
+            v-else-if="
+              member?.active &&
+              (member.admin || member.reviewer) &&
+              member.memberId !== selectedProject.contributor &&
+              selectedWork.status === 2
+            "
+            @submit.prevent="reviewWork(true)"
+          >
+            <label for="review-doc">Review document</label
+            ><select
+              id="review-doc"
+              v-model="reviewDoc"
+              required
+              :disabled="busy || choicesLoading"
+            >
+              <option value="" disabled>Choose a published document</option>
+              <option v-for="document in documentOptions" :key="document.id" :value="document.id">
+                {{ documentLabel(document) }}
+              </option>
+            </select>
+            <p class="field-help">
+              <RouterLink :to="`/dao/${dao.reference.daoId}/documents`"
+                >Open DAO documents</RouterLink
+              >
+              to publish your review.
+            </p>
+            <div class="work-actions">
+              <button :disabled="!allowed('review') || !selectedDocument(reviewDoc)">
+                Approve milestone</button
+              ><button
+                type="button"
+                class="secondary"
+                :disabled="!allowed('review') || !selectedDocument(reviewDoc)"
+                @click="reviewWork(false)"
+              >
+                Request changes
+              </button>
+            </div>
+            <p class="field-help">
+              Approval creates a payable obligation. Cancellation preserves approved payments.
+            </p>
+          </form>
+        </section>
       </section></template
     >
     <template v-else
@@ -1470,7 +1839,7 @@ const selectedProject = computed(() =>
     v-if="
       data &&
       ((section === 'decide' && (data.next.ballots || data.next.elections || data.next.terms)) ||
-        (section === 'works' && data.next.projects) ||
+        (section === 'works' && worksTab === 'proposals' && data.next.projects) ||
         (section === 'payroll' && data.next.schedules) ||
         (section === 'grants-rounds' && (data.next.rounds || data.next.applications)))
     "
@@ -1483,6 +1852,60 @@ const selectedProject = computed(() =>
   </button>
 </template>
 <style scoped>
+.status-pill {
+  padding: 6px 12px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+@media (max-width: 640px) {
+  .works-toolbar .decide-tabs {
+    min-width: 0;
+    gap: 4px;
+  }
+  .works-toolbar .decide-tabs button {
+    font-size: 0.75rem;
+    padding-inline: 8px;
+  }
+}
+
+.work-filters {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  align-items: end;
+  gap: 16px;
+}
+.work-filters label {
+  margin: 0;
+}
+.work-actions,
+.work-project-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.work-actions {
+  margin-top: 20px;
+}
+.work-project-heading {
+  justify-content: space-between;
+}
+.work-project-heading h2 {
+  margin: 0;
+  font-size: 1.15rem;
+  overflow-wrap: anywhere;
+}
+.work-project .milestone-list {
+  margin-top: 20px;
+}
+@media (max-width: 640px) {
+  .work-filters {
+    grid-template-columns: 1fr;
+  }
+}
+
 .decide-toolbar,
 .decide-toolbar-actions,
 .ballot-dialog-heading {
