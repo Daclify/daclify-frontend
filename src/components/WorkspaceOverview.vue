@@ -63,9 +63,8 @@ const hasFunds = computed(
 );
 </script>
 <template>
-  <section class="workspace-overview" aria-labelledby="overview-title">
+  <section class="workspace-overview" aria-label="Workspace overview">
     <div class="overview-title">
-      <h2 id="overview-title">Workspace overview</h2>
       <p>People, shared resources and your next steps.</p>
     </div>
     <p v-if="dao.participantMode === 'agents-guarded'" class="notice">
@@ -186,7 +185,6 @@ const hasFunds = computed(
   display: grid;
   gap: 24px;
 }
-.overview-title h2,
 .overview-tools-heading h2 {
   font-size: 1.25rem;
   margin: 0;

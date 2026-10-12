@@ -22,7 +22,7 @@ test('reserves and cancels work, then settles disabled payroll and withdraws the
   await page.getByRole('link', { name: 'Create', exact: true }).click();
   await page.getByLabel('DAO name').fill(`Payment fixture ${Date.now()}`);
   await payCreation(page, 'custom');
-  await expect(page.getByRole('heading', { name: 'Workspace overview' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Workspace overview' })).toBeVisible();
   const id = /\/dao\/([0-9]+)/.exec(page.url())?.[1];
   if (!id) throw new Error('Fixture DAO unavailable');
   await execute(process.execPath, ['--import', 'tsx', 'tools/native/fund.ts', id], {
@@ -68,12 +68,14 @@ test('reserves and cancels work, then settles disabled payroll and withdraws the
   await page.getByRole('button', { name: 'Enable Payroll', exact: true }).click();
   await expect(page.getByText('Payroll enabled', { exact: true })).toBeVisible();
   await page.getByRole('link', { name: 'Payroll', exact: true }).click();
-  await page.getByLabel('Recipient member ID', { exact: true }).fill('1');
-  await page.getByLabel('Amount per installment (TLOS)').fill('0.5000');
+  await page.getByRole('button', { name: 'Add payroll', exact: true }).click();
+  await page.getByLabel('Recipient', { exact: true }).selectOption('1');
+  await page.getByLabel('Amount per installment (TLOS)').fill('1');
   await page.getByLabel('Installments', { exact: true }).fill('1');
   await page
     .getByLabel('First installment due (UTC)')
     .fill(new Date(Date.now() + 12000).toISOString().slice(0, 19));
+  await page.getByLabel('I checked the recipient, installments and total', { exact: true }).check();
   await page.getByRole('button', { name: 'Commit funded payroll', exact: true }).click();
   await expect(page.getByText('Funded payroll committed', { exact: true })).toBeVisible();
   await page.getByRole('link', { name: 'Modules', exact: true }).click();
@@ -93,9 +95,9 @@ test('reserves and cancels work, then settles disabled payroll and withdraws the
   await page.getByRole('checkbox', { name: 'Ongoing schedules', exact: true }).uncheck();
   await expect(page.getByText(/Installment .*Settled/)).toBeVisible();
   await page.getByRole('link', { name: 'Treasury', exact: true }).click();
-  await expect(page.getByText('Claim: 0.5000 TLOS', { exact: false })).toBeVisible();
+  await expect(page.getByText('Claim: 1.0000 TLOS', { exact: false })).toBeVisible();
   await page.getByLabel('Native payout account').fill('bob');
-  await page.getByLabel('Withdrawal amount (TLOS)').fill('0.5000');
+  await page.getByLabel('Withdrawal amount (TLOS)').fill('1.0000');
   await page.getByRole('button', { name: 'Sign withdrawal', exact: true }).click();
   await expect(page.getByText('Claim withdrawn.', { exact: true })).toBeVisible();
   await expect(page.getByText('Claim: 0.0000 TLOS', { exact: false })).toBeVisible();

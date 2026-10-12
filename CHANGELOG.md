@@ -1,8 +1,12 @@
 # Changelog
 
+## 0.15.0-alpha.9 development
+
+Remove the visible Workspace overview and Payroll headings. Put payroll creation in an accessible Add payroll popup opened by a plus icon beside contextual payroll help. Select active recipients by name, require explicitly entered whole-token installments and an exact reviewed total, validate schedule limits and preserve failed/cancelled drafts. Retain signing, administrator, grant and code-pin checks, pending-state protection and existing payment obligations.
+
 ## 0.15.0-alpha.8 development
 
-Integrate explicit whole-token Works milestone payments with current dev’s Mini apps and account/profile changes, preserving their pinned SDK dependencies. The compatible testnet UI correction remains frontend 0.14.0-alpha.15 on the running core/modules combination.
+Integrate explicit whole-token Works milestone payments with current dev’s Mini apps and account/profile changes, preserving their pinned SDK dependencies. Published to testnet with core 0.15.0-alpha.7 and modules 0.10.0-alpha.14; the initial 0.14.0-alpha.15 candidate was superseded.
 
 ## 0.14.0-alpha.15 development
 

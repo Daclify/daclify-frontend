@@ -39,7 +39,7 @@ test('hands work between two internal accounts, requests a revision, approves an
   const title = `Review fixture ${Date.now()}`;
   await page.getByLabel('DAO name').fill(title);
   await payCreation(page, 'custom');
-  await expect(page.getByRole('heading', { name: 'Workspace overview' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Workspace overview' })).toBeVisible();
   const daoId = /\/dao\/([0-9]+)/.exec(page.url())?.[1];
   if (!daoId) throw new Error('Fixture DAO unavailable');
   await execute(process.execPath, ['--import', 'tsx', 'tools/native/fund.ts', daoId], {

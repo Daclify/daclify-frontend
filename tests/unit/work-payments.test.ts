@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseWholeWorkPayments } from '../../src/content/work-payments';
+import { parseWholeWorkPayments } from '../../src/content/token-payments';
 
 describe('whole-token milestone payments', () => {
   it('converts whole token inputs into exact base units and sums them', () => {

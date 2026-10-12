@@ -47,7 +47,7 @@ async function createWorkspace(page: Page, encrypted = false) {
   await page.getByLabel('DAO name').fill(`File fixture ${Date.now()}`);
   if (encrypted) await page.getByLabel('Privacy policy').selectOption('encrypted-user-controlled');
   await payCreation(page);
-  await expect(page.getByRole('heading', { name: 'Workspace overview' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Workspace overview' })).toBeVisible();
   await page.getByRole('link', { name: 'Documents', exact: true }).click();
   if (encrypted) {
     await page.getByRole('button', { name: 'Initialize encryption epoch' }).click();

@@ -199,7 +199,7 @@ test('long public identity and expanded DAO references fit a narrow screen', asy
   await page.setViewportSize({ width: 320, height: 812 });
   await page.goto('/dao/1');
   await expect(
-    main(page).getByRole('heading', { name: 'Workspace overview', exact: true }),
+    main(page).getByRole('region', { name: 'Workspace overview', exact: true }),
   ).toBeVisible();
   await main(page).locator('.workspace-reference summary').click();
   await expect(main(page).getByText(reference.chainId, { exact: true })).toBeVisible();
@@ -437,7 +437,7 @@ test('unknown sections recover and direct configuration links select the correct
   ).toBeVisible();
   await main(page).getByRole('link', { name: 'Workspace overview', exact: true }).click();
   await expect(
-    main(page).getByRole('heading', { name: 'Workspace overview', exact: true }),
+    main(page).getByRole('region', { name: 'Workspace overview', exact: true }),
   ).toBeVisible();
   await page.goto('/dao/1/settings?settings=services');
   await expect(main(page).getByRole('button', { name: 'Services', exact: true })).toHaveAttribute(

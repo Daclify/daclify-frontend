@@ -66,7 +66,7 @@ test('walletless account and real DAO creation flow', async ({ page }) => {
     .getByLabel('Description')
     .fill('Created with an internal account on the local native fixture.');
   await payCreation(page, 'custom');
-  await expect(page.getByRole('heading', { name: 'Workspace overview' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Workspace overview' })).toBeVisible();
   await expect(page.getByText('Administrator', { exact: true })).toBeVisible();
   await page.getByRole('link', { name: 'Documents', exact: true }).click();
   await page.getByLabel('Document ID', { exact: true }).fill('17');
@@ -141,7 +141,7 @@ test('recovers the same account and DAO membership on a fresh browser', async ({
   const title = `Recovery DAO ${Date.now()}`;
   await page.getByLabel('DAO name').fill(title);
   await payCreation(page, 'custom');
-  await expect(page.getByRole('heading', { name: 'Workspace overview' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Workspace overview' })).toBeVisible();
   const fresh = await browser.newContext();
   try {
     const recovered = await fresh.newPage();
@@ -185,7 +185,7 @@ test('keeps private JSON encrypted on chain and clears plaintext when keys lock'
   await page.getByLabel('DAO name').fill(`Encrypted browser DAO ${Date.now()}`);
   await page.getByLabel('Privacy policy').selectOption('encrypted-user-controlled');
   await payCreation(page, 'custom');
-  await expect(page.getByRole('heading', { name: 'Workspace overview' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Workspace overview' })).toBeVisible();
   await page.getByRole('link', { name: 'Documents', exact: true }).click();
   await page.getByRole('button', { name: 'Initialize encryption epoch' }).click();
   await expect(page.getByText('Encryption epoch ready', { exact: true })).toBeVisible();

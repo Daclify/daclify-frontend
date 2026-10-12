@@ -5,14 +5,14 @@ import ContributionAgreementPanel from './ContributionAgreementPanel.vue';
 import ServiceCatalogue from './ServiceCatalogue.vue';
 import VotingDurationInput from './VotingDurationInput.vue';
 import PercentageInput from './PercentageInput.vue';
-import { parseWholeWorkPayments } from '../content/work-payments';
+import { parseWholeWorkPayments } from '../content/token-payments';
+import { parsePayrollInputs } from '../content/payroll-inputs';
 import { documentLabel } from '../content/document-labels';
 import { percentageText } from '../content/governance-inputs';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { Plus, CircleHelp, X, Trash2 } from '@lucide/vue';
 import { z } from 'zod';
 import {
-  parseUnits,
   formatUnits,
   type PublicPerson,
   type Treasury,
@@ -107,7 +107,10 @@ const choicesError = ref('');
 const profiles = ref<PublicPerson[]>([]);
 const profilesError = ref('');
 let choicesRequest = 0;
-const payrollAmount = ref('1.0000');
+const payrollDialog = ref<HTMLDialogElement>();
+const payrollRecipient = ref('');
+const payrollAmount = ref('');
+const payrollConfirmed = ref(false);
 const workMilestones = ref([{ id: 1, amount: '', due: '' }]);
 let nextMilestoneId = 2;
 const paymentsConfirmed = ref(false);
@@ -126,6 +129,7 @@ onBeforeUnmount(() => {
   generation++;
   choicesRequest++;
   worksDialog.value?.close();
+  payrollDialog.value?.close();
   clearInterval(clock);
 });
 const submissionDoc = ref('');
@@ -206,7 +210,7 @@ async function load(more = false) {
   const request = ++generation;
   const domain = context.value;
   loading.value = true;
-  if (props.section === 'works') void loadWorksChoices();
+  if (['works', 'payroll'].includes(props.section)) void loadMemberChoices();
   try {
     const [modules, records, policy, documents] = await Promise.all([
       api.moduleState(props.dao.reference.daoId, {
@@ -234,7 +238,7 @@ async function load(more = false) {
       workspace.network?.capabilities.includes('governance-policy')
         ? api.governance(props.dao.reference.daoId)
         : Promise.resolve(undefined),
-      ['payroll', 'grants-rounds'].includes(props.section)
+      props.section === 'grants-rounds'
         ? api.content(props.dao.reference.daoId)
         : Promise.resolve(undefined),
     ]);
@@ -283,7 +287,7 @@ async function load(more = false) {
     data.value = modules;
     treasury.value = records;
     governance.value = policy;
-    if (props.section !== 'works') content.value = documents;
+    if (!['works', 'payroll'].includes(props.section)) content.value = documents;
     if (policy?.policy) {
       const saved = policy.policy.config;
       weight.value = saved.kind === 0 ? 'member' : saved.kind === 1 ? 'credit' : 'native-stake';
@@ -312,6 +316,7 @@ watch(
   () => {
     ballotDialog.value?.close();
     worksDialog.value?.close();
+    payrollDialog.value?.close();
     choicesRequest++;
     profiles.value = [];
     profilesError.value = '';
@@ -319,7 +324,12 @@ watch(
     choicesLoading.value = false;
     worksTab.value = 'proposals';
     clearWorkFilters();
-    payrollAmount.value = '1.0000';
+    payrollRecipient.value = '';
+    payrollAmount.value = '';
+    payrollConfirmed.value = false;
+    periods.value = 2;
+    intervalDays.value = 30;
+    payrollStarts.value = new Date(Date.now() + 60000).toISOString().slice(0, 19);
     resetWorkMilestones();
     generation++;
     data.value = undefined;
@@ -345,6 +355,7 @@ watch(
   () => {
     ballotDialog.value?.close();
     worksDialog.value?.close();
+    payrollDialog.value?.close();
     choicesRequest++;
     void load();
   },
@@ -479,12 +490,10 @@ function ballotTitle(ballot: ModuleState['ballots'][number]): string {
 function ownVote(id: string) {
   return data.value?.votes.find((v) => v.ballot === id && v.member === props.member?.memberId);
 }
-function asset(value: string): string {
-  return `${formatUnits(parseUnits(value.trim(), props.dao.token.precision), props.dao.token.precision)} ${props.dao.token.symbol}`;
-}
-async function loadWorksChoices() {
+async function loadMemberChoices() {
   const request = ++choicesRequest,
-    domain = context.value;
+    domain = context.value,
+    section = props.section;
   choicesLoading.value = true;
   choicesError.value = '';
   profilesError.value = '';
@@ -509,7 +518,7 @@ async function loadWorksChoices() {
     disposed ||
     request !== choicesRequest ||
     domain !== context.value ||
-    props.section !== 'works'
+    props.section !== section
   )
     return;
   if (
@@ -790,28 +799,92 @@ async function execute(id: string) {
     busy.value = false;
   }
 }
-async function commit() {
-  if (!current.value) return;
+const payrollState = computed(() => {
   try {
-    const starts = Math.floor(Date.parse(`${payrollStarts.value}Z`) / 1000);
-    if (!Number.isFinite(starts) || starts <= Math.floor(Date.now() / 1000))
-      throw new Error('PAYROLL_START');
+    const input = parsePayrollInputs(
+      payrollAmount.value,
+      periods.value,
+      intervalDays.value,
+      payrollStarts.value,
+      props.dao.token.precision,
+      now.value,
+    );
+    return {
+      valid: true,
+      total: (input.total / 10n ** BigInt(props.dao.token.precision)).toLocaleString(),
+      error: '',
+    };
+  } catch (cause) {
+    return {
+      valid: false,
+      total: '',
+      error: cause instanceof Error ? cause.message : 'Check the payroll settings.',
+    };
+  }
+});
+const payrollReady = computed(
+  () =>
+    !choicesLoading.value &&
+    payrollState.value.valid &&
+    payrollConfirmed.value &&
+    contributorOptions.value.some((member) => member.id === payrollRecipient.value),
+);
+watch(
+  () =>
+    JSON.stringify([
+      payrollRecipient.value,
+      payrollAmount.value,
+      periods.value,
+      intervalDays.value,
+      payrollStarts.value,
+    ]),
+  () => {
+    payrollConfirmed.value = false;
+  },
+  { flush: 'sync' },
+);
+function showPayrollDialog() {
+  if (busy.value || !props.member?.active || !props.member.admin || !current.value?.enabled) return;
+  error.value = '';
+  success.value = '';
+  payrollDialog.value?.showModal();
+}
+async function commit() {
+  if (!current.value || !props.member?.admin || !payrollReady.value || !allowed('commit')) return;
+  const domain = context.value;
+  try {
+    const input = parsePayrollInputs(
+      payrollAmount.value,
+      periods.value,
+      intervalDays.value,
+      payrollStarts.value,
+      props.dao.token.precision,
+      Math.floor(Date.now() / 1000),
+    );
     await run(
       current.value.deployment.account,
       'commit',
       encodePayroll('commit', {
         ...actor(),
         schedule_id: newId(),
-        recipient: contributor.value,
-        quantity: asset(payrollAmount.value),
+        recipient: payrollRecipient.value,
+        quantity: `${formatUnits(input.quantity, props.dao.token.precision)} ${props.dao.token.symbol}`,
         periods: periods.value,
-        interval: intervalDays.value * 86400,
-        starts,
+        interval: input.interval,
+        starts: input.starts,
       }),
       'Funded payroll committed',
     );
+    if (!disposed && domain === context.value && success.value === 'Funded payroll committed') {
+      payrollDialog.value?.close();
+      payrollRecipient.value = '';
+      payrollAmount.value = '';
+      payrollConfirmed.value = false;
+      payrollQuery.value = '';
+      showOngoing.value = true;
+    }
   } catch (cause) {
-    error.value = friendlyError(cause);
+    if (!disposed && domain === context.value) error.value = friendlyError(cause);
   }
 }
 function obligation(id: string) {
@@ -1070,9 +1143,34 @@ const selectedProject = computed(() =>
     </p></template
   >
   <template v-else
-    ><div v-if="!['decide', 'works'].includes(section)" class="section-toolbar">
+    ><div v-if="!['decide', 'works', 'payroll'].includes(section)" class="section-toolbar">
       <h2>{{ current ? names[current.deployment.id] : 'Module workspace' }}</h2>
       <RouterLink :to="helpLink(section)">Rules &amp; help ↗</RouterLink>
+    </div>
+    <div
+      v-if="section === 'payroll'"
+      class="decide-toolbar payroll-toolbar"
+      role="group"
+      aria-label="Payroll tools"
+    >
+      <button
+        type="button"
+        class="decide-icon decide-add"
+        aria-label="Add payroll"
+        title="Add payroll"
+        aria-haspopup="dialog"
+        :disabled="!member?.active || !member.admin || !current?.enabled || busy"
+        @click="showPayrollDialog"
+      >
+        <Plus :size="32" aria-hidden="true" />
+      </button>
+      <RouterLink
+        class="decide-icon"
+        :to="helpLink('payroll')"
+        aria-label="Payroll rules and help"
+        title="Payroll rules and help"
+        ><CircleHelp :size="24" aria-hidden="true"
+      /></RouterLink>
     </div>
     <p v-if="current && (!current.codeVerified || !current.compatible)" class="alert" role="alert">
       New actions are unavailable because this deployment does not match the installed code pin or
@@ -1393,7 +1491,7 @@ const selectedProject = computed(() =>
           type="button"
           class="secondary"
           :disabled="choicesLoading || busy"
-          @click="loadWorksChoices"
+          @click="loadMemberChoices"
         >
           Retry member names
         </button>
@@ -1404,7 +1502,7 @@ const selectedProject = computed(() =>
           type="button"
           class="secondary"
           :disabled="choicesLoading || busy"
-          @click="loadWorksChoices"
+          @click="loadMemberChoices"
         >
           Retry members and documents
         </button>
@@ -1439,7 +1537,7 @@ const selectedProject = computed(() =>
             type="button"
             class="secondary"
             :disabled="busy || choicesLoading"
-            @click="loadWorksChoices"
+            @click="loadMemberChoices"
           >
             Retry members and documents
           </button>
@@ -1449,7 +1547,7 @@ const selectedProject = computed(() =>
           type="button"
           class="secondary"
           :disabled="busy || choicesLoading"
-          @click="loadWorksChoices"
+          @click="loadMemberChoices"
         >
           Refresh members and documents
         </button>
@@ -1864,56 +1962,157 @@ const selectedProject = computed(() =>
         </section>
       </section></template
     >
-    <template v-else
-      ><form
+    <template v-else-if="section === 'payroll'">
+      <dialog
         v-if="member?.active && member.admin && current?.enabled"
-        class="panel form-panel"
-        @submit.prevent="commit"
+        ref="payrollDialog"
+        class="panel ballot-dialog"
+        aria-labelledby="payroll-dialog-title"
+        @cancel="busy && $event.preventDefault()"
       >
-        <h3>Commit fixed-term payroll</h3>
+        <header class="ballot-dialog-heading">
+          <h2 id="payroll-dialog-title">Add payroll</h2>
+          <button
+            type="button"
+            class="decide-icon"
+            aria-label="Close payroll form"
+            :disabled="busy"
+            @click="payrollDialog?.close()"
+          >
+            <X :size="24" aria-hidden="true" />
+          </button>
+        </header>
+        <p v-if="error" class="alert" role="alert">{{ error }}</p>
+        <p v-if="busy" role="status">Committing funded payroll…</p>
+        <p v-else-if="!signerReady" class="notice">
+          Choose an authorized signer in Signing &amp; wallets before committing this payroll.
+        </p>
         <p class="notice">
           All installments are funded and approved now. Approved commitments cannot be cancelled.
           Choose only the term your DAO intends to honor. Settlement pays every installment that is
           already due. The recipient and the DAO treasury asset stay on the approved obligation.
         </p>
-        <label for="pay-recipient">Recipient member ID</label
-        ><input id="pay-recipient" v-model="contributor" inputmode="numeric" required /><label
-          for="pay-amount"
-          >Amount per installment ({{ dao.token.symbol }})</label
-        ><input id="pay-amount" v-model="payrollAmount" required />
-        <div class="two-column">
-          <div>
-            <label for="pay-periods">Installments</label
-            ><input
-              id="pay-periods"
-              v-model.number="periods"
-              type="number"
-              min="1"
-              max="12"
+        <p v-if="choicesLoading" role="status">Loading DAO members…</p>
+        <p v-if="choicesError" class="alert" role="alert">{{ choicesError }}</p>
+        <p v-if="profilesError" class="notice">{{ profilesError }}</p>
+        <button
+          v-if="choicesError || profilesError"
+          type="button"
+          class="secondary"
+          :disabled="choicesLoading || busy"
+          @click="loadMemberChoices"
+        >
+          Retry members
+        </button>
+        <form class="form-panel" @submit.prevent="commit">
+          <fieldset :disabled="busy">
+            <label for="pay-recipient">Recipient</label>
+            <select
+              id="pay-recipient"
+              v-model="payrollRecipient"
+              required
+              autofocus
+              :disabled="choicesLoading"
+            >
+              <option value="" disabled>Choose a member</option>
+              <option v-for="person in contributorOptions" :key="person.id" :value="person.id">
+                {{ memberLabel(person.id) }}{{ person.id === member?.memberId ? ' (you)' : '' }}
+              </option>
+            </select>
+            <p
+              v-if="!choicesLoading && !choicesError && !contributorOptions.length"
+              class="field-help"
+            >
+              No active members are available.
+            </p>
+            <label for="pay-amount">Amount per installment ({{ dao.token.symbol }})</label>
+            <div class="milestone-amount-field">
+              <input
+                id="pay-amount"
+                v-model="payrollAmount"
+                type="text"
+                inputmode="numeric"
+                pattern="[1-9][0-9]*"
+                maxlength="19"
+                aria-describedby="pay-amount-help pay-input-error"
+                required
+              />
+              <span class="milestone-currency" aria-hidden="true">{{ dao.token.symbol }}</span>
+            </div>
+            <p id="pay-amount-help" class="field-help">
+              Enter whole {{ dao.token.symbol }} amounts. Nothing is rounded.
+            </p>
+            <div class="two-column">
+              <div>
+                <label for="pay-periods">Installments</label>
+                <input
+                  id="pay-periods"
+                  v-model.number="periods"
+                  type="number"
+                  min="1"
+                  max="12"
+                  step="1"
+                  required
+                />
+              </div>
+              <div>
+                <label for="pay-interval">Claim frequency (days)</label>
+                <input
+                  id="pay-interval"
+                  v-model.number="intervalDays"
+                  type="number"
+                  min="1"
+                  max="31"
+                  step="1"
+                  required
+                />
+              </div>
+            </div>
+            <label for="pay-starts">First installment due (UTC)</label>
+            <input
+              id="pay-starts"
+              v-model="payrollStarts"
+              type="datetime-local"
+              step="1"
               required
             />
-          </div>
-          <div>
-            <label for="pay-interval">Claim frequency (days)</label
-            ><input
-              id="pay-interval"
-              v-model.number="intervalDays"
-              type="number"
-              min="1"
-              max="31"
-              required
-            />
-          </div>
-        </div>
-        <label for="pay-starts">First installment due (UTC)</label
-        ><input
-          id="pay-starts"
-          v-model="payrollStarts"
-          type="datetime-local"
-          step="1"
-          required
-        /><button :disabled="!allowed('commit')">Commit funded payroll</button>
-      </form>
+            <p class="field-help">
+              Choose a future date within the next 31 days. Times are in UTC.
+            </p>
+            <p
+              id="pay-input-error"
+              class="field-help"
+              :class="{ alert: payrollAmount && !payrollState.valid }"
+            >
+              {{ payrollAmount && !payrollState.valid ? payrollState.error : '' }}
+            </p>
+            <div class="milestone-total">
+              <span>Total payroll commitment</span>
+              <strong role="status" aria-label="Total payroll commitment">{{
+                payrollState.valid ? payrollState.total + ' ' + dao.token.symbol : '—'
+              }}</strong>
+            </div>
+            <p v-if="payrollState.valid" class="field-help">
+              {{ periods }} installments of {{ payrollAmount }} {{ dao.token.symbol }}, every
+              {{ intervalDays }} days. This total is reserved from the DAO treasury when you commit.
+            </p>
+            <label class="choice"
+              ><input
+                v-model="payrollConfirmed"
+                type="checkbox"
+                :disabled="!payrollState.valid || !payrollRecipient"
+              />
+              I checked the recipient, installments and total</label
+            >
+            <div class="button-row">
+              <button :disabled="!allowed('commit') || !payrollReady">Commit funded payroll</button>
+              <button type="button" class="secondary" @click="payrollDialog?.close()">
+                Cancel
+              </button>
+            </div>
+          </fieldset>
+        </form>
+      </dialog>
       <form class="panel form-panel" @submit.prevent>
         <label for="pay-search">Search payrolls</label
         ><input id="pay-search" v-model="payrollQuery" placeholder="Label, member, or schedule" />
@@ -1926,7 +2125,7 @@ const selectedProject = computed(() =>
         grant that action. Approved installments stay payable.
       </p>
       <article v-for="schedule in visibleSchedules" :key="schedule.id" class="panel">
-        <h3>{{ controlFor(schedule.id)?.label || `Schedule ${schedule.id}` }}</h3>
+        <h2>{{ controlFor(schedule.id)?.label || `Schedule ${schedule.id}` }}</h2>
         <p>
           {{ schedule.periods }} installments of {{ schedule.quantity }} for member
           {{ schedule.recipient }}.
@@ -2057,7 +2256,10 @@ const selectedProject = computed(() =>
   font-size: 0.8rem;
 }
 @media (max-width: 640px) {
-  .works-toolbar .decide-tabs {
+  .works-toolbar .payroll-toolbar {
+    justify-content: flex-end;
+  }
+  .decide-tabs {
     min-width: 0;
     gap: 4px;
   }
@@ -2113,6 +2315,9 @@ const selectedProject = computed(() =>
 .decide-toolbar {
   justify-content: space-between;
   margin-bottom: 24px;
+}
+.payroll-toolbar {
+  justify-content: flex-end;
 }
 .decide-tabs {
   margin: 0;
