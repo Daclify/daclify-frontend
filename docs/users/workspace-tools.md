@@ -1,0 +1,13 @@
+# Treasury, Documents and Members
+
+Each screen keeps search, filters and actions near its list. The plus opens the relevant creation popup; the help icon opens the versioned rules. Popups keep cancelled or failed drafts and prevent edits or dismissal while a write is pending.
+
+Treasury separates Payments, Your balances and Reports. Available funds, reservations and unwithdrawn payment claims are different balances. Search payments by recipient or source and filter their status. Settlement pays the fixed recipient and amount already approved; recording an external payment statement does not settle an obligation. Plus shows deposit destinations and the exact memo. Your balances opens withdrawals, including full fractional claims or stake; offboarding does not remove existing exit rights. Reports keep reconciliation warnings and export the full report rather than the filtered screen.
+
+Documents separates the Library from Constitution & legal. Public titles and file names identify records; encrypted titles stay private. Add document opens a file upload or the small structured JSON editor. IDs are generated internally. Add version starts from a selected existing document and preserves every previous version. New documents and revisions have separate drafts. Files are uploaded and verified before their record is signed; interrupted uploads can be resumed from the same request. Storage details and integrity references remain under details disclosures.
+
+Constitution & legal manages official versions. Plus registers an existing library document by title. Administrator approval or a member vote follows the DAO's chosen rules; member acceptance refers to the exact adopted version, and a later adoption requires a new review. Registration is separate from publishing or adopting a document.
+
+Members separates the Directory from membership Applications. Search names, filter roles/status and switch cards/list views. Administrators open Manage on a selected person to change current roles or credits, reactivate/deactivate them or prepare private access. Removing an administrator from a private DAO retains the existing handover checks. Executive titles and sign-in pairings remain separate from these permissions.
+
+Plus follows the admission policy: Add member for administrator admission, Sponsor application for endorsements. Paste the applicant's public join identity copied from their Account page and verify it with them; a recovery kit is never needed. Applications choose a published document version by title, and existing applications offer a contextual renewal action. Joining, voting credits and private document access remain distinct approvals.

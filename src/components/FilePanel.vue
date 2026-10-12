@@ -24,9 +24,11 @@ const props = defineProps<{
   dao: DaoSummary;
   member: UserMembership | undefined;
   content: DaoContent | undefined;
+  selectedDocumentId?: string;
+  newDocument?: boolean;
 }>();
 const signerReady = computed(() => canSignMember(props.member));
-const emit = defineEmits<{ published: [] }>();
+const emit = defineEmits<{ published: []; busy: [busy: boolean]; pending: [pending: boolean] }>();
 const workspace = useWorkspace();
 const configured = ref(false);
 const localFixture = ref(false);
@@ -47,6 +49,19 @@ const upload = shallowRef<HostedUpload>();
 const receipt = ref<HostedDocument>();
 const requestId = ref('');
 const storedRequestId = ref('');
+watch(busy, (value) => emit('busy', value));
+watch(
+  () => !!storedRequestId.value || !!receipt.value,
+  (value) => emit('pending', value),
+  { immediate: true },
+);
+watch(
+  () => props.selectedDocumentId,
+  (value) => {
+    if (!storedRequestId.value && !receipt.value) documentId.value = value ?? '';
+  },
+  { immediate: true },
+);
 const privateDao = computed(() => props.dao.privacy !== 'public');
 const currentKey = computed(() =>
   props.content?.keyGrants.some(
@@ -152,6 +167,7 @@ async function send() {
       const previous = props.content.documents
         .filter((document) => document.document_id === id)
         .reduce((version, document) => Math.max(version, document.version), 0);
+      if (props.newDocument && previous) throw new Error('DOCUMENT_ID_CONFLICT');
       const version = previous + 1;
       const metadata = FileMetadataSchema.parse({
         version: 1,
@@ -294,7 +310,7 @@ async function publish() {
 </script>
 <template>
   <section class="panel narrow">
-    <h3>{{ privateDao ? 'Publish an encrypted file' : 'Publish a file to IPFS' }}</h3>
+    <h3>{{ privateDao ? 'Upload an encrypted file' : 'Upload a file' }}</h3>
     <StorageUsagePanel
       v-if="configured && member?.active"
       :dao="dao.reference"
@@ -328,15 +344,7 @@ async function publish() {
         "
         @submit.prevent="send"
       >
-        <label for="file-document-id">File document ID</label
-        ><input
-          id="file-document-id"
-          v-model="documentId"
-          inputmode="numeric"
-          pattern="[1-9][0-9]*"
-          required
-          :disabled="busy"
-        /><label for="document-file">Document file</label
+        <label for="document-file">Document file</label
         ><input
           id="document-file"
           ref="fileInput"
@@ -366,27 +374,33 @@ async function publish() {
           Use the same request to avoid another reservation. After a reload, check completion below.
         </p>
       </div>
-      <form v-if="!receipt" @submit.prevent="check">
-        <label for="upload-request-id">Upload request ID</label
-        ><input id="upload-request-id" v-model="requestId" required :disabled="busy" /><button
-          class="secondary"
-          :disabled="busy || !workspace.account || !requestId"
-        >
-          Check upload completion
-        </button>
-      </form>
+      <details v-if="!receipt">
+        <summary>Resume an earlier upload</summary>
+        <form v-if="!receipt" @submit.prevent="check">
+          <label for="upload-request-id">Upload request ID</label
+          ><input id="upload-request-id" v-model="requestId" required :disabled="busy" /><button
+            class="secondary"
+            :disabled="busy || !workspace.account || !requestId"
+          >
+            Check upload completion
+          </button>
+        </form>
+      </details>
       <div v-if="receipt">
         <h4>Verified file record</h4>
-        <dl>
-          <dt>Document</dt>
-          <dd>{{ receipt.documentId }} · version {{ receipt.version }}</dd>
-          <dt>Stored bytes</dt>
-          <dd>{{ receipt.bytes }}</dd>
-          <dt>Encryption epoch</dt>
-          <dd>{{ receipt.keyEpoch }}</dd>
-          <dt>IPFS</dt>
-          <dd class="mono wrap">{{ receipt.cid }}</dd>
-        </dl>
+        <details>
+          <summary>Storage and record details</summary>
+          <dl>
+            <dt>Document</dt>
+            <dd>{{ receipt.documentId }} · version {{ receipt.version }}</dd>
+            <dt>Stored bytes</dt>
+            <dd>{{ receipt.bytes }}</dd>
+            <dt>Encryption epoch</dt>
+            <dd>{{ receipt.keyEpoch }}</dd>
+            <dt>IPFS</dt>
+            <dd class="mono wrap">{{ receipt.cid }}</dd>
+          </dl>
+        </details>
         <button :disabled="busy || !member?.active || !signerReady" @click="publish">
           Sign and publish file record
         </button>

@@ -23,6 +23,11 @@ import {
 } from '../auth/session';
 import { decodeStoredBytes, verifyStoredFile, downloadFile } from '../content/files';
 import FilePanel from './FilePanel.vue';
+import WorkspaceDialog from './WorkspaceDialog.vue';
+import WorkspaceActions from './WorkspaceActions.vue';
+import WorkspaceTabs from './WorkspaceTabs.vue';
+import { documentLabel } from '../content/document-labels';
+import { newDocumentId } from '../content/document-identity';
 import AdmissionPanel from './AdmissionPanel.vue';
 import MemberDirectory from './MemberDirectory.vue';
 import GoverningDocumentsPanel from './GoverningDocumentsPanel.vue';
@@ -45,6 +50,77 @@ const busy = ref(false);
 const error = ref('');
 const documentId = ref('');
 const value = ref('');
+const activeTab = ref(props.section === 'documents' ? 'library' : 'directory');
+const search = ref(''),
+  documentType = ref('');
+const documentPopup = ref(false),
+  rolePopup = ref(false),
+  format = ref('file');
+const documentTarget = ref(''),
+  uploadBusy = ref(false),
+  uploadPending = ref(false);
+const admissionAllowed = ref(false),
+  admissionLabel = ref('Add member');
+const admissionRequest = ref(0),
+  registrationRequest = ref(0);
+const memberNames = ref(new Map<string, string>());
+const documentDrafts = new Map<string, { id: string; value: string; format: string }>();
+const documentTargetLabel = computed(() => {
+  const row = latest.value.find((item) => item.document_id === documentTarget.value);
+  return row ? documentLabel(row) : 'the selected document';
+});
+const documentPopupTitle = computed(() =>
+  documentTarget.value ? 'Add document version' : 'Add document',
+);
+const filteredDocuments = computed(() =>
+  latest.value.filter(
+    (row) =>
+      documentLabel(row).toLowerCase().includes(search.value.trim().toLowerCase()) &&
+      (!documentType.value || (documentType.value === 'file' ? !!row.cid : !row.cid)),
+  ),
+);
+function memberName(id: string) {
+  return (
+    memberNames.value.get(id) ||
+    content.value?.members.find((row) => row.id === id)?.native_account ||
+    `Member ${id}`
+  );
+}
+function manageMember(id: string) {
+  target.value = id;
+  rolePopup.value = true;
+}
+function openDocument(row?: DaoContent['documents'][number]) {
+  if (!content.value || uploadBusy.value) return;
+  if (uploadPending.value) {
+    if (row && row.document_id !== documentId.value)
+      error.value = 'Finish the pending file upload before starting another document.';
+    documentPopup.value = true;
+    return;
+  }
+  if (documentId.value)
+    documentDrafts.set(documentTarget.value, {
+      id: documentId.value,
+      value: value.value,
+      format: format.value,
+    });
+  const targetId = row?.document_id ?? '';
+  const saved = documentDrafts.get(targetId);
+  documentTarget.value = targetId;
+  documentId.value = saved?.id ?? row?.document_id ?? newDocumentId(content.value.documents);
+  format.value = saved?.format ?? (row && !row.cid ? 'json' : 'file');
+  value.value = saved?.value ?? (row && !row.cid && row.envelope_version === 0 ? row.metadata : '');
+  documentPopup.value = true;
+}
+async function filePublished() {
+  if (await refresh()) {
+    documentDrafts.delete(documentTarget.value);
+    documentPopup.value = false;
+    documentId.value = '';
+    documentTarget.value = '';
+  }
+}
+
 const target = ref('');
 const quantity = ref('0');
 const admin = ref(false);
@@ -181,12 +257,19 @@ async function refresh(): Promise<boolean> {
 }
 watch(
   () => props.section,
-  () => void refresh(),
+  (section) => {
+    activeTab.value = section === 'documents' ? 'library' : 'directory';
+    documentPopup.value = false;
+    rolePopup.value = false;
+    error.value = '';
+    void refresh();
+  },
 );
 watch(vaultUnlocked, (unlocked) => {
   if (!unlocked) {
     decrypted.value.clear();
     verifiedEpochs.value.clear();
+    if (privateDao.value) documentDrafts.clear();
     if (privateDao.value) value.value = '';
   }
 });
@@ -195,12 +278,14 @@ onBeforeUnmount(() => {
   generation++;
   decrypted.value.clear();
   value.value = '';
+  documentDrafts.clear();
 });
 watch(
   () => props.member?.active,
   (active) => {
     if (!active) {
       decrypted.value.clear();
+      documentDrafts.clear();
       if (privateDao.value) value.value = '';
     }
   },
@@ -216,6 +301,11 @@ watch(
     decrypted.value.clear();
     value.value = '';
     documentId.value = '';
+    documentPopup.value = false;
+    rolePopup.value = false;
+    documentTarget.value = '';
+    documentDrafts.clear();
+    memberNames.value.clear();
     target.value = '';
     quantity.value = '0';
     admin.value = false;
@@ -271,6 +361,7 @@ async function publish() {
       return;
     }
     const previous = latest.value.find((d) => d.document_id === id);
+    if (!documentTarget.value && previous) throw new Error('DOCUMENT_ID_CONFLICT');
     const version = (previous?.version ?? 0) + 1;
     const stored = privateDao.value
       ? await encryptDaoJson(
@@ -305,8 +396,12 @@ async function publish() {
       envelope_version: privateDao.value ? 1 : 0,
       key_epoch: privateDao.value ? currentEpoch.value : '0',
     });
+    if (disposed || domain !== context.value) return;
+    documentDrafts.delete(documentTarget.value);
     documentId.value = '';
+    documentTarget.value = '';
     value.value = '';
+    documentPopup.value = false;
   } catch (cause) {
     error.value = friendlyError(cause);
   } finally {
@@ -655,17 +750,62 @@ async function openManagedVersion(
 }
 </script>
 <template>
-  <div class="section-toolbar">
-    <h2>{{ section === 'documents' ? 'Documents' : 'Members and permissions' }}</h2>
-    <RouterLink class="help-link" :to="`/docs/${section}`">Help ↗</RouterLink>
+  <div v-if="section === 'documents'" class="workspace-tools-toolbar">
+    <WorkspaceTabs
+      v-model="activeTab"
+      prefix="documents"
+      label="Document sections"
+      :items="[
+        { value: 'library', label: 'Library' },
+        { value: 'legal', label: 'Constitution & legal' },
+      ]"
+    />
+    <label v-if="activeTab === 'library'" class="workspace-tools-search"
+      ><span class="sr-only">Search documents</span
+      ><input v-model="search" type="search" placeholder="Document title or file name…"
+    /></label>
+    <label v-if="activeTab === 'library'" class="workspace-tools-filter"
+      ><span class="sr-only">Document type</span
+      ><select v-model="documentType">
+        <option value="">All documents</option>
+        <option value="file">Files</option>
+        <option value="json">Structured documents</option>
+      </select></label
+    >
+    <WorkspaceActions
+      :add-label="activeTab === 'legal' ? 'Register managed document' : 'Add document'"
+      :help-to="activeTab === 'legal' ? '/docs/governing-documents' : '/docs/documents'"
+      :disabled="
+        busy || uploadBusy || !content || (activeTab === 'legal' ? !isAdmin : !member?.active)
+      "
+      @add="activeTab === 'legal' ? registrationRequest++ : openDocument()"
+    />
+  </div>
+  <div v-else class="workspace-tools-toolbar">
+    <WorkspaceTabs
+      v-model="activeTab"
+      prefix="members"
+      label="Member sections"
+      :items="[
+        { value: 'directory', label: 'Directory' },
+        { value: 'applications', label: 'Applications' },
+      ]"
+    /><WorkspaceActions
+      v-if="activeTab === 'applications'"
+      :add-label="admissionLabel"
+      help-to="/docs/members"
+      :disabled="busy || !admissionAllowed"
+      @add="admissionRequest++"
+    />
   </div>
   <p v-if="error" class="alert" role="alert">{{ error }}</p>
-  <section
+  <details
+    :open="!privateIdentityReady || !hasCurrentKey"
     v-if="privateDao && member?.active && content"
     class="panel narrow"
     aria-labelledby="private-access-title"
   >
-    <h3 id="private-access-title">Private data access</h3>
+    <summary id="private-access-title">Private data access</summary>
     <button class="text-button" :disabled="busy" @click="refresh">Refresh private access</button>
     <p v-if="privatePolicy">
       New members receive
@@ -721,222 +861,311 @@ async function openManagedVersion(
         retrying.
       </p>
     </template>
-    <p v-if="accessNote" role="status">{{ accessNote }}</p>
-  </section>
-  <template v-if="section === 'documents'"
-    ><GoverningDocumentsPanel
-      :key="context"
-      :dao="dao"
-      :member="member"
-      :content="content"
-      :open-version="openManagedVersion"
-      @updated="refresh"
-    />
-    <section v-if="privateDao" class="panel narrow">
-      <h3>Encryption epoch {{ currentEpoch }}</h3>
-      <p v-if="hasCurrentKey">Encryption epoch ready</p>
-      <p v-else-if="!member?.active">
-        First obtain an active membership through Members, then ask an administrator for document
-        access.
-      </p>
-      <p v-else-if="!vaultUnlocked">Unlock your account to decrypt documents.</p>
-      <p v-else-if="epochReady">Ask an administrator for a key grant for this epoch.</p>
-      <button v-else-if="isAdmin" :disabled="busy || !vaultUnlocked" @click="initialize">
-        Initialize encryption epoch
-      </button>
-      <p>
-        Ciphertext, memberships, votes and financial metadata remain public. Rotating a key protects
-        future content; old access remains possible.
-      </p>
-      <button
-        v-if="isAdmin && epochReady"
-        class="secondary"
-        :disabled="busy || !vaultUnlocked"
-        @click="rotate"
-      >
-        Rotate future document key
-      </button>
-    </section>
-    <section
-      v-if="member?.active && signerReady && (!privateDao || (vaultUnlocked && hasCurrentKey))"
-      class="panel narrow"
+  </details>
+  <p v-if="accessNote" role="status">{{ accessNote }}</p>
+
+  <template v-if="section === 'documents'">
+    <div
+      v-show="activeTab === 'legal'"
+      id="documents-legal"
+      role="tabpanel"
+      aria-labelledby="documents-tab-legal"
     >
-      <h3>{{ privateDao ? 'Publish encrypted JSON' : 'Publish small JSON' }}</h3>
-      <p>
-        Up to 4096 bytes live directly in the contract. Publishing a new version preserves the
-        previous version.
-      </p>
-      <form @submit.prevent="publish">
-        <label for="document-id">Document ID</label
-        ><input
-          id="document-id"
-          v-model="documentId"
-          inputmode="numeric"
-          pattern="[1-9][0-9]*"
-          required
-        /><label for="json-value">JSON content</label
-        ><textarea id="json-value" v-model="value" rows="5" required spellcheck="false"></textarea
-        ><button :disabled="busy || !signerReady || (privateDao && !vaultUnlocked)">
-          {{ busy ? 'Publishing…' : privateDao ? 'Encrypt and publish JSON' : 'Publish JSON' }}
+      <GoverningDocumentsPanel
+        :key="context"
+        :dao="dao"
+        :member="member"
+        :content="content"
+        :open-version="openManagedVersion"
+        :registration-request="registrationRequest"
+        @updated="refresh"
+      />
+    </div>
+    <div
+      v-show="activeTab === 'library'"
+      id="documents-library"
+      role="tabpanel"
+      aria-labelledby="documents-tab-library"
+    >
+      <details v-if="privateDao" class="panel narrow">
+        <summary>Document access settings</summary>
+        <p>Encryption epoch {{ currentEpoch }}</p>
+        <p v-if="hasCurrentKey">Encryption epoch ready</p>
+        <p v-else-if="!member?.active">
+          First obtain an active membership through Members, then ask an administrator for document
+          access.
+        </p>
+        <p v-else-if="!vaultUnlocked">Unlock your account to decrypt documents.</p>
+        <p v-else-if="epochReady">Ask an administrator for a key grant for this epoch.</p>
+        <button v-else-if="isAdmin" :disabled="busy || !vaultUnlocked" @click="initialize">
+          Initialize encryption epoch
         </button>
-      </form>
-    </section>
-    <p v-else-if="dao.privacy !== 'public'" class="notice">
-      Encrypted documents require a key grant for the selected DAO epoch. The ciphertext and its
-      record remain publicly visible.
-    </p>
-    <FilePanel
-      v-if="member"
+        <p>
+          Ciphertext, memberships, votes and financial metadata remain public. Rotating a key
+          protects future content; old access remains possible.
+        </p>
+        <button
+          v-if="isAdmin && epochReady"
+          class="secondary"
+          :disabled="busy || !vaultUnlocked"
+          @click="rotate"
+        >
+          Rotate future document key
+        </button>
+      </details>
+      <div class="dao-grid">
+        <article v-for="document in filteredDocuments" :key="document.id" class="panel">
+          <div class="panel-heading">
+            <h2>{{ documentLabel(document) }}</h2>
+            <span class="pill">{{ document.envelope_version ? 'Encrypted' : 'Public' }}</span>
+          </div>
+          <p class="muted">{{ document.bytes }} bytes · {{ memberName(document.author) }}</p>
+          <details>
+            <summary>Content and download</summary>
+            <pre v-if="!document.cid && document.envelope_version === 0" class="wrap">{{
+              document.metadata
+            }}</pre>
+            <template v-else-if="document.envelope_version === 1 && !document.cid"
+              ><p>Encrypted · epoch {{ document.key_epoch }}</p>
+              <button
+                :disabled="busy || !vaultUnlocked || !member?.active"
+                @click="decrypt(document)"
+              >
+                Decrypt document {{ document.document_id }}
+              </button>
+              <pre v-if="decrypted.has(document.id)" class="wrap">{{
+                decrypted.get(document.id)
+              }}</pre></template
+            ><template v-else
+              ><p class="mono wrap">IPFS: {{ document.cid }}</p>
+              <button
+                :disabled="busy || (document.envelope_version === 1 && (!vaultUnlocked || !member))"
+                @click="retrieve(document)"
+              >
+                {{ document.envelope_version === 1 ? 'Decrypt and download' : 'Download' }} document
+                {{ document.document_id }}
+              </button></template
+            >
+          </details>
+          <button
+            v-if="member?.active"
+            type="button"
+            class="secondary"
+            :disabled="busy || uploadBusy"
+            @click="openDocument(document)"
+          >
+            Add version
+          </button>
+          <details>
+            <summary>Version history &amp; integrity</summary>
+            <div
+              v-for="version in content?.documents.filter(
+                (d) => d.document_id === document.document_id,
+              )"
+              :key="version.id"
+              class="mono wrap"
+            >
+              <p>Version {{ version.version }} · {{ version.commitment }}</p>
+              <pre v-if="!version.cid && version.envelope_version === 0" class="wrap">{{
+                version.metadata
+              }}</pre>
+              <template v-else-if="!version.cid && version.envelope_version === 1"
+                ><button
+                  class="secondary"
+                  :disabled="busy || !vaultUnlocked || !member?.active"
+                  @click="decrypt(version)"
+                >
+                  Decrypt document {{ version.document_id }} version {{ version.version }}
+                </button>
+                <pre v-if="decrypted.has(version.id)" class="wrap">{{
+                  decrypted.get(version.id)
+                }}</pre>
+              </template>
+              <button
+                v-if="version.cid"
+                class="secondary"
+                :disabled="busy || (version.envelope_version === 1 && (!vaultUnlocked || !member))"
+                @click="retrieve(version)"
+              >
+                Download document {{ version.document_id }} version {{ version.version }}
+              </button>
+            </div>
+          </details>
+        </article>
+      </div>
+      <p v-if="content && !latest.length" class="muted">No documents published yet.</p>
+      <p v-else-if="content && !filteredDocuments.length" class="empty-state">
+        No documents match these filters.
+      </p>
+    </div>
+    <WorkspaceDialog
+      v-model:open="documentPopup"
+      :title="documentPopupTitle"
+      :busy="busy || uploadBusy"
+    >
+      <p v-if="documentTarget">
+        New version of {{ documentTargetLabel }}. Previous versions are retained.
+      </p>
+      <label for="document-format">Document format</label
+      ><select
+        id="document-format"
+        v-model="format"
+        :disabled="busy || uploadBusy || uploadPending"
+      >
+        <option value="file">File upload</option>
+        <option value="json">Small structured document (JSON)</option>
+      </select>
+      <template v-if="format === 'json'"
+        ><p class="field-help">
+          Up to 4096 stored bytes.
+          {{ privateDao ? 'Content is encrypted before publication.' : 'Content will be public.' }}
+        </p>
+        <form @submit.prevent="publish">
+          <label for="json-value">JSON content</label
+          ><textarea
+            :disabled="busy"
+            id="json-value"
+            v-model="value"
+            rows="5"
+            required
+            spellcheck="false"
+          ></textarea
+          ><button :disabled="busy || !signerReady || (privateDao && !vaultUnlocked)">
+            {{ busy ? 'Publishing…' : privateDao ? 'Encrypt and publish JSON' : 'Publish JSON' }}
+          </button>
+        </form>
+      </template>
+      <FilePanel
+        v-if="member"
+        v-show="format === 'file'"
+        :key="context"
+        :dao="dao"
+        :member="member"
+        :content="content"
+        :selected-document-id="documentId"
+        :new-document="!documentTarget"
+        @busy="uploadBusy = $event"
+        @pending="uploadPending = $event"
+        @published="filePublished"
+      />
+
+      <p v-if="!signerReady" class="notice">Choose an authorized signer before publishing.</p>
+      <p v-if="error" class="alert" role="alert">{{ error }}</p>
+    </WorkspaceDialog>
+  </template>
+  <template v-else>
+    <div
+      v-show="activeTab === 'directory'"
+      id="members-directory"
+      role="tabpanel"
+      aria-labelledby="members-tab-directory"
+    >
+      <MemberDirectory
+        v-if="content"
+        :dao="dao.reference"
+        :members="content.members"
+        :can-manage="isAdmin"
+        @names="memberNames = $event"
+        @manage="manageMember"
+      >
+        <template #toolbar-actions
+          ><WorkspaceActions
+            :add-label="admissionLabel"
+            help-to="/docs/members"
+            :disabled="busy || !admissionAllowed"
+            @add="admissionRequest++"
+        /></template>
+      </MemberDirectory>
+    </div>
+    <AdmissionPanel
       :key="context"
       :dao="dao"
       :member="member"
       :content="content"
-      @published="refresh"
+      :create-request="admissionRequest"
+      @can-create="admissionAllowed = $event"
+      @creation-label="admissionLabel = $event"
+      :show-applications="activeTab === 'applications'"
+      @admitted="onAdmitted"
     />
-    <div class="dao-grid">
-      <article v-for="document in latest" :key="document.id" class="panel">
-        <div class="panel-heading">
-          <h3>Document {{ document.document_id }}</h3>
-          <span class="pill">Version {{ document.version }}</span>
-        </div>
-        <p class="muted">{{ document.bytes }} bytes · member {{ document.author }}</p>
-        <pre v-if="!document.cid && document.envelope_version === 0" class="wrap">{{
-          document.metadata
-        }}</pre>
-        <template v-else-if="document.envelope_version === 1 && !document.cid"
-          ><p>Encrypted · epoch {{ document.key_epoch }}</p>
-          <button :disabled="busy || !vaultUnlocked || !member?.active" @click="decrypt(document)">
-            Decrypt document {{ document.document_id }}
+    <WorkspaceDialog v-model:open="rolePopup" :title="`Manage ${memberName(target)}`" :busy="busy">
+      <section v-if="isAdmin" class="panel narrow">
+        <p>Review {{ memberName(target) }}’s roles, voting credits and document access.</p>
+        <section v-if="privateDao && selected?.active && selected.admin" class="handover-check">
+          <h4>Prepare an administrator handover</h4>
+          <p>
+            Another active administrator needs every recorded private epoch before this
+            administrator leaves or is demoted.
+          </p>
+          <p v-if="!successors.length" class="notice">
+            No remaining administrator has every recorded grant. Prepare their private access first.
+          </p>
+          <p
+            v-if="!successors.length && privatePolicy?.historyPolicy === 'from-join'"
+            class="field-help"
+          >
+            Members who joined later cannot receive earlier epochs under this DAO's history policy.
+            Keep an administrator who already has that history.
+          </p>
+          <label for="private-successor">Administrator keeping private access</label>
+          <select id="private-successor" v-model="successor" :disabled="busy">
+            <option value="" disabled>Choose an administrator with all grants</option>
+            <option v-for="person in successors" :key="person.id" :value="person.id">
+              {{ memberName(person.id) }}
+            </option>
+          </select>
+          <label class="checkbox"
+            ><input
+              v-model="handoverConfirmed"
+              type="checkbox"
+              :disabled="busy || !successor"
+            />This administrator verified private access and tested account recovery on another
+            device.</label
+          >
+          <p class="field-help">
+            After departure, the remaining administrator prepares the new epoch and grants it to
+            active members.
+          </p>
+        </section>
+        <button
+          v-if="selected"
+          class="secondary"
+          :disabled="busy || !signerReady"
+          @click="activate"
+        >
+          {{ selected.active ? 'Deactivate member' : 'Reactivate member' }}
+        </button>
+        <form v-if="privateDao" @submit.prevent="share">
+          <label for="grant-epoch">Encryption epoch to grant</label
+          ><select id="grant-epoch" v-model="epochChoice">
+            <option v-for="epoch in content?.epochs" :key="epoch.epoch" :value="epoch.epoch">
+              Epoch {{ epoch.epoch }}
+            </option></select
+          ><button :disabled="busy || !signerReady || !vaultUnlocked || !selected?.active">
+            Grant epoch access
           </button>
-          <pre v-if="decrypted.has(document.id)" class="wrap">{{
-            decrypted.get(document.id)
-          }}</pre></template
-        ><template v-else
-          ><p class="mono wrap">IPFS: {{ document.cid }}</p>
-          <button
-            :disabled="busy || (document.envelope_version === 1 && (!vaultUnlocked || !member))"
-            @click="retrieve(document)"
-          >
-            {{ document.envelope_version === 1 ? 'Decrypt and download' : 'Download' }} document
-            {{ document.document_id }}
-          </button></template
-        >
-        <details>
-          <summary>Version history &amp; integrity</summary>
-          <div
-            v-for="version in content?.documents.filter(
-              (d) => d.document_id === document.document_id,
-            )"
-            :key="version.id"
-            class="mono wrap"
-          >
-            <p>Version {{ version.version }} · {{ version.commitment }}</p>
-            <pre v-if="!version.cid && version.envelope_version === 0" class="wrap">{{
-              version.metadata
-            }}</pre>
-            <template v-else-if="!version.cid && version.envelope_version === 1"
-              ><button
-                class="secondary"
-                :disabled="busy || !vaultUnlocked || !member?.active"
-                @click="decrypt(version)"
-              >
-                Decrypt document {{ version.document_id }} version {{ version.version }}
-              </button>
-              <pre v-if="decrypted.has(version.id)" class="wrap">{{
-                decrypted.get(version.id)
-              }}</pre>
-            </template>
-            <button
-              v-if="version.cid"
-              class="secondary"
-              :disabled="busy || (version.envelope_version === 1 && (!vaultUnlocked || !member))"
-              @click="retrieve(version)"
-            >
-              Download document {{ version.document_id }} version {{ version.version }}
-            </button>
-          </div>
-        </details>
-      </article>
-    </div>
-    <p v-if="content && !latest.length" class="muted">No documents published yet.</p></template
-  >
-  <template v-else
-    ><AdmissionPanel :key="context" :dao="dao" :member="member" @admitted="onAdmitted" />
-    <MemberDirectory v-if="content" :dao="dao.reference" :members="content.members" />
-    <section v-if="isAdmin" class="panel narrow">
-      <h3>Manage roles and governance credits</h3>
-      <label for="member-target">Member</label
-      ><select id="member-target" v-model="target" :disabled="busy">
-        <option value="" disabled>Choose a member</option>
-        <option v-for="row in content?.members" :key="row.id" :value="row.id">
-          Member {{ row.id }}
-        </option>
-      </select>
-      <section v-if="privateDao && selected?.active && selected.admin" class="handover-check">
-        <h4>Prepare an administrator handover</h4>
-        <p>
-          Another active administrator needs every recorded private epoch before this administrator
-          leaves or is demoted.
-        </p>
-        <p v-if="!successors.length" class="notice">
-          No remaining administrator has every recorded grant. Prepare their private access first.
-        </p>
-        <p
-          v-if="!successors.length && privatePolicy?.historyPolicy === 'from-join'"
-          class="field-help"
-        >
-          Members who joined later cannot receive earlier epochs under this DAO's history policy.
-          Keep an administrator who already has that history.
-        </p>
-        <label for="private-successor">Administrator keeping private access</label>
-        <select id="private-successor" v-model="successor" :disabled="busy">
-          <option value="" disabled>Choose an administrator with all grants</option>
-          <option v-for="person in successors" :key="person.id" :value="person.id">
-            Member {{ person.id }}
-          </option>
-        </select>
-        <label class="checkbox"
-          ><input v-model="handoverConfirmed" type="checkbox" :disabled="busy || !successor" />This
-          administrator verified private access and tested account recovery on another
-          device.</label
-        >
-        <p class="field-help">
-          After departure, the remaining administrator prepares the new epoch and grants it to
-          active members.
-        </p>
+        </form>
+        <form @submit.prevent="roles">
+          <label class="checkbox"><input v-model="admin" type="checkbox" />Administrator</label
+          ><label class="checkbox"><input v-model="reviewer" type="checkbox" />Reviewer</label
+          ><button :disabled="busy || !signerReady || !selected">Save roles</button>
+        </form>
+        <form @submit.prevent="credits">
+          <label for="credits">Governance credits</label
+          ><input
+            id="credits"
+            v-model="quantity"
+            inputmode="numeric"
+            pattern="(0|[1-9][0-9]*)"
+            required
+          />
+          <p class="field-help">Credits cannot change while a ballot has locked voting weights.</p>
+          <button class="secondary" :disabled="busy || !signerReady || !selected">
+            Set governance credits
+          </button>
+        </form>
       </section>
-      <button v-if="selected" class="secondary" :disabled="busy || !signerReady" @click="activate">
-        {{ selected.active ? 'Deactivate member' : 'Reactivate member' }}
-      </button>
-      <form v-if="privateDao" @submit.prevent="share">
-        <label for="grant-epoch">Encryption epoch to grant</label
-        ><select id="grant-epoch" v-model="epochChoice">
-          <option v-for="epoch in content?.epochs" :key="epoch.epoch" :value="epoch.epoch">
-            Epoch {{ epoch.epoch }}
-          </option></select
-        ><button :disabled="busy || !signerReady || !vaultUnlocked || !selected?.active">
-          Grant epoch access
-        </button>
-      </form>
-      <form @submit.prevent="roles">
-        <label class="checkbox"><input v-model="admin" type="checkbox" />Administrator</label
-        ><label class="checkbox"><input v-model="reviewer" type="checkbox" />Reviewer</label
-        ><button :disabled="busy || !signerReady || !selected">Save roles</button>
-      </form>
-      <form @submit.prevent="credits">
-        <label for="credits">Governance credits</label
-        ><input
-          id="credits"
-          v-model="quantity"
-          inputmode="numeric"
-          pattern="(0|[1-9][0-9]*)"
-          required
-        />
-        <p class="field-help">Credits cannot change while a ballot has locked voting weights.</p>
-        <button class="secondary" :disabled="busy || !signerReady || !selected">
-          Set governance credits
-        </button>
-      </form>
-    </section></template
-  >
+      <p v-if="error" class="alert" role="alert">{{ error }}</p>
+    </WorkspaceDialog>
+  </template>
 </template>

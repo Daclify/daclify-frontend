@@ -2,7 +2,7 @@
 import { computed, onUnmounted, ref, watch } from 'vue';
 import { formatReportAmount, type DaoSummary, type SpendingReport } from '@daclify/core-protocol';
 import { api, friendlyError } from '../api/client';
-const props = defineProps<{ dao: DaoSummary }>();
+const props = defineProps<{ dao: DaoSummary; memberNames?: Map<string, string> }>();
 const report = ref<SpendingReport>(),
   busy = ref(false),
   error = ref(''),
@@ -148,11 +148,17 @@ async function csv() {
             <option value="other">Other</option>
           </select></label
         ><label
-          >Beneficiary member<input
-            v-model="beneficiary"
-            inputmode="numeric"
-            placeholder="All members"
-        /></label>
+          >Recipient<select v-model="beneficiary">
+            <option value="">All recipients</option>
+            <option
+              v-for="id in [...new Set(report.obligations.map((row) => row.beneficiary))]"
+              :key="id"
+              :value="id"
+            >
+              {{ memberNames?.get(id) ?? `Member ${id}` }}
+            </option>
+          </select></label
+        >
       </div>
       <p role="status">
         {{ rows.length }} of {{ report.obligations.length }} obligations. Exports include the full
@@ -175,7 +181,7 @@ async function csv() {
           <tbody>
             <tr v-for="row in rows" :key="row.id">
               <th scope="row">{{ row.source }} / {{ row.sourceId }}</th>
-              <td>Member {{ row.beneficiary }}</td>
+              <td>{{ memberNames?.get(row.beneficiary) ?? `Member ${row.beneficiary}` }}</td>
               <td>{{ amount(row.amount) }}</td>
               <td>
                 {{ row.state }} · {{ row.settlement

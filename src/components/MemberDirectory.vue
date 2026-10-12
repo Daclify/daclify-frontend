@@ -10,7 +10,8 @@ import {
 import { api, friendlyError } from '../api/client';
 import { useWorkspace } from '../state/workspace';
 import PeopleGrid from './PeopleGrid.vue';
-const props = defineProps<{ dao: DaoRef; members: DaoContent['members'] }>();
+const props = defineProps<{ dao: DaoRef; members: DaoContent['members']; canManage?: boolean }>();
+const emit = defineEmits<{ names: [names: Map<string, string>]; manage: [id: string] }>();
 const state = useWorkspace(),
   profiles = ref<PublicPerson[]>([]),
   governance = ref<GovernanceState>(),
@@ -27,7 +28,12 @@ watch(
     void api
       .governance(props.dao.daoId)
       .then((value) => {
-        if (!disposed && request === generation) governance.value = value;
+        if (
+          !disposed &&
+          request === generation &&
+          daoPaymentKey(value.dao) === daoPaymentKey(props.dao)
+        )
+          governance.value = value;
       })
       .catch(() => {});
     try {
@@ -36,6 +42,8 @@ watch(
       do {
         const page = await api.people({ daoId: props.dao.daoId, ...(after ? { after } : {}) });
         if (disposed || request !== generation) return;
+        if (page.profiles.some((person) => daoPaymentKey(person.dao) !== daoPaymentKey(props.dao)))
+          throw new Error('DAO_REFERENCE');
         profiles.value.push(...page.profiles);
         after = page.next ?? undefined;
         if (after && seen.has(after)) throw new Error('CHAIN_RESPONSE_INVALID');
@@ -56,7 +64,7 @@ const people = computed(() =>
     const profile = profiles.value.find((person) => person.memberId === member.id)?.profile;
     return {
       key: member.id,
-      label: profile?.name || member.native_account || `Member ${member.id}`,
+      label: profile?.fullName || profile?.name || member.native_account || `Member ${member.id}`,
       profile,
       to: `/users/${props.dao.daoId}/${member.id}`,
       active: member.active,
@@ -78,10 +86,27 @@ const people = computed(() =>
     };
   }),
 );
+watch(people, (rows) => emit('names', new Map(rows.map((person) => [person.key, person.label]))), {
+  immediate: true,
+});
 </script>
 <template>
   <p v-if="error" class="notice">
     Public profiles are unavailable. Member records are still shown.
   </p>
-  <PeopleGrid :people="people" members />
+  <PeopleGrid :people="people" members>
+    <template #toolbar-actions><slot name="toolbar-actions" /></template>
+    <template #person-actions="{ person }"
+      ><button
+        v-if="canManage"
+        type="button"
+        class="secondary person-direct-link"
+        :aria-label="`Manage ${person.label}`"
+        aria-haspopup="dialog"
+        @click="emit('manage', person.key)"
+      >
+        Manage
+      </button></template
+    >
+  </PeopleGrid>
 </template>

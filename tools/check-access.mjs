@@ -124,10 +124,23 @@ async function component(path) {
   const { descriptor } = parse(readFileSync(root + path, 'utf8'));
   Component.render = compile(descriptor.template.content, {
     prefixIdentifiers: true,
+    hoistStatic: false,
+
     bindingMetadata: compileScript(descriptor, { id: path }).bindings,
   });
   return Component;
 }
+for (const name of [
+  'WorkspaceDialog',
+  'WorkspaceActions',
+  'WorkspaceTabs',
+  'FilePanel',
+  'AdmissionPanel',
+  'MemberDirectory',
+  'PeopleGrid',
+  'PersonCard',
+])
+  await component('/src/components/' + name + '.vue');
 const ContentPanel = await component('/src/components/ContentPanel.vue');
 let releaseA;
 api.content = (id) =>
@@ -194,6 +207,11 @@ const draftProps = reactive({
 });
 const draft = mount(ContentPanel, draftProps);
 await flush();
+const formatChooser = nodes(draft.container).find(
+  (node) => node.tag === 'select' && node.props.id === 'document-format',
+);
+formatChooser.props['onUpdate:modelValue']('json');
+await flush();
 const editor = nodes(draft.container).find(
   (node) => node.tag === 'textarea' && node.props.id === 'json-value',
 );
@@ -227,10 +245,12 @@ const inactive = mount(
   reactive({ dao: dao('1'), member: { ...member('1'), active: false }, section: 'members' }),
 );
 await flush();
-const chooser = nodes(inactive.container).find(
-  (node) => node.tag === 'select' && node.props.id === 'member-target',
+assert.equal(
+  nodes(inactive.container).some(
+    (node) => node.tag === 'button' && String(node.props['aria-label'] ?? '').startsWith('Manage '),
+  ),
+  false,
 );
-chooser?.props['onUpdate:modelValue']('2');
 await flush();
 const rolesButton = nodes(inactive.container).find(
   (node) => node.tag === 'button' && textOf(node).includes('Save roles'),
@@ -387,12 +407,10 @@ const fileProps = reactive({
   dao: dao('1'),
   member: member('1'),
   content: { dao: reference('1'), documents: [], keyGrants: [], epochs: [], members: [] },
+  selectedDocumentId: '1',
 });
 const filePanel = mount(FilePanel, fileProps);
 await flush();
-nodes(filePanel.container)
-  .find((node) => node.props?.id === 'file-document-id')
-  .props['onUpdate:modelValue']('1');
 nodes(filePanel.container)
   .find((node) => node.props?.id === 'document-file')
   .props.onChange({ target: new globalThis.HTMLInputElement(delayedFile) });
@@ -503,7 +521,7 @@ for (const [custody, privacy, allowed] of [
   await flush();
   const before = admitted.length,
     form = nodes(panel.container).find(
-      (node) => node.tag === 'form' && textOf(node).includes('Applicant public join identity'),
+      (node) => node.tag === 'form' && textOf(node).includes('Public join identity'),
     );
   await form.props.onSubmit({ preventDefault() {} });
   await flush();
@@ -561,6 +579,10 @@ api.treasury = (id) =>
     : Promise.resolve(treasuryRows(id));
 const treasuryProps = reactive({ dao: treasuryDao('1'), member: treasuryMember('1') });
 const treasury = mount(TreasuryPanel, treasuryProps);
+await flush();
+nodes(treasury.container)
+  .find((node) => node.tag === 'button' && textOf(node).trim() === 'Withdraw')
+  .props.onClick();
 await flush();
 const preparation = nodes(treasury.container).find(
   (node) => node.tag === 'button' && textOf(node).includes('Prepare receiving wallet'),

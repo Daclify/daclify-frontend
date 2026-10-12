@@ -530,7 +530,9 @@ test('sidebar and hub open the same DAO; members have shared public profiles and
     .getByRole('link', { name: 'Members', exact: true })
     .click();
   await expect(page.getByRole('link', { name: /Alice Adams/ })).toBeVisible();
-  await expect(page.getByText('Non-voting member', { exact: true })).toBeVisible();
+  await expect(
+    page.locator('.person-card .pill').getByText('Non-voting member', { exact: true }),
+  ).toBeVisible();
   await page.getByRole('button', { name: 'List view', exact: true }).click();
   await expect(page.locator('.people-list')).toBeVisible();
   await page.getByRole('link', { name: /Alice Adams/ }).click();
