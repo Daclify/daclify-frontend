@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.15.0-alpha.11 development
+
+Use the native labelled form semantics for the compact Payroll toolbar and check accessibility again after closing its popup. Supersede the initial alpha.10 publication, whose toolbar used an invalid group role.
+
 ## 0.15.0-alpha.10 development
 
 Put Payroll search and the Ongoing schedules checkbox on the same toolbar row as plus and help. Remove the separate filter card and let the toolbar wrap on smaller screens. Preserve filtering, accessible labels and payroll creation behavior.

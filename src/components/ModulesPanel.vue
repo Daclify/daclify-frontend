@@ -1150,7 +1150,6 @@ const selectedProject = computed(() =>
     <form
       v-if="section === 'payroll'"
       class="decide-toolbar payroll-toolbar"
-      role="group"
       aria-label="Payroll tools"
       @submit.prevent
     >

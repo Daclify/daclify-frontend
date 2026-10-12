@@ -165,6 +165,7 @@ test('payroll uses an accessible Add payroll popup with readable members and an 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: test.info().outputPath('add-payroll.png'), fullPage: true });
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   await page.screenshot({ path: test.info().outputPath('payroll-list.png'), fullPage: true });
 });
 
@@ -220,7 +221,7 @@ test('signed payroll checks the code pin, encodes exact installments and preserv
   const held = new Promise<void>((resolve) => {
     release = resolve;
   });
-  const firstDue = new Date(Date.now() + 3600000).toISOString().slice(0, 19);
+  const firstDue = new Date(Date.now() + 3600000).toISOString().slice(0, 16);
   await page.route('**/v1/auth/challenge', (route) => {
     const input = ApiRoutes.challenge.input.parse(route.request().postDataJSON()),
       id = crypto.randomUUID(),
