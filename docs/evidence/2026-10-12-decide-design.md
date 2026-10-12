@@ -22,6 +22,16 @@ The five-file desktop/mobile regression run passed 62 cases; two date-input case
 
 The final `npm run build -- --mode testnet` completed with exit 0 for frontend 0.14.0-alpha.9. An earlier build wrapper ended with signal status 143 after emitting its build output; that run was not accepted as a completed check. Strict Vue/TypeScript also passed after the fixture update. The existing large-chunk warning remains.
 
-Public publication and HTTPS desktop/mobile checks are pending. The public smoke tool now checks both Decide tabs against real API responses and denies visitor scheduling controls.
+The final phone layout was checked again: all five mobile Decide cases passed after widening the duration row. The production build passed again, and the matching candidate was archived from pushed frontend commit `6ced704251389ed88ae252f7e5fb266f4a387b16`. Every tracked source file was compared byte-for-byte with that archive before publication.
+
+## Testnet publication
+
+Frontend 0.14.0-alpha.9 is live at https://testnet.app.daclify.com. The existing frontend publisher built the isolated archived source, retained previous hashed assets and published the entry point last. No API restart or contract operation was performed.
+
+Public index SHA-256 is `e76c94d5db02cdecf46bb0f8b21b63e2c993e065c0353d764053561941ac80bc`. HTTPS index bytes and all 22 referenced entry assets match the tested candidate. The actual API still reports core 0.14.0-alpha.5. [Machine evidence](2026-10-12-decide-design-testnet.json) records the source, versions, timestamp and asset hashes.
+
+`npm run test:testnet-public` passed against real HTTPS pages/API responses at 1440×1000 and 390×844. Both Decide tabs render and switch correctly; visitors have no scheduling controls. Accessibility and horizontal-overflow checks passed, with zero page errors, misplaced API requests or server errors. The existing general account, Hub, Telos, Status/Names and DAO checks passed in the same run.
+
+The operator packet is `/data/daclify-runtime/releases/20261012-decide-design/`, with archived source, candidate build, installation/build/publication logs, local verification logs and public asset evidence. The documentation follow-up changes only this evidence; deployed application source remains the recorded commit.
 
 The paid local API/native research suites and an actual live wallet vote are not part of this UI verification. Their affected label/tab callers were updated; canonical action encoding is checked separately.
