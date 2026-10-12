@@ -52,6 +52,8 @@ test('reserves and cancels work, then settles disabled payroll and withdraws the
   await page
     .getByLabel('Proposal document', { exact: true })
     .selectOption({ label: 'Synthetic proposal and delivery evidence · version 1' });
+  await page.getByLabel('Milestone 1 amount (TLOS)', { exact: true }).fill('1');
+  await page.getByLabel('I checked the milestone amounts and total', { exact: true }).check();
   await page.getByRole('button', { name: 'Propose work', exact: true }).click();
   await expect(
     page.getByRole('heading', { name: 'Synthetic proposal and delivery evidence · version 1' }),

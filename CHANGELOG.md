@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.14.0-alpha.15 development
+
+Replace the Works payment textarea with separate, initially empty milestone rows. Require positive whole-token amounts, pair each payment with its own optional due date and show an exact total. Add/remove controls enforce the 16-milestone limit; input and aggregate overflow checks reject invalid amounts without rounding. Require review of the amounts and total, reset confirmation after edits and preserve payment rows on cancellation or failed submission. Keep payroll amounts separate.
+
 ## 0.14.0-alpha.14 development
 
 Give Works a Work proposals / Member services toolbar with plus and help icons. Open milestone proposals in a popup using named active members and published document versions. Add proposal search, status/contributor/agreements filters, readable cards and empty states. Service offers preselect their provider in the same popup. Evidence and review use document choices; failures preserve drafts and optional metadata failures leave work browseable.

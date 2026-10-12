@@ -20,6 +20,8 @@ import { z } from 'zod';
 import { createVault } from '../../src/auth/vault';
 import { moduleFixture } from './fixtures/module-design';
 
+test.use({ timezoneId: 'UTC' });
+
 async function fixture(page: Page, visitor = false) {
   const state = await moduleFixture(page, true, visitor);
   const manifest = Catalog.find((m) => m.id === 'works');
@@ -356,8 +358,8 @@ test('a signed proposal pins the chosen member and document version, retains fai
       contributor: '2',
       document_id: '42',
       document_version: 2,
-      payments: ['1.2500 TLOS', '2.0000 TLOS'],
-      dues: [0, 0],
+      payments: ['10.0000 TLOS', '20.0000 TLOS'],
+      dues: [0, Math.floor(Date.parse('2030-01-02T09:00:00Z') / 1000)],
     });
     attempts++;
     if (attempts === 1)
@@ -385,25 +387,47 @@ test('a signed proposal pins the chosen member and document version, retains fai
   const dialog = page.getByRole('dialog', { name: 'Propose milestone work', exact: true });
   await dialog.getByLabel('Contributor', { exact: true }).selectOption('2');
   await dialog.getByLabel('Proposal document', { exact: true }).selectOption('12');
-  await dialog.getByLabel(/Milestone amounts/).fill('1.25\n2');
   const submit = dialog.getByRole('button', { name: 'Propose work', exact: true });
-  await dialog.getByLabel(/Milestone amounts/).fill('0');
-  await submit.click();
-  await expect(dialog.getByRole('alert')).toContainText('positive payment');
-  expect(attempts).toBe(0);
+  const firstAmount = dialog.getByLabel('Milestone 1 amount (TLOS)', { exact: true });
+  await expect(submit).toBeDisabled();
+  for (const invalid of ['0', '1.25', '1e3', '461168601842739']) {
+    await firstAmount.fill(invalid);
+    await expect(submit).toBeDisabled();
+    expect(attempts).toBe(0);
+  }
+  await firstAmount.fill('10');
+  await dialog.getByRole('button', { name: 'Add milestone', exact: true }).click();
+  const secondAmount = dialog.getByLabel('Milestone 2 amount (TLOS)', { exact: true });
+  await expect(submit).toBeDisabled();
+  await secondAmount.fill('20');
   await dialog
-    .getByLabel(/Milestone amounts/)
-    .fill(Array.from({ length: 17 }, () => '1').join('\n'));
-  await submit.click();
-  await expect(dialog.getByRole('alert')).toContainText('between 1 and 16');
-  expect(attempts).toBe(0);
-  await dialog.getByLabel(/Milestone amounts/).fill('1.25\n2');
+    .getByLabel('Milestone 2 due date (optional)', { exact: true })
+    .fill('2030-01-02T09:00');
+  await expect(dialog.getByRole('status', { name: 'Total milestone payment' })).toHaveText(
+    '30 TLOS',
+  );
+  await expect(submit).toBeDisabled();
+  const confirmation = dialog.getByLabel('I checked the milestone amounts and total', {
+    exact: true,
+  });
+  await confirmation.check();
+  await expect(submit).toBeEnabled();
+  await secondAmount.fill('21');
+  await expect(confirmation).not.toBeChecked();
+  await expect(submit).toBeDisabled();
+  await secondAmount.fill('20');
+  await confirmation.check();
   await submit.click();
   await expect(dialog.getByRole('alert')).toBeVisible();
   await expect(dialog.getByLabel('Proposal document', { exact: true })).toHaveValue('12');
+  await expect(firstAmount).toHaveValue('10');
+  await expect(secondAmount).toHaveValue('20');
+  await expect(confirmation).toBeChecked();
   await submit.click();
   await expect.poll(() => attempts).toBe(2);
   await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeDisabled();
+  await expect(firstAmount).toBeDisabled();
+  await expect(secondAmount).toBeDisabled();
   await page.keyboard.press('Escape');
   await expect(dialog).toBeVisible();
   release();
@@ -445,4 +469,64 @@ test('foreign profile names are rejected and retry restores the DAO member’s r
   await expect(
     dialog.getByLabel('Contributor', { exact: true }).locator('option[value="2"]'),
   ).toHaveText('Bob Builder · bob');
+});
+
+test('milestone rows start empty, label whole TLOS payments and update their exact total on add or remove', async ({
+  page,
+}) => {
+  await fixture(page);
+  await page.goto('/dao/1/works');
+  await page.getByRole('button', { name: 'Propose milestone work', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Propose milestone work', exact: true });
+  const amount1 = dialog.getByLabel('Milestone 1 amount (TLOS)', { exact: true });
+  await expect(amount1).toHaveValue('');
+  await expect(dialog.getByLabel(/Milestone amounts/)).toHaveCount(0);
+  await amount1.fill('10');
+  await dialog.getByRole('button', { name: 'Add milestone', exact: true }).click();
+  const amount2 = dialog.getByLabel('Milestone 2 amount (TLOS)', { exact: true });
+  await expect(amount2).toBeFocused();
+  await expect(amount2).toHaveValue('');
+  await expect(dialog.getByRole('status', { name: 'Total milestone payment' })).toHaveText(
+    'Complete every amount to see the total.',
+  );
+  await amount2.fill('25');
+  await expect(dialog.getByRole('status', { name: 'Total milestone payment' })).toHaveText(
+    '35 TLOS',
+  );
+  await dialog.getByLabel('I checked the milestone amounts and total', { exact: true }).check();
+  await amount2.fill('30');
+  await expect(
+    dialog.getByLabel('I checked the milestone amounts and total', { exact: true }),
+  ).not.toBeChecked();
+  await expect(dialog.getByRole('status', { name: 'Total milestone payment' })).toHaveText(
+    '40 TLOS',
+  );
+  await dialog.getByRole('button', { name: 'Remove milestone 1', exact: true }).click();
+  await expect(dialog.getByLabel('Milestone 1 amount (TLOS)', { exact: true })).toHaveValue('30');
+  await expect(dialog.getByRole('status', { name: 'Total milestone payment' })).toHaveText(
+    '30 TLOS',
+  );
+  await expect(
+    dialog.getByRole('button', { name: 'Remove milestone 1', exact: true }),
+  ).toBeDisabled();
+  for (const value of ['0', '-2', '1.25', '1e3', '1,000', '461168601842739']) {
+    await dialog.getByLabel('Milestone 1 amount (TLOS)', { exact: true }).fill(value);
+    await expect(dialog.getByRole('button', { name: 'Propose work', exact: true })).toBeDisabled();
+    await expect(
+      dialog.getByLabel('I checked the milestone amounts and total', { exact: true }),
+    ).toBeDisabled();
+    await expect(dialog.getByRole('status', { name: 'Total milestone payment' })).not.toContainText(
+      'TLOS',
+    );
+  }
+  await dialog.getByLabel('Milestone 1 amount (TLOS)', { exact: true }).fill('30');
+  for (let i = 1; i < 16; i++)
+    await dialog.getByRole('button', { name: 'Add milestone', exact: true }).click();
+  await expect(dialog.getByRole('button', { name: 'Add milestone', exact: true })).toBeDisabled();
+  await expect(dialog.getByLabel(/Milestone \d+ amount \(TLOS\)/)).toHaveCount(16);
+  await dialog.getByRole('button', { name: 'Remove milestone 8', exact: true }).click();
+  await expect(dialog.getByRole('button', { name: 'Add milestone', exact: true })).toBeEnabled();
+  await expect(dialog.getByLabel(/Milestone \d+ amount \(TLOS\)/)).toHaveCount(15);
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });

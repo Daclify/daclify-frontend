@@ -5,10 +5,11 @@ import ContributionAgreementPanel from './ContributionAgreementPanel.vue';
 import ServiceCatalogue from './ServiceCatalogue.vue';
 import VotingDurationInput from './VotingDurationInput.vue';
 import PercentageInput from './PercentageInput.vue';
+import { parseWholeWorkPayments } from '../content/work-payments';
 import { documentLabel } from '../content/document-labels';
 import { percentageText } from '../content/governance-inputs';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
-import { Plus, CircleHelp, X } from '@lucide/vue';
+import { Plus, CircleHelp, X, Trash2 } from '@lucide/vue';
 import { z } from 'zod';
 import {
   parseUnits,
@@ -106,8 +107,10 @@ const choicesError = ref('');
 const profiles = ref<PublicPerson[]>([]);
 const profilesError = ref('');
 let choicesRequest = 0;
-const milestoneAmounts = ref('1.0000');
-const milestoneDue = ref('');
+const payrollAmount = ref('1.0000');
+const workMilestones = ref([{ id: 1, amount: '', due: '' }]);
+let nextMilestoneId = 2;
+const paymentsConfirmed = ref(false);
 const agreementSearch = ref('');
 const agreementsOnly = ref(false);
 const periods = ref(2);
@@ -316,8 +319,8 @@ watch(
     choicesLoading.value = false;
     worksTab.value = 'proposals';
     clearWorkFilters();
-    milestoneAmounts.value = '1.0000';
-    milestoneDue.value = '';
+    payrollAmount.value = '1.0000';
+    resetWorkMilestones();
     generation++;
     data.value = undefined;
     treasury.value = undefined;
@@ -553,10 +556,71 @@ function selectedDocument(id: string) {
   return content.value?.documents.find((row) => row.id === id);
 }
 const proposalDocument = computed(() => selectedDocument(workDocument.value));
+function resetWorkMilestones() {
+  workMilestones.value = [{ id: nextMilestoneId++, amount: '', due: '' }];
+  paymentsConfirmed.value = false;
+}
+function addWorkMilestone() {
+  if (busy.value || workMilestones.value.length >= 16) return;
+  const id = nextMilestoneId++;
+  workMilestones.value.push({ id, amount: '', due: '' });
+  void nextTick(() => document.getElementById(`work-amount-${id}`)?.focus());
+}
+function removeWorkMilestone(index: number) {
+  if (busy.value || workMilestones.value.length <= 1) return;
+  workMilestones.value.splice(index, 1);
+  const row = workMilestones.value[Math.min(index, workMilestones.value.length - 1)];
+  if (row) void nextTick(() => document.getElementById(`work-amount-${row.id}`)?.focus());
+}
+function milestoneAmountError(amount: string) {
+  if (!amount) return '';
+  try {
+    parseWholeWorkPayments([amount], props.dao.token.precision);
+    return '';
+  } catch (cause) {
+    return cause instanceof Error ? cause.message : 'Enter a positive whole amount.';
+  }
+}
+function milestoneDateError(due: string) {
+  if (!due) return '';
+  const seconds = Math.floor(new Date(due).getTime() / 1000);
+  return Number.isSafeInteger(seconds) && seconds > 0 && seconds <= 0xffffffff
+    ? ''
+    : 'Choose a supported date and time.';
+}
+const paymentState = computed(() => {
+  try {
+    const result = parseWholeWorkPayments(
+      workMilestones.value.map((row) => row.amount),
+      props.dao.token.precision,
+    );
+    return {
+      valid: true,
+      total: (result.total / 10n ** BigInt(props.dao.token.precision)).toLocaleString(),
+      error: '',
+    };
+  } catch (cause) {
+    return {
+      valid: false,
+      total: '',
+      error: cause instanceof Error ? cause.message : 'Check every milestone amount.',
+    };
+  }
+});
+watch(
+  () => JSON.stringify([contributor.value, workDocument.value, workMilestones.value]),
+  () => {
+    paymentsConfirmed.value = false;
+  },
+  { flush: 'sync' },
+);
 const proposalReady = computed(
   () =>
     !choicesLoading.value &&
     !!proposalDocument.value &&
+    paymentState.value.valid &&
+    workMilestones.value.every((row) => !milestoneDateError(row.due)) &&
+    paymentsConfirmed.value &&
     contributorOptions.value.some((row) => row.id === contributor.value),
 );
 function showWorkDialog(memberId?: string) {
@@ -584,20 +648,16 @@ async function propose() {
     domain = context.value;
   if (!current.value || !document || !proposalReady.value || !allowed('propose')) return;
   try {
-    const payments = milestoneAmounts.value
-      .split('\n')
-      .filter((v) => v.trim())
-      .map(asset);
-    if (
-      !payments.length ||
-      payments.length > 16 ||
-      payments.some(
-        (value) => parseUnits(value.split(' ')[0] ?? '', props.dao.token.precision) <= 0n,
-      )
-    ) {
-      error.value = 'Add between 1 and 16 milestones, each with a positive payment amount.';
-      return;
-    }
+    const amounts = parseWholeWorkPayments(
+      workMilestones.value.map((row) => row.amount),
+      props.dao.token.precision,
+    );
+    const payments = amounts.units.map(
+      (value) => `${formatUnits(value, props.dao.token.precision)} ${props.dao.token.symbol}`,
+    );
+    const dues = workMilestones.value.map((row) =>
+      row.due ? Math.floor(new Date(row.due).getTime() / 1000) : 0,
+    );
     await run(
       current.value.deployment.account,
       'propose',
@@ -608,9 +668,7 @@ async function propose() {
         document_id: document.document_id,
         document_version: document.version,
         payments,
-        dues: payments.map(() =>
-          milestoneDue.value ? Math.floor(new Date(milestoneDue.value).getTime() / 1000) : 0,
-        ),
+        dues,
       }),
       'Work proposed',
     );
@@ -619,8 +677,7 @@ async function propose() {
       worksTab.value = 'proposals';
       workDocument.value = '';
       contributor.value = '';
-      milestoneAmounts.value = '1.0000';
-      milestoneDue.value = '';
+      resetWorkMilestones();
       clearWorkFilters();
     }
   } catch (cause) {
@@ -746,7 +803,7 @@ async function commit() {
         ...actor(),
         schedule_id: newId(),
         recipient: contributor.value,
-        quantity: asset(milestoneAmounts.value),
+        quantity: asset(payrollAmount.value),
         periods: periods.value,
         interval: intervalDays.value * 86400,
         starts,
@@ -1437,19 +1494,107 @@ const selectedProject = computed(() =>
               >
               to publish a proposal first.
             </p>
-            <label for="milestones">Milestone amounts · one per line ({{ dao.token.symbol }})</label
-            ><textarea
-              id="milestones"
-              v-model="milestoneAmounts"
-              rows="3"
-              required
-              placeholder="For example: 10 on the first line, 25 on the second"
-            ></textarea>
+            <div class="milestone-editor-heading">
+              <h3>Milestone payments</h3>
+              <span class="muted">{{ workMilestones.length }} / 16</span>
+            </div>
             <p class="field-help">
-              Each line creates one milestone payment. You can add up to 16 milestones.
+              Enter whole {{ dao.token.symbol }} amounts. Each row is one payment; nothing is
+              rounded.
             </p>
-            <label for="work-due">Milestone due date (optional; applies to each milestone)</label
-            ><input id="work-due" v-model="milestoneDue" type="datetime-local" />
+            <section
+              v-for="(row, index) in workMilestones"
+              :key="row.id"
+              class="milestone-editor"
+              :aria-label="`Milestone ${index + 1}`"
+            >
+              <div class="milestone-editor-heading">
+                <h4>Milestone {{ index + 1 }}</h4>
+                <button
+                  type="button"
+                  class="secondary"
+                  :aria-label="`Remove milestone ${index + 1}`"
+                  :disabled="workMilestones.length === 1"
+                  @click="removeWorkMilestone(index)"
+                >
+                  <Trash2 aria-hidden="true" />Remove
+                </button>
+              </div>
+              <div class="two-column">
+                <div>
+                  <label :for="`work-amount-${row.id}`"
+                    >Milestone {{ index + 1 }} amount ({{ dao.token.symbol }})</label
+                  >
+                  <div class="milestone-amount-field">
+                    <input
+                      :id="`work-amount-${row.id}`"
+                      v-model="row.amount"
+                      type="text"
+                      inputmode="numeric"
+                      pattern="[1-9][0-9]*"
+                      maxlength="19"
+                      autocomplete="off"
+                      required
+                      placeholder="e.g. 10"
+                      :aria-invalid="!!milestoneAmountError(row.amount)"
+                      :aria-describedby="`work-amount-help-${row.id}`"
+                    /><span aria-hidden="true">{{ dao.token.symbol }}</span>
+                  </div>
+                  <p
+                    :id="`work-amount-help-${row.id}`"
+                    class="field-help"
+                    :class="{ 'amount-error': milestoneAmountError(row.amount) }"
+                  >
+                    {{ milestoneAmountError(row.amount) || 'Positive whole tokens only.' }}
+                  </p>
+                </div>
+                <div>
+                  <label :for="`work-due-${row.id}`"
+                    >Milestone {{ index + 1 }} due date (optional)</label
+                  ><input
+                    :id="`work-due-${row.id}`"
+                    v-model="row.due"
+                    type="datetime-local"
+                    :aria-invalid="!!milestoneDateError(row.due)"
+                  />
+                  <p v-if="milestoneDateError(row.due)" class="field-help amount-error">
+                    {{ milestoneDateError(row.due) }}
+                  </p>
+                </div>
+              </div>
+            </section>
+            <button
+              type="button"
+              class="secondary"
+              :disabled="workMilestones.length >= 16"
+              @click="addWorkMilestone"
+            >
+              <Plus aria-hidden="true" />Add milestone
+            </button>
+            <div class="milestone-total">
+              <span>Total milestone payment</span
+              ><strong role="status" aria-label="Total milestone payment">{{
+                paymentState.valid
+                  ? `${paymentState.total} ${dao.token.symbol}`
+                  : 'Complete every amount to see the total.'
+              }}</strong>
+              <p
+                v-if="!paymentState.valid && workMilestones.every((row) => row.amount)"
+                class="field-help amount-error"
+              >
+                {{ paymentState.error }}
+              </p>
+            </div>
+            <label class="checkbox"
+              ><input
+                v-model="paymentsConfirmed"
+                type="checkbox"
+                :disabled="
+                  !paymentState.valid || workMilestones.some((row) => milestoneDateError(row.due))
+                "
+                required
+              />I checked the milestone amounts and total</label
+            >
             <p class="field-help">
               Accepting a project reserves its full amount. You can offer a contribution agreement
               before requesting funding.
@@ -1735,7 +1880,7 @@ const selectedProject = computed(() =>
         ><input id="pay-recipient" v-model="contributor" inputmode="numeric" required /><label
           for="pay-amount"
           >Amount per installment ({{ dao.token.symbol }})</label
-        ><input id="pay-amount" v-model="milestoneAmounts" required />
+        ><input id="pay-amount" v-model="payrollAmount" required />
         <div class="two-column">
           <div>
             <label for="pay-periods">Installments</label
@@ -1852,6 +1997,58 @@ const selectedProject = computed(() =>
   </button>
 </template>
 <style scoped>
+.milestone-editor {
+  margin-bottom: 16px;
+  padding: 16px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+.milestone-editor-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-block: 16px;
+}
+.milestone-editor-heading h3,
+.milestone-editor-heading h4 {
+  margin: 0;
+}
+.milestone-editor .milestone-editor-heading {
+  margin-top: 0;
+}
+.milestone-amount-field {
+  position: relative;
+}
+.milestone-amount-field input {
+  padding-right: 76px;
+}
+.milestone-amount-field span {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-weight: 700;
+  color: var(--text-secondary);
+  pointer-events: none;
+}
+.milestone-total {
+  margin-block: 20px;
+  padding: 16px;
+  border: 1px solid var(--border-warm);
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+}
+.milestone-total strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 1.25rem;
+  overflow-wrap: anywhere;
+}
+.amount-error {
+  color: var(--state-danger);
+}
+
 .status-pill {
   padding: 6px 12px;
   border: 1px solid var(--border-default);
