@@ -24,6 +24,7 @@ const guideGroups = [
     topicIds: [
       'members',
       'dao-governance',
+      'governing-documents',
       'executives',
       'endorsement-admission',
       'representative-elections',
