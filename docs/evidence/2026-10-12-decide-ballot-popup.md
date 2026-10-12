@@ -14,6 +14,12 @@ The initial toolbar regression failed against the old UI. A separate failed-rela
 
 ## Publication
 
-The reviewed frontend candidate will be archived from pushed dev and published using the existing entry-point-last frontend publisher. Publication results and public asset hashes will be recorded here after verification. The backend and contracts remain on their existing deployed releases.
+Frontend 0.14.0-alpha.11 is live at https://testnet.app.daclify.com from pushed source commit `269c0ad8e196534fa3ce2758525c5fd1f7dbae6f`. Every tracked source file was compared byte-for-byte with the archived commit. The testnet build and isolated frontend publisher both completed with exit 0. The publisher retained previous hashed assets and published the entry point last.
+
+The HTTPS index SHA-256 is `863e2ca5133eb6ccfc6753e6cd64619f96a42e3c21dda09038ed2f52aabc51e6`. The index and all 22 referenced entry assets match the tested candidate. The actual API reports core 0.14.0-alpha.5. [Machine evidence](2026-10-12-decide-ballot-popup-testnet.json) records versions, timestamp and asset hashes. The existing large-chunk build warning remains; no bundle-performance claim is made.
+
+`npm run test:testnet-public` passed against actual HTTPS/API responses at 1440×1000 and 390×844. The live toolbar has no duplicate heading, both tabs switch correctly, the plus renders at 32 pixels, help is available and visitor creation remains disabled. Accessibility and horizontal-overflow checks passed, with no page errors, misplaced API requests or server errors. The general account, Hub, Telos, Status/Names and DAO checks passed in the same run. Authenticated popup/signing behavior is covered by the local synthetic API tests described above.
+
+The operator packet is `/data/daclify-runtime/releases/20261012-decide-popup-icons/`, including source, candidate, installation/build/publication logs and local/public verification evidence. An initial 0.14.0-alpha.10 publication was superseded by the verified 0.14.0-alpha.11 icon correction. The backend and contracts remain on their existing deployed releases.
 
 Actual live wallet ballot submission and the paid/native local API suites are outside this UI check. The affected existing ballot-creation callers were updated to open the popup first.
