@@ -1,5 +1,13 @@
-import { CidSchema, NativeAccountSchema, PublicProfileSchema } from '@daclify/core-protocol';
+import {
+  CidSchema,
+  NativeAccountSchema,
+  PublicProfileSchema,
+  type Network,
+} from '@daclify/core-protocol';
 import { encodeAction } from '@daclify/core-protocol/sdk';
+export function legacyProfileAllowed(network: Pick<Network, 'capabilities'> | undefined): boolean {
+  return !!network && !network.capabilities.includes('encrypted-profiles-v2');
+}
 
 export interface ProfileDraft {
   name: string;

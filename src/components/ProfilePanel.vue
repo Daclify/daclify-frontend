@@ -9,6 +9,7 @@ import {
   encodeSetprofile,
   profileError,
   profileJson,
+  legacyProfileAllowed,
   type ProfileDraft,
 } from '../auth/profile';
 import { relayInstruction } from '../auth/session';
@@ -86,6 +87,7 @@ async function publish() {
   error.value = '';
   notice.value = '';
   try {
+    if (!legacyProfileAllowed(state.network)) throw new Error('PROFILE_ENCRYPTION_REQUIRED');
     const profile = profileJson(draft.value);
     await relayInstruction(
       makeInstruction(
@@ -279,7 +281,10 @@ async function publish() {
       </details>
       <p v-if="error" class="alert" role="alert">{{ error }}</p>
       <p v-if="notice" class="notice" role="status">{{ notice }}</p>
-      <button :disabled="busy || !signerReady">
+      <p v-if="!legacyProfileAllowed(state.network)" role="status">
+        This deployment requires the encrypted profile editor. Plaintext publishing is unavailable.
+      </p>
+      <button :disabled="busy || !signerReady || !legacyProfileAllowed(state.network)">
         {{ busy ? 'Publishing…' : 'Publish profile' }}
       </button>
     </form>

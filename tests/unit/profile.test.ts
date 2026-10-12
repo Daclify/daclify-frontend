@@ -58,3 +58,10 @@ describe('public profile', () => {
     expect(bytes.byteLength).toBeGreaterThan(20);
   });
 });
+
+import { legacyProfileAllowed } from '../../src/auth/profile';
+it('blocks plaintext publication on an encrypted-profile deployment and when unverified', () => {
+  expect(legacyProfileAllowed(undefined)).toBe(false);
+  expect(legacyProfileAllowed({ capabilities: ['encrypted-profiles-v2'] })).toBe(false);
+  expect(legacyProfileAllowed({ capabilities: [] })).toBe(true);
+});

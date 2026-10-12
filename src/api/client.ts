@@ -1287,6 +1287,8 @@ export function friendlyError(error: unknown): string {
     error instanceof ApiFailure ? error.code : error instanceof Error ? error.message : undefined;
   if (code && telosMessages[code]) return telosMessages[code];
   const appMessages: Record<string, string> = {
+    PROFILE_ENCRYPTION_REQUIRED:
+      'This deployment requires encrypted profiles. Update the profile editor before publishing.',
     MINI_APP_RELEASE_UNAVAILABLE:
       'This deployment has no verified mini app starter. Ask its operator to install the matching release.',
     MINI_APP_RELEASE_VERSION:
