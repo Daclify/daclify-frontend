@@ -1333,6 +1333,20 @@ export function friendlyError(error: unknown): string {
     error instanceof ApiFailure ? error.code : error instanceof Error ? error.message : undefined;
   if (code && telosMessages[code]) return telosMessages[code];
   const appMessages: Record<string, string> = {
+    PROFILE_KEYS_UNAVAILABLE:
+      'The profile key service is unavailable. Retry after the operator configures the matching service.',
+    PROFILE_KEY_UNAVAILABLE:
+      'This profile key envelope is missing. Your recovery kit cannot reconstruct a removed profile key.',
+    PROFILE_AUDIENCE:
+      'This profile is not shared with your current account. Joining the DAO alone does not grant access.',
+    PROFILE_CONTEXT:
+      'This profile belongs to another deployment or membership. Refresh the selected community.',
+    PROFILE_KEY_CONTEXT:
+      'This envelope does not match the profile or your account. Refresh; do not reuse it.',
+    PROFILE_KEY_CHANGED:
+      'A registered recipient key changed. Refresh the audience before publishing.',
+    PROFILE_DELETION_UNAVAILABLE:
+      'Profile key removal is unavailable. The current profile has not been removed; retry.',
     PROFILE_ENCRYPTION_REQUIRED:
       'This deployment requires encrypted profiles. Update the profile editor before publishing.',
     MINI_APP_RELEASE_UNAVAILABLE:

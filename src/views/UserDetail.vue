@@ -2,7 +2,6 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import {
-  PublicProfileSchema,
   type PublicProfile,
   type PublicMember,
   IdSchema,
@@ -14,6 +13,9 @@ import { useWorkspace } from '../state/workspace';
 import Account from './Account.vue';
 import { usePublicDirectory, profileContacts } from '../state/public-people';
 import LastDaoActivity from '../components/LastDaoActivity.vue';
+import { vaultUnlocked } from '../auth/session';
+import { readProfileForAudience } from '../auth/profile';
+import { decodeRawNativeProfile } from '@daclify/core-protocol/profiles';
 const route = useRoute(),
   state = useWorkspace(),
   profile = ref<PublicProfile>(),
@@ -25,6 +27,7 @@ const route = useRoute(),
   editing = ref(false),
   profileRevision = ref(0),
   publicMember = ref<PublicMember>();
+const privateNotice = ref('');
 const directory = usePublicDirectory();
 const user = computed(() =>
   unifyPublicMembers([
@@ -99,10 +102,12 @@ watch(
       daoId.value,
       memberId.value,
       profileRevision.value,
+      vaultUnlocked.value,
     ]),
   async () => {
     const request = ++generation;
     profile.value = undefined;
+    privateNotice.value = '';
     failedImages.value = { avatar: false, background: false };
     error.value = '';
     exists.value = false;
@@ -131,14 +136,26 @@ watch(
       exists.value = true;
       memberNative.value = row.native_account;
       memberActive.value = row.active;
-      if (own.value) {
+      if (state.account && vaultUnlocked.value) {
         const stored = await api.memberProfile(d, m);
         if (disposed || request !== generation) return;
-        profile.value = stored.profile
-          ? PublicProfileSchema.parse(JSON.parse(stored.profile))
-          : undefined;
-      } else {
-        profile.value = row.profile ?? undefined;
+        if (stored.profile) {
+          const decoded = decodeRawNativeProfile(stored);
+          if (decoded.version === 2)
+            privateNotice.value =
+              'Encrypted profile. Personal details are available only to its selected audience.';
+          try {
+            const opened = await readProfileForAudience(stored, row.dao, m);
+            if (disposed || request !== generation) return;
+            profile.value = opened;
+            if (decoded.version === 2)
+              privateNotice.value =
+                'Decrypted locally for your authorized account. Earlier readers may retain copies.';
+          } catch (cause) {
+            if (disposed || request !== generation) return;
+            privateNotice.value = friendlyError(cause);
+          }
+        }
       }
     } catch (cause) {
       if (request === generation) error.value = friendlyError(cause);
@@ -146,11 +163,12 @@ watch(
       if (request === generation) busy.value = false;
     }
   },
-  { immediate: true },
+  { immediate: true, flush: 'sync' },
 );
 onBeforeUnmount(() => {
   disposed = true;
   generation++;
+  profile.value = undefined;
 });
 const title = computed(
   () =>
@@ -202,7 +220,7 @@ function saved() {
           /><template v-else>{{ title.slice(0, 2).toUpperCase() }}</template></span
         >
         <div>
-          <p class="eyebrow">{{ own ? 'YOUR PUBLIC PROFILE' : 'PUBLIC PROFILE' }}</p>
+          <p class="eyebrow">{{ own ? 'YOUR PROFILE' : 'MEMBER PROFILE' }}</p>
           <h1>{{ title }}</h1>
           <p v-if="displayProfile?.name" class="person-handle">@{{ displayProfile.name }}</p>
         </div>
@@ -220,6 +238,11 @@ function saved() {
         </button>
       </div>
       <p v-if="displayProfile?.motto" class="lead">{{ displayProfile.motto }}</p>
+      <p v-if="privateNotice" class="notice" role="status">{{ privateNotice }}</p>
+      <p v-else-if="!vaultUnlocked" class="field-help">
+        Public aliases and legacy public details are visible here. Sign in and unlock your vault to
+        read profiles shared with you.
+      </p>
       <p v-if="displayProfile?.introduction" class="profile-introduction">
         {{ displayProfile.introduction }}
       </p>

@@ -1,15 +1,11 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
-import { PublicProfileSchema, type PublicMember, type PublicProfile } from '@daclify/core-protocol';
+import { computed } from 'vue';
+import { type PublicMember } from '@daclify/core-protocol';
 import PeopleGrid from '../components/PeopleGrid.vue';
-import { api } from '../api/client';
 import { useWorkspace } from '../state/workspace';
 import { usePublicDirectory } from '../state/public-people';
 const state = useWorkspace(),
-  { users, next, busy, error, load } = usePublicDirectory(),
-  ownProfile = ref<PublicProfile>();
-let disposed = false,
-  generation = 0;
+  { users, next, busy, error, load } = usePublicDirectory();
 const localMembership = computed(() =>
   state.memberships.find(
     (member) =>
@@ -37,15 +33,7 @@ const cards = computed(() => {
         ? '/users/me'
         : `/users/${ownedMember.dao.daoId}/${ownedMember.id}`
       : undefined;
-    const profile =
-      yours &&
-      user.memberships.some(
-        (m) =>
-          m.dao.daoId === localMembership.value?.dao.daoId &&
-          m.id === localMembership.value?.memberId,
-      )
-        ? (ownProfile.value ?? user.profile)
-        : user.profile;
+    const profile = user.profile;
     return {
       key: user.key,
       label: profile?.name || user.nativeAccount || `Member ${member.id}`,
@@ -77,8 +65,8 @@ const cards = computed(() => {
   if (state.account && !result.some((card) => card.own))
     result.unshift({
       key: 'me',
-      label: ownProfile.value?.name || localMembership.value?.nativeAccount || 'Your profile',
-      profile: ownProfile.value,
+      label: localMembership.value?.nativeAccount || 'Your profile',
+      profile: undefined,
       to: '/users/me',
       own: true,
       lastActive: null,
@@ -98,28 +86,6 @@ const cards = computed(() => {
     });
   return result;
 });
-watch(
-  () => localMembership.value,
-  async (member) => {
-    const request = ++generation;
-    ownProfile.value = undefined;
-    if (!member) return;
-    try {
-      const row = await api.memberProfile(member.dao.daoId, member.memberId);
-      if (disposed || request !== generation || member !== localMembership.value) return;
-      ownProfile.value = row.profile
-        ? PublicProfileSchema.parse(JSON.parse(row.profile))
-        : undefined;
-    } catch {
-      /* An unpublished self profile retains its own card. */
-    }
-  },
-  { immediate: true },
-);
-onBeforeUnmount(() => {
-  disposed = true;
-  generation++;
-});
 </script>
 <template>
   <div class="page-heading">
@@ -133,7 +99,8 @@ onBeforeUnmount(() => {
     ><RouterLink v-else class="button" to="/account">Sign in</RouterLink>
   </div>
   <p class="field-help">
-    Meet DAO members, explore their communities and connect through their public profiles.
+    Explore members and their public aliases. Personal fields in encrypted profiles appear only in
+    the profile view for authorized readers.
   </p>
   <p v-if="error" class="alert" role="alert">
     {{
@@ -159,10 +126,11 @@ onBeforeUnmount(() => {
   <details class="users-privacy">
     <summary>About this directory</summary>
     <p class="field-help">
-      Members appear even before publishing a profile. Profiles belong to public DAO memberships;
-      matching public accounts or signing identities connect their communities. Private sign-in
-      pairings are never displayed. Last active means their latest successful DAO action; older
-      activity may not have been recorded.
+      Members appear even before publishing a profile. Encrypted profiles expose only their alias;
+      older plaintext profiles remain public. Profiles belong to public DAO memberships; matching
+      public accounts or signing identities connect their communities. Private sign-in pairings are
+      never displayed. Last active means their latest successful DAO action; older activity may not
+      have been recorded.
     </p>
   </details>
 </template>

@@ -558,7 +558,7 @@ test('Users replaces Account; your profile is first, and only your detail has ed
   await expect(page).toHaveURL(/\/users\/me$/);
   await expect(page.getByRole('heading', { name: 'Bob Builder', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Edit profile & account' }).click();
-  await expect(page.getByRole('heading', { name: 'Public profile', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Private profile', exact: true })).toBeVisible();
   await page.getByRole('tab', { name: 'Profile', exact: true }).focus();
   await page.keyboard.press('ArrowLeft');
   await expect(page.getByRole('tab', { name: 'Sign-in methods', exact: true })).toBeFocused();
