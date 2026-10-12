@@ -1401,4 +1401,9 @@ const selectedProject = computed(() =>
 .decide-tabs button {
   min-height: 44px;
 }
+@media (max-width: 640px) {
+  .three-column .voting-duration {
+    grid-column: 1 / -1;
+  }
+}
 </style>

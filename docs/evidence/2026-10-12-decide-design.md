@@ -5,7 +5,7 @@ The user requested duration choices in hours, days and weeks, percentage quorum/
 ## Implementation
 
 - Ballots and Elections have accessible tabs, arrow/Home/End navigation, 44-pixel buttons and retained drafts. Election records stay in Elections.
-- Shared duration controls cover ballot creation, governance policy editing and DAO setup/review. Minutes preserve supported short ballots; normal durations use hours, days or weeks.
+- Shared duration controls cover ballot creation, governance policy editing and DAO setup/review. Minutes preserve supported short ballots; normal durations use hours, days or weeks. The duration control uses a full row on phones so unit labels remain readable.
 - Custom ballot timing permits a device-local closing date with timezone preview. Invalid/elapsed/out-of-range dates cannot submit. Cancelling date entry restores the previous duration. Saved DAO policy remains authoritative and disables per-ballot overrides.
 - Shared percentage controls retain two decimal places exactly, validate the released schema's thresholds and block invalid submissions. 50% and 50.01% encode as 5000 and 5001. Invalid drafts never display NaN in the setup summary.
 - No dependency, action ABI, contract, API or persisted policy changes are needed. [User guide](../users/decide.md) and the requirement register cover the new controls.
