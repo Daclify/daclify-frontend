@@ -67,9 +67,12 @@ test('authors grant consent, an election and enforced admission through real sig
   await page.getByRole('link', { name: 'Decide', exact: true }).click();
   await page.getByRole('button', { name: 'Vote Approve', exact: true }).click();
   await expect(page.getByText('Your vote: Approve', { exact: true })).toBeVisible();
-  await page.getByText('Schedule an election', { exact: true }).click();
-  await page.getByLabel('Rules document ID', { exact: true }).fill('1');
-  await page.getByRole('button', { name: 'Sign and schedule election' }).click();
+  await page.getByRole('tab', { name: 'Elections', exact: true }).click();
+  await page.getByRole('button', { name: 'Election and term rules', exact: true }).click();
+  await page
+    .getByLabel('Election rules', { exact: true })
+    .selectOption({ label: 'Reviewed public module terms · version 1' });
+  await page.getByRole('button', { name: 'Schedule election', exact: true }).click();
   await expect(
     page.getByText('Election scheduled. Members nominate themselves before the cutoff.', {
       exact: true,

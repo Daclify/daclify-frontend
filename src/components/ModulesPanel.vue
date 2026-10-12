@@ -64,6 +64,10 @@ const decideTabs = [
 ] as const;
 const decideTab = ref<(typeof decideTabs)[number]['id']>('ballots');
 const ballotDialog = ref<HTMLDialogElement>();
+const electionPanel = ref<InstanceType<typeof ElectionPanel>>();
+const creationLabel = computed(() =>
+  decideTab.value === 'elections' ? 'Election and term rules' : 'Open a ballot',
+);
 const visibleBallots = computed(
   () =>
     data.value?.ballots.filter(
@@ -162,9 +166,12 @@ function fundAllowed() {
 function allowed(action: string) {
   return canAct.value && !!current.value?.actions.includes(action);
 }
-function showBallotDialog() {
-  if (!busy.value && props.member?.active && current.value?.enabled)
-    ballotDialog.value?.showModal();
+function showCreationDialog() {
+  if (busy.value || !props.member?.active || !current.value?.enabled) return;
+  error.value = '';
+  success.value = '';
+  if (decideTab.value === 'elections') electionPanel.value?.showDialog();
+  else ballotDialog.value?.showModal();
 }
 const canSettle = computed(() => !!workspace.account && !busy.value);
 function helpLink(topic: string) {
@@ -890,19 +897,26 @@ const selectedProject = computed(() =>
           <button
             type="button"
             class="decide-icon decide-add"
-            aria-label="Open a ballot"
-            title="Open a ballot"
+            :aria-label="creationLabel"
+            :title="creationLabel"
             aria-haspopup="dialog"
-            :disabled="!member?.active || !current?.enabled || busy"
-            @click="showBallotDialog"
+            :disabled="
+              !member?.active ||
+              !current?.enabled ||
+              busy ||
+              (decideTab === 'elections' && !member.admin)
+            "
+            @click="showCreationDialog"
           >
             <Plus :size="32" aria-hidden="true" />
           </button>
           <RouterLink
             class="decide-icon"
-            :to="helpLink('decide')"
-            aria-label="Ballot rules and help"
-            title="Ballot rules and help"
+            :to="helpLink(decideTab === 'elections' ? 'representative-elections' : 'decide')"
+            :aria-label="
+              decideTab === 'elections' ? 'Election rules and help' : 'Ballot rules and help'
+            "
+            :title="decideTab === 'elections' ? 'Election rules and help' : 'Ballot rules and help'"
             ><CircleHelp :size="24" aria-hidden="true"
           /></RouterLink>
         </div>
@@ -1074,6 +1088,7 @@ const selectedProject = computed(() =>
       >
         <ElectionPanel
           v-if="data"
+          ref="electionPanel"
           :key="context"
           :dao="dao"
           :member="member"
@@ -1081,6 +1096,9 @@ const selectedProject = computed(() =>
           :governance="governance"
           :can-sign="canSign"
           :can-finalize="canSettle"
+          :busy="busy"
+          :action-error="error"
+          :action-success="success"
           :now="now"
           :run="run"
           :finalize="finalize"
