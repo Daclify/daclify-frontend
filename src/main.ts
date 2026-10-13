@@ -36,6 +36,7 @@ const router = createRouter({
     { path: '/account', component: () => import('./views/Account.vue') },
     { path: '/apps/evidence', component: () => import('./views/AppEvidence.vue') },
     { path: '/apps/consent', component: () => import('./views/AppConsent.vue') },
+    { path: '/mcp/oauth/consent', component: () => import('./views/McpOAuthConsent.vue') },
     { path: '/mcp/consent', component: () => import('./views/McpConsent.vue') },
     { path: '/daclify', component: () => import('./views/PlatformEntry.vue') },
     { path: '/status', component: () => import('./views/Status.vue') },

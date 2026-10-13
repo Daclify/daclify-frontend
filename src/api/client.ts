@@ -389,6 +389,22 @@ export const api = {
       ApiRoutes.stageConnectedApp.response,
       ApiRoutes.stageConnectedApp.input.parse(input),
     ),
+  mcpOAuthConsent: (id: string) =>
+    request(
+      ApiRoutes.mcpOAuthConsent.path.replace(':id', z.uuid().parse(id)),
+      ApiRoutes.mcpOAuthConsent.response,
+    ),
+  mcpOAuthApprove: (input: z.infer<typeof ApiRoutes.mcpOAuthApprove.input>) =>
+    request(
+      ApiRoutes.mcpOAuthApprove.path,
+      ApiRoutes.mcpOAuthApprove.response,
+      ApiRoutes.mcpOAuthApprove.input.parse(input),
+    ),
+  mcpGrants: () => request(ApiRoutes.mcpGrants.path, ApiRoutes.mcpGrants.response),
+  mcpRevokeGrant: (id: string) =>
+    request(ApiRoutes.mcpRevokeGrant.path, ApiRoutes.mcpRevokeGrant.response, {
+      id: z.uuid().parse(id),
+    }),
   mcpConsent: (id: string) =>
     request(
       ApiRoutes.mcpConsent.path.replace(':id', z.uuid().parse(id)),
