@@ -1641,6 +1641,10 @@ export function friendlyError(error: unknown): string {
         'Prove control with your Daclify keys or an authorized linked wallet before changing sign-in methods.',
       MCP_SIGN_IN_REQUIRED:
         'Sign in again with a method paired to this account, then approve the connection.',
+      MCP_REVIEWER_REQUIRED:
+        'Review preparation requires the reviewer role in this community. Choose proposal or vote instead.',
+      MCP_TOKEN_REQUIRED:
+        'This connection request or access token is no longer valid. Start the connection again from your AI app.',
       GOOGLE_SIGN_IN_UNAVAILABLE:
         'Google sign-in could not load. Retry the connection or choose another paired method.',
       VAULT_IDENTITY_REQUIRED:

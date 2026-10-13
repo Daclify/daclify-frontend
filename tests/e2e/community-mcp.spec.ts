@@ -132,6 +132,9 @@ for (const reauthenticate of [false, true]) {
       await page
         .getByRole('combobox', { name: 'Community membership', exact: true })
         .selectOption({ label: 'DAO ' + context.dao.daoId + ', member ' + context.memberId });
+      await expect(page.getByLabel('review', { exact: true })).toBeDisabled();
+      await expect(page.getByLabel('review', { exact: true })).not.toBeChecked();
+      await expect(page.getByText('Review preparation requires the reviewer role.')).toBeVisible();
       await page.getByLabel('vote', { exact: true }).check();
       const approve = page.getByRole('button', { name: 'Approve hosted connection', exact: true });
       await expect(approve).toBeEnabled();

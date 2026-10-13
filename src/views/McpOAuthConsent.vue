@@ -82,6 +82,7 @@ const member = computed(() =>
     () =>
       !!consent.value &&
       !!member.value &&
+      (!nativeScopes.value.includes('review') || member.value.reviewer) &&
       approvalReady.value &&
       (consent.value.scopes.some((scope) => scope !== 'daclify:submit') || !!grant.value),
   );
@@ -194,6 +195,8 @@ async function approve() {
     if (started !== generation) return;
     if (!member.value?.active || Date.parse(value.expires) <= Date.now())
       throw Error('MCP_CONTEXT_CHANGED');
+    if (nativeScopes.value.includes('review') && !member.value.reviewer)
+      throw Error('MCP_REVIEWER_REQUIRED');
     const result = await api.mcpOAuthApprove(
       {
         id: value.id,
@@ -272,8 +275,14 @@ async function approve() {
           v-for="scope in grant?.scopes ?? (['proposal', 'vote', 'review'] as const)"
           :key="scope"
           class="permission-choice"
-          ><input v-model="nativeScopes" type="checkbox" :value="scope" />{{ scope }}</label
+          ><input
+            v-model="nativeScopes"
+            type="checkbox"
+            :value="scope"
+            :disabled="scope === 'review' && !member?.reviewer"
+          />{{ scope }}</label
         >
+        <p v-if="!member?.reviewer">Review preparation requires the reviewer role.</p>
       </fieldset>
       <p>
         The remote harness receives public community data and scoped instructions. Private keys and

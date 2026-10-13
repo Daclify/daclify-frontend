@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.15.0-alpha.24 development
+
+Hosted MCP consent disables review preparation for members without the reviewer role and explains the permission requirement. Expired requests and reviewer refusals have clear messages; paired sign-in and wallet approval remain available.
+
 ## 0.15.0-alpha.23 development
 
 The compact hosted AI connection card accepts paired sign-ins and account-paired Telos wallets. Expired sign-ins can be renewed on the card; the original membership and requested permissions stay selected. Google sign-in is offered when configured. Approval no longer requires a DAO wallet binding or unlocking Daclify keys for read/preview access. Consumes immutable core protocol 18 and modules 25; native MCP downloads retain their existing tested cohort.
