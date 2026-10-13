@@ -30,6 +30,7 @@ const guideGroups = [
       'endorsement-admission',
       'representative-elections',
       'agents',
+      'community-mcp',
       'telos-governance',
       'telos-network-ballots',
     ],

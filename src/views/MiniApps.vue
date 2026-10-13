@@ -85,10 +85,12 @@ const daos = computed(() =>
         Communities can build tools for human members, AI participants or both. AI actions use
         explicitly scoped credentials and the DAO’s governance rules.
       </p>
-      <p>
-        MCP connections are planned for this release. Connection controls will appear after their
-        authorization and transport checks pass.
+      <p v-if="state.network?.capabilities.includes('community-mcp-local-v1')">
+        Local MCP pairing is available. Approve a scoped delegate in Daclify and configure your
+        harness on a trusted host.
       </p>
+      <p v-else>MCP connection setup is being qualified for this deployment.</p>
+      <RouterLink to="/docs/community-mcp">MCP connection guide ↗</RouterLink> ·
       <RouterLink to="/docs/agents">AI participant guide ↗</RouterLink>
     </section>
   </div>
