@@ -16,6 +16,7 @@ import {
 } from '@daclify/core-protocol';
 import { useWorkspace } from '../state/workspace';
 import { api, friendlyError } from '../api/client';
+import { createdDaoLocation } from '../auth/destination';
 import Account from './Account.vue';
 import DaoClaimIssuer from '../components/DaoClaimIssuer.vue';
 import VotingDurationInput from '../components/VotingDurationInput.vue';
@@ -262,7 +263,7 @@ async function checkOrder() {
     if (order.value?.state === 'created' && order.value.dao) {
       const dao = order.value.dao;
       await state.refresh();
-      if (request === orderSequence) await router.push('/dao/' + dao.daoId);
+      if (request === orderSequence) await router.push(createdDaoLocation(dao.daoId));
     }
   } catch (cause) {
     if (request === orderSequence) error.value = friendlyError(cause);
@@ -282,7 +283,7 @@ async function completeOrder() {
     acceptOrder(result);
     if (result.dao) {
       await state.refresh();
-      if (request === orderSequence) await router.push('/dao/' + result.dao.daoId);
+      if (request === orderSequence) await router.push(createdDaoLocation(result.dao.daoId));
     }
   } catch (cause) {
     if (request === orderSequence) error.value = friendlyError(cause);

@@ -7,6 +7,7 @@ import { useWorkspace } from '../state/workspace';
 import { useRouter } from 'vue-router';
 import { acceptProviderSession, lockVault } from '../auth/session';
 import { selectedSigner } from '../auth/action-signer';
+import { preferredApproval } from '../auth/approval-preference';
 import { connectEvm, signEvmMessage, TELOS_EVM, type TelosEvmChainId } from '../auth/telos-evm';
 const props = withDefaults(defineProps<{ mode?: 'enter' | 'manage' }>(), { mode: 'manage' }),
   emit = defineEmits<{ authenticated: [account: Account]; busy: [active: boolean] }>();
@@ -60,7 +61,7 @@ async function useWallet() {
   if (
     props.mode === 'manage' &&
     !window.confirm(
-      'Pair the selected Telos EVM wallet with this Daclify account? DAO governance requires separate activation; private documents still need encryption keys.',
+      'Pair the selected Telos EVM wallet with this Daclify account? Approval setup will let you use it as your default wallet and enable the DAOs you select. Private documents still need encryption keys.',
     )
   )
     return;
@@ -91,8 +92,8 @@ async function useWallet() {
       const result = await api.loginEvm(challenge.id, signature);
       if (disposed || context() !== current || generation !== revision)
         throw new Error('WALLET_CONTEXT_CHANGED');
-      selectedSigner.value = 'evm';
       emit('authenticated', acceptProviderSession(result.account, result.csrfToken));
+      if (!preferredApproval.value) selectedSigner.value = 'evm';
     } else {
       await api.pairEvm(challenge.id, signature);
       if (disposed || context() !== current || generation !== revision)
@@ -101,7 +102,7 @@ async function useWallet() {
       if (disposed || context() !== current || generation !== revision)
         throw new Error('WALLET_CONTEXT_CHANGED');
       notice.value =
-        'Wallet paired for sign-in. DAO governance authorization is activated separately in each workspace.';
+        'Wallet paired. Choose it as your default and enable your DAOs in Approval setup.';
     }
   } catch (cause) {
     if (!disposed && generation === revision) error.value = friendlyError(cause);

@@ -8,6 +8,7 @@ import { useRouter } from 'vue-router';
 import { lockVault } from '../auth/session';
 import { useWorkspace } from '../state/workspace';
 import { selectedSigner } from '../auth/action-signer';
+import { preferredApproval } from '../auth/approval-preference';
 import { z } from 'zod';
 const props = defineProps<{ mode: 'enter' | 'manage' | 'signup' }>(),
   emit = defineEmits<{
@@ -79,7 +80,7 @@ async function useWallet(reconnect = false) {
     !window.confirm(
       reconnect
         ? 'Reconnect all sign-ins from the wallet-only account controlled by your Telos Zero wallet to this restored account? This brings over its email, Telegram, passkeys and wallets, keeps your current methods, and signs out other devices. Your account keys and DAO memberships are preserved.'
-        : 'Pair the native account selected in Anchor with this Daclify account? DAO governance must be activated separately.',
+        : 'Pair the native account selected in Anchor with this Daclify account? Approval setup will let you use it as your default wallet and enable the DAOs you select.',
     )
   )
     return;
@@ -118,13 +119,13 @@ async function useWallet(reconnect = false) {
     guard(stamp, generation);
     if (purpose !== 'pair') {
       const session = SessionSchema.parse(result);
-      selectedSigner.value = 'native';
       emit('authenticated', acceptProviderSession(session.account, session.csrfToken));
+      if (!preferredApproval.value) selectedSigner.value = 'native';
     } else {
       await load();
       guard(stamp, generation);
       notice.value =
-        'Native account paired for sign-in. Activate its DAO authorization separately in the workspace.';
+        'Wallet paired. Choose it as your default and enable your DAOs in Approval setup.';
     }
   } catch (cause) {
     if (!disposed && generation === revision) error.value = friendlyError(cause);

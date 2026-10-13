@@ -1,6 +1,6 @@
 # Frontend documentation
 
-Current development application: **0.15.0-alpha.28**, consuming core **0.15.0-alpha.20** and modules **0.10.0-alpha.28** SDK/help packages. Development uses `dev`. See the [repository README](../README.md) for routes, local development, account recovery and test phases, and the [Netlify dev guide](netlify-dev.md) for the separate testnet site.
+Current development application: **0.15.0-alpha.30**, consuming core **0.15.0-alpha.20** and modules **0.10.0-alpha.28** SDK/help packages. Development uses `dev`. See the [repository README](../README.md) for routes, local development, account recovery and test phases, and the [Netlify dev guide](netlify-dev.md) for the separate testnet site.
 
 ## Help inside the application
 
@@ -72,3 +72,5 @@ Resources → Archive now shows the configured encrypted backup option, exact ma
 - [Public Users directory](users/public-directory.md) explains profiles, community links, identity grouping and DAO activity.
 
 Works now separates **Work proposals** and **Member services**. The toolbar’s **+** opens a milestone proposal popup; the help icon opens the existing Works rules. Named contributor/document choices replace numeric inputs, including evidence and review. Search and status/contributor/agreement filters apply to loaded projects; **Load more** extends the list. See [Works instructions](users/works.md) and the [verification ledger](evidence/2026-10-12-works-experience.md).
+
+[One wallet and approval setup](approval-setup.md) explains pairing, selected DAO activation, recovery and retries.

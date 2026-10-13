@@ -16,7 +16,7 @@ import { relayInstruction, vaultUnlocked } from '../auth/session';
 import { canSignMember } from '../auth/action-signer';
 import { useWorkspace } from '../state/workspace';
 import { api, friendlyError } from '../api/client';
-import Account from '../views/Account.vue';
+import { approvalSetupLocation } from '../auth/destination';
 const props = defineProps<{
   dao: DaoSummary;
   member: UserMembership | undefined;
@@ -349,12 +349,16 @@ function eligibleAction(action: string) {
 </script>
 <template>
   <section v-if="state.account && !member" aria-labelledby="join-access-title">
-    <h2 id="join-access-title">Enable full access to join</h2>
+    <h2 id="join-access-title">Join with your Daclify account</h2>
     <p>
-      Use the same Daclify account and recovery kit for this community. After setup, share your
-      public identity with an administrator or sponsor.
+      Use your existing account. Share its public join identity with an administrator or sponsor;
+      enable your default wallet through the same account setup after admission.
     </p>
-    <Account access-setup join-setup />
+    <RouterLink
+      class="button secondary"
+      :to="approvalSetupLocation(`/dao/${dao.reference.daoId}/members`, dao.reference.daoId)"
+      >Open account setup and join identity</RouterLink
+    >
   </section>
   <WorkspaceDialog
     v-model:open="creationPopup"

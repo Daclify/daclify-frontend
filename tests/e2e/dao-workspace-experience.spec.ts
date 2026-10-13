@@ -241,7 +241,7 @@ test('signing disclosure explains member readiness without exposing settings on 
   await page.goto('/dao/1');
   const signing = main(page)
     .locator('details')
-    .filter({ has: page.getByText('Signing & wallets', { exact: true }) });
+    .filter({ has: page.getByText('Approval method', { exact: true }) });
   await expect(signing).toHaveAttribute('open', '');
   await expect(signing.getByLabel('Authorize actions with', { exact: true })).toBeVisible();
   await expect(main(page).getByText('42', { exact: true })).toBeVisible();
@@ -417,7 +417,7 @@ for (const mismatch of ['chain', 'contract', 'interface'] as const)
       });
     await page.goto('/dao/1/settings');
     await expect(main(page).getByLabel('New DAO name', { exact: true })).toHaveCount(0);
-    await expect(main(page).getByText('Signing & wallets', { exact: true })).toHaveCount(0);
+    await expect(main(page).getByText('Approval method', { exact: true })).toHaveCount(0);
   });
 
 test('inactive members keep Treasury exits and cannot configure the DAO', async ({ page }) => {
@@ -664,7 +664,7 @@ test('workspace and configuration remain usable at phone, tablet, landscape and 
   });
   const signing = main(page)
     .locator('details')
-    .filter({ has: page.getByText('Signing & wallets', { exact: true }) });
+    .filter({ has: page.getByText('Approval method', { exact: true }) });
   await signing.locator('summary').focus();
   await page.keyboard.press('Enter');
   await expect(signing).not.toHaveAttribute('open');
@@ -738,8 +738,11 @@ test('unlocks the original account inside Join and shares only its public identi
   );
   await page.goto('/dao/1/members');
   await expect(
-    page.getByRole('heading', { name: 'Enable full access to join', exact: true }),
+    page.getByRole('heading', { name: 'Join with your Daclify account', exact: true }),
   ).toBeVisible();
+  await page
+    .getByRole('link', { name: 'Open account setup and join identity', exact: true })
+    .click();
   await page.getByLabel('Vault password', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Unlock and sign in', exact: true }).click();
   await expect(
@@ -762,7 +765,7 @@ test('unlocks the original account inside Join and shares only its public identi
       2,
     ),
   );
-  await expect(page).toHaveURL(/\/dao\/1\/members$/);
+  await expect(page).toHaveURL(/\/account\?.*setup=approvals/);
   await expect(
     page.getByRole('button', { name: 'Copy public join identity', exact: true }),
   ).toBeEnabled();

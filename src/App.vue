@@ -29,6 +29,8 @@ import {
 } from './api/networks';
 import { accountEntryDestination } from './auth/dao-claim-entry';
 import HelpWindow from './components/HelpWindow.vue';
+import { startApprovalPreferences } from './auth/approval-preference';
+import { canSignMember } from './auth/action-signer';
 const helpOpen = ref(false),
   helpStarted = ref(false);
 function toggleHelp() {
@@ -44,6 +46,10 @@ function leaveOperator(destination = '/hub') {
   window.location.assign(destination);
 }
 const state = useWorkspace();
+const walletApprovalsReady = computed(() =>
+  state.memberships.some((member) => member.active && canSignMember(member)),
+);
+const stopApprovalPreferences = startApprovalPreferences();
 const route = useRoute(),
   router = useRouter(),
   routeError = ref('');
@@ -61,6 +67,7 @@ const accountReturn = computed(() => {
   }
 });
 onBeforeUnmount(() => {
+  stopApprovalPreferences();
   removeRouteError();
   removeRouteSuccess();
 });
@@ -266,8 +273,12 @@ onMounted(() => {
           <span v-else-if="deployment" class="pill" role="status" aria-label="Deployment network">{{
             deployment === 'testnet' ? 'Testnet' : 'Production'
           }}</span>
-          <span class="pill" :class="{ success: vaultUnlocked }">{{
-            vaultUnlocked ? 'Vault unlocked' : 'Vault locked'
+          <span class="pill" :class="{ success: vaultUnlocked || walletApprovalsReady }">{{
+            vaultUnlocked
+              ? 'Vault unlocked'
+              : walletApprovalsReady
+                ? 'Wallet ready'
+                : 'Vault locked'
           }}</span
           ><button v-if="vaultUnlocked" class="text-button" @click="lockVault">Lock keys</button
           ><button v-if="operator" class="secondary" @click="leaveOperator()">

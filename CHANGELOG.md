@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.15.0-alpha.30 development
+
+Unify wallet activation in Account > Approval setup. Remember a default per account/operator/network on this browser; review and activate selected DAOs with existing member and incoming-wallet consent. Reread current bindings/nonces, disclose replacements, stop on failure and skip confirmed authorizations on retry. Create, join and action cards use the same setup destination; recovery preserves the chosen wallet and stays in setup. Retain separate private-content keys, current permissions and last-native-executive safeguards.
+
 ## 0.15.0-alpha.29 development
 
 Simplify Mini Apps to a single browse-first page. Expand connection and AI setup in place, and show publishing, reporting, app details and moderation controls only when requested. Preserve drafts and deep links, add loading/empty/retry states, and clear old origin proofs and reports when their listing changes. Keep existing permission, registration, consent and connection-binding checks.

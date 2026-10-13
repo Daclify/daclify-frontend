@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useRoute } from 'vue-router';
+import { approvalSetupLocation } from '../auth/destination';
 import { computed, ref, useId, watch } from 'vue';
 import type { GovernanceState } from '@daclify/core-protocol';
 import { executiveStatus } from '../auth/executives';
@@ -8,17 +9,15 @@ import { encodeAction, makeInstruction } from '@daclify/core-protocol/sdk';
 import { selectedSigner, canSignMember, refreshEvmAuthorization } from '../auth/action-signer';
 import {
   vaultUnlocked,
-  signInstruction,
   relayInstruction,
-  relayWithVault,
   savedVault,
   unlockAndLogin,
   lockVault,
 } from '../auth/session';
-import { nativeWallet, connectNative, nativeIdentity, nativeGovernance } from '../auth/telos-zero';
+import { nativeWallet, connectNative } from '../auth/telos-zero';
 import { useWorkspace } from '../state/workspace';
 import { api, friendlyError } from '../api/client';
-import { evmWallet, connectEvm, signEvmBinding } from '../auth/telos-evm';
+import { evmWallet, connectEvm } from '../auth/telos-evm';
 const props = defineProps<{ member: UserMembership | undefined; compact?: boolean }>();
 const inputId = useId();
 const password = ref('');
@@ -29,6 +28,9 @@ const localKeys = computed(
   () => !!state.account?.signingKey && savedVault()?.signingPublicKey === state.account.signingKey,
 );
 const route = useRoute();
+const setupLocation = computed(() =>
+  approvalSetupLocation(route.fullPath, props.member?.dao.daoId),
+);
 const ready = computed(() => canSignMember(props.member));
 async function unlock() {
   const account = state.account;
@@ -66,37 +68,6 @@ async function connect() {
   error.value = '';
   try {
     await connectNative();
-    selectedSigner.value = 'native';
-  } catch (cause) {
-    error.value = friendlyError(cause);
-  } finally {
-    busy.value = false;
-  }
-}
-async function bind() {
-  const member = props.member;
-  if (!member) return;
-  busy.value = true;
-  error.value = '';
-  try {
-    const identity = nativeIdentity();
-    if (identity.chainId !== member.dao.chainId) throw new Error('WALLET_CONTEXT_CHANGED');
-    const request = makeInstruction(
-      member.dao,
-      member.memberId,
-      member.nonce,
-      Math.floor(Date.now() / 1000) + 120,
-      member.dao.contract,
-      'linknative',
-      encodeAction('linknative', {
-        runtime: member.dao.contract,
-        dao_id: member.dao.daoId,
-        member_id: member.memberId,
-        account: identity.account,
-      }),
-    );
-    await nativeGovernance(request, member.nativeAccount, signInstruction(request));
-    await state.refresh();
     selectedSigner.value = 'native';
   } catch (cause) {
     error.value = friendlyError(cause);
@@ -172,63 +143,6 @@ async function connectEthereum() {
     busy.value = false;
   }
 }
-async function bindEthereum() {
-  const member = props.member,
-    wallet = evmWallet.value;
-  if (!member || !wallet) return;
-  busy.value = true;
-  error.value = '';
-  try {
-    if (
-      !(await api.evmLinks()).links.some(
-        (link) =>
-          link.controlVerified &&
-          link.chainId === wallet.chainId &&
-          link.address.toLowerCase() === wallet.address.toLowerCase(),
-      )
-    )
-      throw new Error('EVM_LINKED_REQUIRED');
-    const current = (await api.evmBinding(member.dao.daoId, member.memberId)).binding;
-    const epoch = String(current ? BigInt(current.epoch) + 1n : 1n),
-      expires = Math.floor(Date.now() / 1000) + 120;
-    const proof = await signEvmBinding(
-      member.dao,
-      member.memberId,
-      { chainId: wallet.chainId, address: wallet.address, epoch },
-      member.nonce,
-      expires,
-    );
-    if (wallet !== evmWallet.value || props.member !== member)
-      throw new Error('WALLET_CONTEXT_CHANGED');
-    await relayWithVault(
-      makeInstruction(
-        member.dao,
-        member.memberId,
-        member.nonce,
-        expires,
-        member.dao.contract,
-        'linkevm',
-        encodeAction('linkevm', {
-          runtime: member.dao.contract,
-          dao_id: member.dao.daoId,
-          member_id: member.memberId,
-          evm_chain_id: String(wallet.chainId),
-          address: wallet.address.slice(2).toLowerCase(),
-          epoch,
-          nonce: member.nonce,
-          expires,
-          proof: proof.slice(2),
-        }),
-      ),
-    );
-    await state.refresh();
-    if (props.member) await refreshEvmAuthorization(props.member);
-  } catch (cause) {
-    error.value = friendlyError(cause);
-  } finally {
-    busy.value = false;
-  }
-}
 async function revokeEthereum() {
   const member = props.member;
   if (!member) return;
@@ -294,8 +208,8 @@ async function revokeEthereum() {
     <RouterLink
       v-else-if="selectedSigner === 'vault' && !vaultUnlocked"
       class="button secondary"
-      :to="{ path: '/account', query: { returnTo: route.fullPath } }"
-      >Unlock Daclify keys</RouterLink
+      :to="setupLocation"
+      >Set up approvals</RouterLink
     >
     <p v-if="error" class="alert" role="alert">{{ error }}</p>
     <button
@@ -308,33 +222,18 @@ async function revokeEthereum() {
     </button>
     <template v-else-if="selectedSigner === 'native' && !ready">
       <p>
-        This wallet is not authorized for this DAO member. Activating it requires your existing
-        Daclify keys and the incoming wallet’s consent.
+        Finish account setup to use your paired wallet here. You can enable several DAOs together.
       </p>
-      <button type="button" :disabled="busy || !vaultUnlocked || !member.active" @click="bind">
-        {{
-          member.nativeAccount ? 'Replace DAO wallet atomically' : 'Authorize wallet for this DAO'
-        }}
-      </button>
+      <RouterLink class="button secondary" :to="setupLocation">Set up approvals</RouterLink>
     </template>
     <template v-if="selectedSigner === 'evm'">
       <button v-if="!evmWallet" type="button" :disabled="busy" @click="connectEthereum">
         Connect Telos EVM wallet
       </button>
-      <template v-else-if="!ready"
-        ><p>
-          Pair this wallet in Account first, then activate it for this DAO using your existing
-          Daclify keys. EOA signatures are supported; ERC-1271 contract-wallet signatures require a
-          separate integration.
-        </p>
-        <button
-          type="button"
-          :disabled="busy || !vaultUnlocked || !member.active"
-          @click="bindEthereum"
-        >
-          Authorize EVM wallet for this DAO
-        </button></template
-      >
+      <template v-else-if="!ready">
+        <p>Finish account setup to use your paired EVM wallet here.</p>
+        <RouterLink class="button secondary" :to="setupLocation">Set up approvals</RouterLink>
+      </template>
       <button
         v-else-if="!compact"
         type="button"

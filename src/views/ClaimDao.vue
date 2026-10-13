@@ -11,6 +11,7 @@ import { useWorkspace } from '../state/workspace';
 import { api, friendlyError } from '../api/client';
 import { resolveApiUrl } from '../api/networks';
 import { saveClaimDestination, takeClaimDestination } from '../auth/dao-claim-entry';
+import { createdDaoLocation } from '../auth/destination';
 import Account from './Account.vue';
 const state = useWorkspace(),
   route = useRoute(),
@@ -78,7 +79,7 @@ async function confirm() {
     if (result.state === 'created' && result.founderExecutive && result.dao) {
       const daoId = result.dao.daoId;
       await state.refresh();
-      if (expected === context()) await router.replace('/dao/' + daoId);
+      if (expected === context()) await router.replace(createdDaoLocation(daoId));
     } else {
       // Existing immutable payment/resume controls retain the reservation without carrying its secret.
       await router.replace({ path: '/create', query: { order: result.requestId } });

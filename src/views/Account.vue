@@ -40,7 +40,9 @@ import FastSignInMethods from '../components/FastSignInMethods.vue';
 import DeviceApproval from '../components/DeviceApproval.vue';
 import QuickSignup from '../components/QuickSignup.vue';
 import AssistedRecoveryOptOut from '../components/AssistedRecoveryOptOut.vue';
+import ApprovalSetup from '../components/ApprovalSetup.vue';
 import { restoreFastSignIn } from '../auth/fast-sign-in';
+import { canSignMember } from '../auth/action-signer';
 const props = defineProps<{
   embedded?: boolean;
   accessSetup?: boolean;
@@ -70,11 +72,27 @@ const kitText = ref('');
 const recoveryCredential = ref('');
 const replacementAcknowledged = ref(false);
 const route = useRoute();
+const approvalSetup = computed(() => route.query.setup === 'approvals');
 const router = useRouter();
 const destination = computed(() =>
   props.accessSetup ? undefined : accountDestination(route.query.returnTo),
 );
 const state = useWorkspace();
+const walletApprovalsReady = computed(() =>
+  state.memberships.some((member) => member.active && canSignMember(member)),
+);
+const joinRequested = computed(
+  () =>
+    props.joinSetup ||
+    (approvalSetup.value &&
+      typeof route.query.dao === 'string' &&
+      !state.memberships.some(
+        (member) =>
+          member.dao.daoId === route.query.dao &&
+          member.dao.chainId === state.network?.chainId &&
+          member.dao.contract === state.network.runtime,
+      )),
+);
 const recoveryInfo = ref<RecoveryMethods>();
 const recoveryCheckFailed = ref(false);
 let recoveryRead = 0;
@@ -391,7 +409,7 @@ async function unlock(mode: 'attach' | 'recover' | 'reconnect' = 'attach') {
     recoveredAccountFound.value = false;
     password.value = '';
     await state.refresh();
-    if (destination.value) await router.push(destination.value);
+    if (destination.value && !approvalSetup.value) await router.push(destination.value);
   } catch (cause) {
     if (cause instanceof ApiFailure && cause.code === 'VAULT_ALREADY_REGISTERED') {
       recoveredAccountFound.value = true;
@@ -418,7 +436,7 @@ async function onSignedIn(account: Account) {
     error.value = friendlyError(cause);
   }
   await state.refresh();
-  if (destination.value) await router.push(destination.value);
+  if (destination.value && !approvalSetup.value) await router.push(destination.value);
 }
 async function logout() {
   busy.value = true;
@@ -662,12 +680,17 @@ function backup() {
       role="tabpanel"
       aria-labelledby="account-tab-keys"
     >
+      <ApprovalSetup />
       <div class="access-grid">
         <section class="device-access" aria-labelledby="this-device-title">
           <div class="panel-heading">
             <h2 id="this-device-title">This device</h2>
             <span :class="['pill', { success: vaultUnlocked }]">{{
-              vaultUnlocked ? 'Keys unlocked' : 'Sign-in only'
+              vaultUnlocked
+                ? 'Keys unlocked'
+                : walletApprovalsReady
+                  ? 'Wallet approvals ready'
+                  : 'Sign-in only'
             }}</span>
           </div>
           <p v-if="vaultUnlocked">Ready to sign actions and open your private documents.</p>
@@ -702,11 +725,16 @@ function backup() {
             </button>
           </div>
           <p v-if="!vaultUnlocked && !accountKit" class="muted">
-            Your account is signed in. To sign actions and open private documents, use a paired
-            method with full access, approve this device, or restore your encrypted kit.
+            {{
+              walletApprovalsReady
+                ? 'Your wallet can approve actions in enabled DAOs. To open private documents, recover your account keys below.'
+                : 'Your account is signed in. To enable a wallet in a new DAO or open private documents, use a paired method with full access, approve this device, or restore your encrypted kit.'
+            }}
           </p>
           <SignInMethods
-            v-if="accessSetup && !vaultUnlocked && state.account.signingKey !== null"
+            v-if="
+              (accessSetup || approvalSetup) && !vaultUnlocked && state.account.signingKey !== null
+            "
             mode="enter"
             @authenticated="onSignedIn"
             @busy="providerBusy = $event"
@@ -743,7 +771,7 @@ function backup() {
         @changed="recoveryInfo = $event"
         @kit-saved="saved = savedVault()"
       />
-      <details class="identity-details">
+      <details class="identity-details" :open="joinRequested">
         <summary>
           {{ state.account.signingKey === null ? 'Account details' : 'Public join identity' }}
         </summary>
@@ -793,7 +821,9 @@ function backup() {
         </form>
       </details>
     </section>
-    <p v-if="state.network?.capabilities.includes('account-exit-v1')"><router-link to="/account/exit">Leave DAOs or delete my hosted account</router-link></p>
+    <p v-if="state.network?.capabilities.includes('account-exit-v1')">
+      <router-link to="/account/exit">Leave DAOs or delete my hosted account</router-link>
+    </p>
     <div
       v-if="opened['sign-in']"
       v-show="tab === 'sign-in'"

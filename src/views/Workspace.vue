@@ -6,6 +6,7 @@ import { DaoPresets, daoPaymentKey, type DaoRef } from '@daclify/core-protocol';
 import type { ModuleState } from '@daclify/modules';
 import { api, friendlyError } from '../api/client';
 import { canSignMember } from '../auth/action-signer';
+import { approvalSetupLocation } from '../auth/destination';
 import { useWorkspace } from '../state/workspace';
 import ActionSigner from '../components/ActionSigner.vue';
 import ContentPanel from '../components/ContentPanel.vue';
@@ -227,11 +228,14 @@ const setupTabs = computed<ReadonlyArray<readonly [string, string]>>(() => [
           Your membership is inactive. Your existing claim and stake exits remain available in
           Treasury.
         </p>
-        <p v-else>
-          Choose an authorized signer before taking action. Unlock Daclify keys separately to read
-          encrypted documents.
-        </p>
+        <p v-else>Finish account setup to use your default approval method in this DAO.</p>
       </div>
+      <RouterLink
+        v-if="membership?.active && !signerReady"
+        class="button secondary"
+        :to="approvalSetupLocation(route.fullPath, membership.dao.daoId)"
+        >Set up approvals</RouterLink
+      >
       <RouterLink
         v-if="!state.account"
         class="button secondary"
@@ -253,7 +257,7 @@ const setupTabs = computed<ReadonlyArray<readonly [string, string]>>(() => [
     </aside>
     <details v-if="membership" class="workspace-signing" :open="membership.active && !signerReady">
       <summary>
-        <KeyRound aria-hidden="true" /><span>Signing &amp; wallets</span
+        <KeyRound aria-hidden="true" /><span>Approval method</span
         ><span class="workspace-signing-state">{{
           signerReady ? 'Signer ready' : 'Choose a signer'
         }}</span>

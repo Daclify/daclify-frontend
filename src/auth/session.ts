@@ -268,12 +268,12 @@ export async function installRecoveredVault(
   )
     throw new Error('ACCOUNT_KEY_MISMATCH');
   const opened = await verifyRecoveryIdentity(input, context),
-    signer = await import('./action-signer');
+    approval = await import('./approval-preference');
   check();
   await checkRecoveryAccount(account);
   check();
   secrets = opened;
-  signer.selectedSigner.value = 'vault';
+  approval.restorePreferredSigner();
   vaultUnlocked.value = true;
   touch();
 }
@@ -292,10 +292,10 @@ export async function installCreatedVault(
   )
     throw new Error('ACCOUNT_KEY_MISMATCH');
   const opened = await verifyRecoveryIdentity(input, context),
-    signer = await import('./action-signer');
+    approval = await import('./approval-preference');
   check();
   secrets = opened;
-  signer.selectedSigner.value = 'vault';
+  approval.restorePreferredSigner();
   vaultUnlocked.value = true;
   touch();
 }
@@ -396,7 +396,7 @@ export async function unlockAndLogin(
   )
     throw new Error('ACCOUNT_KEY_MISMATCH');
   secrets = opened;
-  (await import('./action-signer')).selectedSigner.value = 'vault';
+  (await import('./approval-preference')).restorePreferredSigner();
   vaultUnlocked.value = true;
   touch();
   return account;
