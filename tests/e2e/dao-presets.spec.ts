@@ -145,6 +145,34 @@ async function openCreation(page: Page) {
   if (await menu.isVisible()) await menu.click();
   await page.getByRole('link', { name: 'Create', exact: true }).click();
 }
+test('signed-out creation requires an account before revealing its setup form', async ({
+  page,
+}) => {
+  await page.route('**/v1/sign-in/session', (route) => route.fulfill({ status: 204 }));
+  await page.goto('/create');
+  await expect(
+    page.getByRole('heading', { name: 'Set up your account first', exact: true }),
+  ).toBeVisible();
+  await expect(page.getByLabel('DAO name', { exact: true })).toHaveCount(0);
+});
+test('creation still requires a public signing identity for a wallet-only account', async ({
+  page,
+}) => {
+  const wallet = AccountSchema.parse({
+    ...account,
+    signingKey: null,
+    encryptionKey: null,
+    walletOrigin: 'signup',
+  });
+  await page.route('**/v1/sign-in/session', (route) =>
+    route.fulfill({ json: { account: wallet } }),
+  );
+  await page.goto('/create');
+  await expect(
+    page.getByRole('heading', { name: 'Enable full access', exact: true }),
+  ).toBeVisible();
+  await expect(page.getByLabel('DAO name', { exact: true })).toHaveCount(0);
+});
 test('discloses actual guardian authority without giving a visitor administration', async ({
   page,
 }) => {

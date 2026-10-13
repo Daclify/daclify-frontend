@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, watch, onBeforeUnmount } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { ArrowRight } from '@lucide/vue';
 import {
@@ -15,7 +15,6 @@ import {
 } from '@daclify/core-protocol';
 import { useWorkspace } from '../state/workspace';
 import { api, friendlyError } from '../api/client';
-import { canUseVaultKey } from '../auth/session';
 import Account from './Account.vue';
 import VotingDurationInput from '../components/VotingDurationInput.vue';
 import PercentageInput from '../components/PercentageInput.vue';
@@ -49,7 +48,6 @@ async function loadPlatform() {
     if (current === loadSequence) platformBusy.value = false;
   }
 }
-onMounted(loadPlatform);
 function acceptOrder(result: CreationOrderView) {
   if (
     result.network.chainId !== state.network?.chainId ||
@@ -304,7 +302,7 @@ watch(
     void loadPlatform();
     if (state.account && state.network && orderId.value) void checkOrder();
   },
-  { flush: 'sync' },
+  { flush: 'sync', immediate: true },
 );
 watch(
   () => route.query.order,
@@ -380,10 +378,7 @@ onBeforeUnmount(() => {
       >Set up account</RouterLink
     >
   </div>
-  <section
-    v-else-if="state.account.signingKey === null || !canUseVaultKey(state.account.signingKey)"
-    class="full-access-setup"
-  >
+  <section v-else-if="state.account.signingKey === null" class="full-access-setup">
     <h2>Enable full access</h2>
     <p>
       Open your Daclify account on this device to create a DAO. Your paired sign-ins and one

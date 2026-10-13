@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.15.0-alpha.26 development
+
+Show shared DAO setup after paired sign-in when the account already has its public signing identity. Creating a DAO does not require unlocking its private keys; signing member actions and opening private content keep their existing checks. Load saved orders immediately when opening the creation page with an existing session. Add real passkey/API/native creation coverage with keys locked and preserve signed-out and wallet-only setup guards.
+
 ## 0.15.0-alpha.25 development
 
 Use the optional session read for browser startup so signed-out visitors can connect without a failed authentication probe in the console. Existing authenticated account validation, fresh paired approval, CSRF renewal and permission checks remain enforced. Add desktop/mobile popup return coverage and console checks for hosted consent.
