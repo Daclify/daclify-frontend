@@ -1,6 +1,16 @@
 {
   "requirements": [
     {
+      "id": "DAO-SETTINGS-SAVED-VALUES-NAMED-MEMBERS-AND-SIGNED-POPUPS",
+      "tests": [
+        "tests/e2e/workspace-tools-design.spec.ts",
+        "tests/e2e/dao-workspace-experience.spec.ts",
+        "tests/e2e/executives.spec.ts",
+        "tests/e2e/dao-presets.spec.ts",
+        "tests/unit/access-components.test.ts"
+      ]
+    },
+    {
       "id": "TREASURY-DOCUMENTS-MEMBERS-CONTEXTUAL-TOOLS",
       "tests": [
         "tests/e2e/workspace-tools-design.spec.ts",

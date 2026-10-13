@@ -1,6 +1,8 @@
-# Treasury, Documents and Members
+# Workspace tools and DAO Settings
 
 Each screen keeps search, filters and actions near its list. The plus opens the relevant creation popup; the help icon opens the versioned rules. Popups keep cancelled or failed drafts and prevent edits or dismissal while a write is pending.
+
+DAO Settings uses Identity, Governance and Services tabs, with help beside them. Identity shows the saved DAO name and public directory card; their Edit buttons open a popup. Governance shows voting rules and funding limits, followed by executive and voting-eligibility controls. Choose members by name or linked wallet. Voting thresholds are percentages, durations use hours/days/weeks, and funding limits use the DAO token; 0 means no limit. Drafts remain when a popup is cancelled or a submission fails. Advanced sections contain automation credentials, guardian actions and native contract ownership. Native transaction downloads still require the appropriate wallet authority to execute. Services links to member capacity, module access, storage and merchant payment management.
 
 Treasury separates Payments, Your balances and Reports. Available funds, reservations and unwithdrawn payment claims are different balances. Search payments by recipient or source and filter their status. Settlement pays the fixed recipient and amount already approved; recording an external payment statement does not settle an obligation. Plus shows deposit destinations and the exact memo. Your balances opens withdrawals, including full fractional claims or stake; offboarding does not remove existing exit rights. Reports keep reconciliation warnings and export the full report rather than the filtered screen.
 

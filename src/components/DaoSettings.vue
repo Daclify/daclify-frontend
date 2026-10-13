@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, watch, onBeforeUnmount } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { ArrowUpRight, CreditCard, Database, Users } from '@lucide/vue';
+import { CircleHelp, CreditCard, Database, Users, Boxes, Pencil } from '@lucide/vue';
 import { MetadataSchema, type DaoSummary, type UserMembership } from '@daclify/core-protocol';
 import { encodeAction, makeInstruction } from '@daclify/core-protocol/sdk';
+import WorkspaceDialog from './WorkspaceDialog.vue';
+import WorkspaceTabs from './WorkspaceTabs.vue';
 import DaoBrandingPanel from './DaoBrandingPanel.vue';
 import GovernancePanel from './GovernancePanel.vue';
 import { currentOperator } from '../api/networks';
@@ -17,6 +19,11 @@ const route = useRoute(),
   router = useRouter(),
   workspace = useWorkspace();
 const sections = ['identity', 'governance', 'services'] as const;
+const tabs = sections.map((value) => ({
+  value,
+  label: value === 'identity' ? 'Identity' : value === 'governance' ? 'Governance' : 'Services',
+}));
+const popup = ref(false);
 const selected = computed(() => sections.find((id) => id === route.query.settings) ?? 'identity');
 const admin = computed(() => !!props.member?.active && props.member.admin);
 const signerReady = computed(() => canSignMember(props.member));
@@ -41,6 +48,7 @@ watch(context, () => {
   error.value = '';
   notice.value = '';
   busy.value = false;
+  popup.value = false;
 });
 watch(
   () => props.dao.title,
@@ -49,7 +57,9 @@ watch(
   },
 );
 onBeforeUnmount(() => revision++);
-function choose(id: (typeof sections)[number]) {
+function choose(value: string) {
+  const id = sections.find((section) => section === value);
+  if (!id) return;
   if (!busy.value)
     void router.replace({
       query: { ...route.query, settings: id === 'identity' ? undefined : id },
@@ -90,7 +100,10 @@ async function rename() {
     );
     if (generation !== revision) return;
     await workspace.refresh();
-    if (generation === revision) notice.value = 'DAO name updated.';
+    if (generation === revision) {
+      notice.value = 'DAO name updated.';
+      popup.value = false;
+    }
   } catch (cause) {
     if (generation === revision) error.value = friendlyError(cause);
   } finally {
@@ -99,73 +112,108 @@ async function rename() {
 }
 </script>
 <template>
-  <section id="configuration" class="dao-settings" aria-labelledby="settings-title">
-    <header class="settings-heading">
-      <div>
-        <h2 id="settings-title">DAO settings</h2>
-        <p>
-          {{
-            admin
-              ? 'Manage this DAO’s public identity, governance and services.'
-              : 'Explore this DAO’s configuration. Administrator permission is required to change its identity and policy.'
-          }}
-        </p>
-      </div>
-      <RouterLink :to="{ path: '/docs/dao-governance', query: { dao: dao.reference.daoId } }"
-        >Configuration guide <ArrowUpRight aria-hidden="true"
-      /></RouterLink>
-    </header>
-    <div class="settings-sections" role="group" aria-label="DAO configuration sections">
-      <button
-        v-for="id in sections"
-        :key="id"
-        class="secondary"
-        :aria-pressed="selected === id"
+  <section id="configuration" class="dao-settings" aria-label="DAO settings">
+    <div class="workspace-tools-toolbar settings-toolbar">
+      <WorkspaceTabs
+        :model-value="selected"
+        prefix="settings"
+        label="DAO settings sections"
+        :items="tabs"
         :disabled="busy"
-        @click="choose(id)"
-      >
-        {{ id === 'identity' ? 'Identity' : id === 'governance' ? 'Governance' : 'Services' }}
-      </button>
+        @update:model-value="choose"
+      />
+      <RouterLink
+        class="workspace-icon-button"
+        :to="{ path: '/docs/dao-governance', query: { dao: dao.reference.daoId } }"
+        aria-label="Settings help"
+        title="Settings help"
+        ><CircleHelp aria-hidden="true"
+      /></RouterLink>
     </div>
-    <div v-if="selected === 'identity'" class="settings-content">
-      <section class="panel settings-identity">
-        <h3>Public identity</h3>
+    <p v-if="!admin" class="field-help">
+      You can review these settings. An administrator must approve changes to the DAO’s identity and
+      voting rules.
+    </p>
+    <div
+      v-show="selected === 'identity'"
+      id="settings-identity"
+      role="tabpanel"
+      aria-labelledby="settings-tab-identity"
+      class="settings-content"
+    >
+      <section class="panel">
+        <div class="panel-heading">
+          <div>
+            <h2>Public identity</h2>
+            <p class="settings-description">
+              The name people see in the directory and your workspace.
+            </p>
+          </div>
+          <button
+            v-if="admin"
+            type="button"
+            class="secondary settings-edit"
+            aria-haspopup="dialog"
+            :disabled="busy"
+            @click="popup = true"
+          >
+            <Pencil aria-hidden="true" />Edit DAO name
+          </button>
+        </div>
+        <dl class="settings-values">
+          <dt>DAO name</dt>
+          <dd>{{ dao.title }}</dd>
+          <dt>Document privacy</dt>
+          <dd>{{ dao.privacy === 'public' ? 'Public' : 'Encrypted documents' }}</dd>
+        </dl>
+        <p v-if="notice" role="status">{{ notice }}</p>
+      </section>
+      <DaoBrandingPanel :dao="dao" :member="member" @updated="$emit('updated')" />
+      <WorkspaceDialog v-if="admin" v-model:open="popup" title="Edit DAO name" :busy="busy">
         <p>
           Your DAO name is public on the blockchain. Changing it keeps the same DAO reference and
           memberships.
         </p>
         <p v-if="error" class="alert" role="alert">{{ error }}</p>
-        <p v-if="notice" role="status">{{ notice }}</p>
-        <form v-if="admin" @submit.prevent="rename">
+        <form @submit.prevent="rename">
           <label for="rename">New DAO name</label
-          ><input id="rename" v-model="newTitle" maxlength="160" required :disabled="busy" /><button
-            :disabled="busy || !signerReady || !newTitle.trim() || newTitle.trim() === dao.title"
-          >
-            {{ busy ? 'Submitting…' : 'Sign and update name' }}
-          </button>
+          ><input id="rename" v-model="newTitle" maxlength="160" required :disabled="busy" />
           <p v-if="!newTitle.trim()" class="field-help">Enter a DAO name before signing.</p>
           <p v-if="!signerReady" class="field-help">
             Choose an authorized administrator signer in Signing &amp; wallets above.
           </p>
+          <button
+            :disabled="busy || !signerReady || !newTitle.trim() || newTitle.trim() === dao.title"
+          >
+            {{ busy ? 'Submitting…' : 'Sign and update name' }}
+          </button>
         </form>
-        <p v-else class="notice">Administrator permission is required to update this DAO.</p>
-      </section>
-      <DaoBrandingPanel :dao="dao" :member="member" @updated="$emit('updated')" />
+      </WorkspaceDialog>
     </div>
-    <GovernancePanel v-else-if="selected === 'governance'" :dao="dao" :member="member" />
-    <div v-else class="settings-content">
-      <div>
-        <h3>Hosting and payments</h3>
-        <p class="settings-description">
-          Member capacity, module access and storage have separate prices. Your DAO’s merchant
-          payments are managed separately.
-        </p>
-      </div>
+    <div
+      v-show="selected === 'governance'"
+      id="settings-governance"
+      role="tabpanel"
+      aria-labelledby="settings-tab-governance"
+      class="settings-content"
+    >
+      <GovernancePanel :dao="dao" :member="member" />
+    </div>
+    <div
+      v-show="selected === 'services'"
+      id="settings-services"
+      role="tabpanel"
+      aria-labelledby="settings-tab-services"
+      class="settings-content"
+    >
+      <p class="settings-description">
+        Manage your DAO’s hosting, module access, storage and merchant payments.
+      </p>
       <div class="settings-services">
         <section v-if="admin && !currentOperator()" class="panel">
           <Users aria-hidden="true" />
-          <h3>Member capacity</h3>
-          <p>Review this DAO’s hosted member allowance and approve additional capacity.</p>
+          <h2>Member capacity</h2>
+          <p>Review your hosted member allowance and approve additional capacity.</p>
           <RouterLink
             class="button secondary"
             :to="{ path: '/hosting', query: { dao: JSON.stringify(dao.reference) } }"
@@ -173,7 +221,8 @@ async function rename() {
           >
         </section>
         <section v-if="admin && !currentOperator()" class="panel">
-          <h3>Module access</h3>
+          <Boxes aria-hidden="true" />
+          <h2>Module access</h2>
           <p>
             Free through 10 active members. Review monthly prices and buy access for larger
             communities.
@@ -186,10 +235,10 @@ async function rename() {
         </section>
         <section class="panel">
           <Database aria-hidden="true" />
-          <h3>Storage and resources</h3>
+          <h2>Storage and resources</h2>
           <p>
-            View RAM, pinned storage and archive usage. Funding and changes require the appropriate
-            DAO authorization.
+            View blockchain RAM, pinned files and archives. Funding and changes require DAO
+            authorization.
           </p>
           <RouterLink
             class="button secondary"
@@ -199,11 +248,8 @@ async function rename() {
         </section>
         <section class="panel">
           <CreditCard aria-hidden="true" />
-          <h3>DAO payments</h3>
-          <p>
-            Review merchant onboarding and module payments. This is separate from the DAO’s native
-            treasury.
-          </p>
+          <h2>DAO payments</h2>
+          <p>Manage merchant onboarding and module payments.</p>
           <RouterLink
             class="button secondary"
             :to="{ path: '/payments', query: { dao: JSON.stringify(dao.reference) } }"
@@ -218,80 +264,40 @@ async function rename() {
 .dao-settings,
 .settings-content {
   display: grid;
-  gap: 24px;
+  gap: 20px;
   min-width: 0;
 }
-.settings-heading {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
+.settings-content > .panel {
+  margin: 0;
 }
-.settings-heading > div {
-  flex: 1;
-  min-width: min(100%, 18rem);
+.settings-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  margin: 0;
+  gap: 8px;
 }
-.settings-heading h2 {
-  font-size: 1.25rem;
-  margin: 0 0 8px;
+.settings-toolbar :deep(.account-tabs) {
+  min-width: 0;
+  gap: 4px;
 }
-.settings-heading p,
+.settings-toolbar :deep([role='tab']) {
+  padding: 6px 10px;
+  min-height: 44px;
+}
 .settings-description {
   color: var(--text-secondary);
   font-size: 0.875rem;
   margin: 0;
 }
-.settings-heading a {
+.settings-edit {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  min-height: 44px;
-  font-size: 0.875rem;
-}
-.settings-heading a svg {
-  width: 16px;
-  height: 16px;
-}
-.settings-sections {
-  display: flex;
-  flex-wrap: wrap;
   gap: 8px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid var(--border-default);
+  min-height: 44px;
 }
-.settings-sections button {
-  border-color: var(--border-default);
-  box-shadow: none;
-  font-size: 0.875rem;
-}
-.settings-sections button[aria-pressed='true'] {
-  background: var(--accent-soft);
-  color: var(--accent-amber);
-  border-color: var(--border-warm);
-}
-.settings-content :deep(.narrow),
-.settings-identity {
-  width: 100%;
-  max-width: 48rem;
-  margin: 0;
-}
-.settings-content :deep(label),
-.settings-content :deep(.field-help) {
-  font-size: 0.875rem;
-}
-.settings-content :deep(h3) {
-  font-size: 1.125rem;
-}
-.settings-identity p {
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-}
-.settings-identity form {
-  max-width: 36rem;
-}
-.settings-identity form button {
-  margin-top: 16px;
+.settings-edit svg {
+  width: 18px;
+  height: 18px;
 }
 .settings-services {
   display: grid;
@@ -310,8 +316,8 @@ async function rename() {
   color: var(--accent-amber);
   margin-bottom: 20px;
 }
-.settings-services h3 {
-  font-size: 1rem;
+.settings-content :deep(h2) {
+  font-size: 1.125rem;
 }
 .settings-services p {
   font-size: 0.875rem;

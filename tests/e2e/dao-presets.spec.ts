@@ -149,8 +149,9 @@ test('discloses actual guardian authority without giving a visitor administratio
   page,
 }) => {
   await page.goto('/dao/1/settings?settings=governance');
-  await expect(page.getByRole('heading', { name: 'Governance and participants' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Voting rules' })).toBeVisible();
   await expect(page.getByText('guardian', { exact: true })).toBeVisible();
+  await page.getByText('Advanced: agents and automation access', { exact: true }).click();
   await page.getByText('Prepare a native guardian action', { exact: true }).click();
   await expect(
     page.getByText(
