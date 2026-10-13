@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, useId } from 'vue';
 import { LayoutGrid, List, Search } from '@lucide/vue';
 import type { PublicProfile } from '@daclify/core-protocol';
 import PersonCard from './PersonCard.vue';
@@ -29,9 +29,11 @@ function savedView() {
     return 'cards';
   }
 }
+const roleId = useId();
 const view = ref(savedView()),
   search = ref(''),
-  filter = ref('all');
+  filter = ref('all'),
+  role = ref('');
 function setView(value: 'cards' | 'list') {
   view.value = value;
   try {
@@ -56,7 +58,8 @@ const visible = computed(() =>
           .join(' ')
           .toLowerCase()
           .includes(search.value.trim().toLowerCase()) &&
-        (filter.value === 'all' || (filter.value === 'active' ? person.active : !person.active)),
+        (filter.value === 'all' || (filter.value === 'active' ? person.active : !person.active)) &&
+        (!role.value || person.badges?.includes(role.value)),
     )
     .sort((a, b) => Number(!!b.own) - Number(!!a.own)),
 );
@@ -77,6 +80,16 @@ const visible = computed(() =>
         <option value="inactive">Inactive members</option>
       </select></label
     >
+    <div v-if="members">
+      <label :for="roleId" class="sr-only">Member role</label
+      ><select :id="roleId" v-model="role">
+        <option value="">All roles</option>
+        <option>Administrator</option>
+        <option>Reviewer</option>
+        <option>Executive</option>
+        <option>Non-voting member</option>
+      </select>
+    </div>
     <div class="view-switch" role="group" aria-label="User presentation">
       <button
         type="button"
@@ -94,6 +107,7 @@ const visible = computed(() =>
         <List aria-hidden="true" />
       </button>
     </div>
+    <slot name="toolbar-actions" />
   </div>
   <div class="people-results">
     <p class="field-help" role="status">
@@ -101,12 +115,13 @@ const visible = computed(() =>
       <span v-if="hasMore"> · search covers loaded users; load more to expand it</span>
     </p>
     <button
-      v-if="search || filter !== 'all'"
+      v-if="search || filter !== 'all' || role"
       class="text-button"
       type="button"
       @click="
         search = '';
         filter = 'all';
+        role = '';
       "
     >
       Clear filters
@@ -123,8 +138,9 @@ const visible = computed(() =>
       :badges="person.badges ?? []"
       :communities="person.communities ?? []"
       :last-active="person.lastActive"
-      :heading="members ? 'h3' : 'h2'"
-    />
+      heading="h2"
+      ><slot name="person-actions" :person="person"
+    /></PersonCard>
   </div>
   <p v-if="!visible.length && !loading && !failed" class="empty-state">
     {{

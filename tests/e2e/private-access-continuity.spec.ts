@@ -420,15 +420,19 @@ test('grants private history, verifies it on another device, and preserves it af
     await target.getByRole('link', { name: 'Members', exact: true }).click();
   }
   await device(page, 0);
-  await page.getByLabel('Member', { exact: true }).selectOption('1');
+  await page.getByRole('button', { name: 'Manage Member 1', exact: true }).click();
   await expect(
     page.getByText(
       'No remaining administrator has every recorded grant. Prepare their private access first.',
     ),
   ).toBeVisible();
   await page.getByRole('button', { name: 'Deactivate member', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('Prepare another active administrator');
+  await expect(page.getByRole('dialog').getByRole('alert')).toContainText(
+    'Prepare another active administrator',
+  );
   expect(writes).toBe(0);
+  await page.getByRole('dialog').getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.getByText('Private data access', { exact: true }).click();
   await page
     .getByRole('button', { name: 'Prepare private access for members', exact: true })
     .click();
@@ -437,6 +441,7 @@ test('grants private history, verifies it on another device, and preserves it af
   const context = await browser.newContext();
   const recipient = await context.newPage();
   await device(recipient, 1);
+  await recipient.getByText('Private data access', { exact: true }).click();
   await recipient.getByRole('button', { name: 'Verify my private access', exact: true }).click();
   await expect(
     recipient.getByText('1 of 1 permitted epochs verified on this device.'),
@@ -471,7 +476,7 @@ test('grants private history, verifies it on another device, and preserves it af
   expect(DaoHandoverSchema.parse(handover).accepted).toBe(true);
   expect(writes).toBe(4);
   await openMembers(page);
-  await page.getByLabel('Member', { exact: true }).selectOption('1');
+  await page.getByRole('button', { name: 'Manage Member 1', exact: true }).click();
   await page.getByLabel('Administrator keeping private access').selectOption('2');
   await page
     .getByLabel(
@@ -480,7 +485,9 @@ test('grants private history, verifies it on another device, and preserves it af
     .check();
   contentUnavailable = true;
   await page.getByRole('button', { name: 'Deactivate member', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('Prepare another active administrator');
+  await expect(page.getByRole('dialog').getByRole('alert')).toContainText(
+    'Prepare another active administrator',
+  );
   expect(writes).toBe(4);
   contentUnavailable = false;
   await page.getByRole('button', { name: 'Deactivate member', exact: true }).click();
@@ -488,6 +495,7 @@ test('grants private history, verifies it on another device, and preserves it af
   expect(writes).toBe(5);
   await openMembers(recipient);
   await recipient.getByRole('link', { name: 'Documents', exact: true }).click();
+  await recipient.getByText('Content and download', { exact: true }).click();
   await recipient.getByRole('button', { name: 'Decrypt document 1', exact: true }).click();
   await expect(
     recipient.getByText('Private history survives its creator', { exact: true }).first(),
@@ -498,6 +506,7 @@ test('grants private history, verifies it on another device, and preserves it af
   await recipient
     .getByRole('button', { name: 'Prepare private access for members', exact: true })
     .click();
+  await recipient.getByText('Document access settings', { exact: true }).click();
   await expect(recipient.getByText('Encryption epoch ready', { exact: true })).toBeVisible();
   expect(records.epochs).toHaveLength(2);
   expect(records.documents[0]?.metadata).toBe(metadata);

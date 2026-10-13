@@ -50,6 +50,7 @@ async function createWorkspace(page: Page, encrypted = false) {
   await expect(page.getByRole('region', { name: 'Workspace overview' })).toBeVisible();
   await page.getByRole('link', { name: 'Documents', exact: true }).click();
   if (encrypted) {
+    await page.getByText('Document access settings', { exact: true }).click();
     await page.getByRole('button', { name: 'Initialize encryption epoch' }).click();
     await expect(page.getByText('Encryption epoch ready', { exact: true })).toBeVisible();
   }
@@ -70,17 +71,23 @@ test('resumes a verified public upload after a lost response and a browser reloa
     },
     { times: 1 },
   );
-  await page.getByLabel('File document ID').fill('27');
+  await page.getByRole('button', { name: 'Add document', exact: true }).click();
+  const intent = page.waitForRequest(
+    (request) => request.method() === 'POST' && new URL(request.url()).pathname === '/v1/uploads',
+  );
   await page.getByLabel('Document file', { exact: true }).setInputFiles({
     name: 'binary-fixture.bin',
     mimeType: 'application/octet-stream',
     buffer: payload,
   });
   await page.getByRole('button', { name: 'Upload file', exact: true }).click();
+  const documentId = HostedUploadSchema.parse((await intent).postDataJSON()).documentId;
   await expect(page.getByText('Pending request:', { exact: false })).toBeVisible();
   await expect(page.getByRole('alert')).toBeVisible();
   await page.reload();
+  await page.getByRole('button', { name: 'Add document', exact: true }).click();
   await expect(page.getByText('Pending request:', { exact: false })).toBeVisible();
+  await page.getByText('Resume an earlier upload', { exact: true }).click();
   await page.getByRole('button', { name: 'Check upload completion' }).click();
   await expect(page.getByRole('heading', { name: 'Verified file record' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Sign and publish file record' })).toBeDisabled();
@@ -97,11 +104,15 @@ test('resumes a verified public upload after a lost response and a browser reloa
     .filter({ has: page.getByRole('heading', { name: title, exact: true }) })
     .click();
   await page.getByRole('link', { name: 'Documents', exact: true }).click();
+  await page.getByText('Resume an earlier upload', { exact: true }).click();
   await page.getByRole('button', { name: 'Check upload completion' }).click();
   await page.getByRole('button', { name: 'Sign and publish file record' }).click();
-  await expect(page.getByText('File document published.', { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'binary-fixture.bin · version 1', exact: true }),
+  ).toBeVisible();
   const downloadEvent = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Download document 27', exact: true }).click();
+  await page.getByText('Content and download', { exact: true }).click();
+  await page.getByRole('button', { name: `Download document ${documentId}`, exact: true }).click();
   const download = await downloadEvent;
   expect(download.suggestedFilename()).toBe('binary-fixture.bin');
   const path = await download.path();
@@ -116,7 +127,7 @@ test('publishes only ciphertext for a private file and decrypts its original fil
   await createWorkspace(page, true);
   const payload = Buffer.from('private fixture download contents');
   const filename = 'private-fixture-notes.txt';
-  await page.getByLabel('File document ID').fill('28');
+  await page.getByRole('button', { name: 'Add document', exact: true }).click();
   await page
     .getByLabel('Document file', { exact: true })
     .setInputFiles({ name: filename, mimeType: 'text/plain', buffer: payload });
@@ -132,9 +143,17 @@ test('publishes only ciphertext for a private file and decrypts its original fil
   expect(stored).not.toContain(payload.toString());
   await expect(page.getByRole('heading', { name: 'Verified file record' })).toBeVisible();
   await page.getByRole('button', { name: 'Sign and publish file record' }).click();
-  await expect(page.getByRole('heading', { name: 'Document 28', exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('heading', {
+      name: `Private document #${input.documentId} · version 1`,
+      exact: true,
+    }),
+  ).toBeVisible();
   const downloadEvent = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Decrypt and download document 28', exact: true }).click();
+  await page.getByText('Content and download', { exact: true }).click();
+  await page
+    .getByRole('button', { name: `Decrypt and download document ${input.documentId}`, exact: true })
+    .click();
   const download = await downloadEvent;
   expect(download.suggestedFilename()).toBe(filename);
   const path = await download.path();
@@ -142,7 +161,10 @@ test('publishes only ciphertext for a private file and decrypts its original fil
   expect(await readFile(path)).toEqual(payload);
   await page.getByRole('button', { name: 'Lock keys', exact: true }).click();
   await expect(
-    page.getByRole('button', { name: 'Decrypt and download document 28', exact: true }),
+    page.getByRole('button', {
+      name: `Decrypt and download document ${input.documentId}`,
+      exact: true,
+    }),
   ).toBeDisabled();
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -151,8 +173,8 @@ test('publishes only ciphertext for a private file and decrypts its original fil
 test('shows one shared storage object for two published document references', async ({ page }) => {
   await createWorkspace(page);
   const payload = Buffer.from('Repeated hosted resource fixture');
-  for (const documentId of ['127', '128']) {
-    await page.getByLabel('File document ID').fill(documentId);
+  for (const index of [0, 1]) {
+    await page.getByRole('button', { name: 'Add document', exact: true }).click();
     await page.getByLabel('Document file', { exact: true }).setInputFiles({
       name: 'repeated.bin',
       mimeType: 'application/octet-stream',
@@ -161,8 +183,11 @@ test('shows one shared storage object for two published document references', as
     await page.getByRole('button', { name: 'Upload file', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Verified file record' })).toBeVisible();
     await page.getByRole('button', { name: 'Sign and publish file record' }).click();
-    await expect(page.getByText('File document published.', { exact: true })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'repeated.bin · version 1', exact: true }),
+    ).toHaveCount(index + 1);
   }
+  await page.getByRole('button', { name: 'Add document', exact: true }).click();
   await page.getByRole('button', { name: 'Refresh storage usage' }).click();
   await expect(page.getByText('1 unique files · 2 references.', { exact: false })).toBeVisible();
   await expect(page.getByText(`${payload.length} bytes used of`, { exact: false })).toBeVisible();

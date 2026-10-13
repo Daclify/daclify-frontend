@@ -324,9 +324,11 @@ test('registers and adopts an exact constitution version, then signs one member 
     .first()
     .click();
   await page.getByRole('link', { name: 'Documents', exact: true }).click();
+  await page.getByRole('tab', { name: 'Constitution & legal', exact: true }).click();
   await expect(
     page.getByRole('heading', { name: 'Constitution and legal documents', exact: true }),
   ).toBeVisible();
+  await page.getByRole('button', { name: 'Register managed document', exact: true }).click();
   await page.getByLabel('Managed document', { exact: true }).selectOption('7');
   await page.getByRole('button', { name: 'Register document', exact: true }).click();
   await page.getByRole('button', { name: 'Propose version', exact: true }).click();
@@ -368,6 +370,7 @@ test('registers and adopts an exact constitution version, then signs one member 
   expect(actions).toEqual(['regdoc', 'proposedoc', 'adoptdoc']);
   await expect(page.getByText('Adopted version 2', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Sign acceptance', exact: true })).toBeDisabled();
+  await page.getByRole('tab', { name: 'Constitution & legal', exact: true }).click();
   await page.getByRole('button', { name: 'Open adopted version 2', exact: true }).click();
   await page.getByLabel('I reviewed and accept version 2.', { exact: true }).check();
   await page.getByRole('button', { name: 'Sign acceptance', exact: true }).click();
@@ -379,13 +382,17 @@ test('registers and adopts an exact constitution version, then signs one member 
   );
   available = false;
   await page.reload();
+  await page.getByRole('tab', { name: 'Constitution & legal', exact: true }).click();
   await expect(
     page.getByText('Formal document management is unavailable for this deployment.', {
       exact: true,
     }),
   ).toBeVisible();
   await expect(page.getByRole('button', { name: 'Register document', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'Document 7', exact: true })).toBeVisible();
+  await page.getByRole('tab', { name: 'Library', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Amended constitution · version 2', exact: true }),
+  ).toBeVisible();
   available = true;
   summary.privacy = 'encrypted-user-controlled';
   summary.keyEpoch = '1';
@@ -419,6 +426,7 @@ test('registers and adopts an exact constitution version, then signs one member 
     .first()
     .click();
   await page.getByRole('link', { name: 'Documents', exact: true }).click();
+  await page.getByRole('tab', { name: 'Constitution & legal', exact: true }).click();
   await page.getByRole('button', { name: 'Open adopted version 2', exact: true }).click();
   await expect(page.getByLabel('I reviewed and accept version 2.', { exact: true })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Sign acceptance', exact: true })).toBeDisabled();

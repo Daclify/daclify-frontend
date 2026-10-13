@@ -1,10 +1,13 @@
 <script setup lang="ts">
+import WorkspaceDialog from './WorkspaceDialog.vue';
+import { documentLabel } from '../content/document-labels';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import {
   JoinIdentitySchema,
   type DaoSummary,
   type UserMembership,
   type GovernanceState,
+  type DaoContent,
 } from '@daclify/core-protocol';
 import type { ModuleState } from '@daclify/modules';
 import { encodeAction, makeInstruction } from '@daclify/core-protocol/sdk';
@@ -14,8 +17,20 @@ import { canSignMember } from '../auth/action-signer';
 import { useWorkspace } from '../state/workspace';
 import { api, friendlyError } from '../api/client';
 import Account from '../views/Account.vue';
-const props = defineProps<{ dao: DaoSummary; member: UserMembership | undefined }>();
-const emit = defineEmits<{ admitted: [privateRecipientKey?: string] }>(),
+const props = defineProps<{
+  dao: DaoSummary;
+  member: UserMembership | undefined;
+  content?: DaoContent | undefined;
+  createRequest?: number;
+  showApplications?: boolean;
+}>();
+const creationPopup = ref(false),
+  documentChoice = ref('');
+const emit = defineEmits<{
+    admitted: [privateRecipientKey?: string];
+    canCreate: [allowed: boolean];
+    creationLabel: [label: string];
+  }>(),
   state = useWorkspace();
 const identity = ref(''),
   kind = ref(props.dao.participantMode === 'agents-guarded' ? 1 : 0),
@@ -50,6 +65,52 @@ const canAdmit = computed(
     props.member?.admin &&
     (!requiresEndorsement.value || rule.value?.admin_override),
 );
+watch(
+  () => [props.member?.active, props.member?.admin, requiresEndorsement.value],
+  () => {
+    emit(
+      'canCreate',
+      !!props.member?.active && (!!props.member.admin || requiresEndorsement.value),
+    );
+    emit('creationLabel', requiresEndorsement.value ? 'Sponsor application' : 'Add member');
+  },
+  { immediate: true },
+);
+watch(
+  () => props.createRequest,
+  (value) => {
+    if (value && props.member?.active) creationPopup.value = true;
+  },
+);
+watch(documentChoice, (choice) => {
+  const row = props.content?.documents.find((doc) => doc.id === choice);
+  documentId.value = row?.document_id ?? '';
+  documentVersion.value = row?.version ?? 1;
+});
+function renew(app: ModuleState['joinApplications'][number]) {
+  try {
+    identity.value = JSON.stringify(
+      JoinIdentitySchema.parse({
+        version: 1,
+        signingKey: app.signing_key,
+        encryptionKey: JSON.parse(app.encryption_key),
+        custody: app.custody === 1 ? 'managed' : 'user-controlled',
+      }),
+    );
+    kind.value = app.kind;
+    operator.value = app.operator_label;
+    applicationId.value = app.id;
+    const document = props.content?.documents.find(
+      (doc) => doc.document_id === app.document_id && doc.version === app.document_version,
+    );
+    documentChoice.value = document?.id ?? '';
+    confirmed.value = false;
+    creationPopup.value = true;
+  } catch {
+    error.value =
+      'The application’s public identity is invalid. Ask the applicant for a fresh public join identity.';
+  }
+}
 const context = computed(() =>
   JSON.stringify([props.dao.reference, state.account?.id, props.member?.memberId]),
 );
@@ -132,7 +193,7 @@ async function run(
 ) {
   const member = props.member,
     domain = context.value;
-  if (!member || !signerReady.value) return;
+  if (!member || !signerReady.value) return false;
   if (
     target !== props.dao.reference.contract &&
     (!module.value?.enabled ||
@@ -140,7 +201,7 @@ async function run(
       !module.value.codeVerified ||
       !module.value.actions.includes(action))
   )
-    return;
+    return false;
   busy.value = true;
   error.value = '';
   success.value = '';
@@ -165,8 +226,10 @@ async function run(
     reviewed.value = {};
     emit('admitted', privateRecipientKey);
     success.value = message;
+    return true;
   } catch (cause) {
     if (!disposed && domain === context.value) error.value = friendlyError(cause);
+    return false;
   } finally {
     if (!disposed && domain === context.value) busy.value = false;
   }
@@ -192,7 +255,7 @@ async function admit() {
   if (!canAdmit.value || !confirmed.value) return;
   try {
     const fields = publicFields();
-    await run(
+    const saved = await run(
       props.dao.reference.contract,
       'addmember',
       encodeAction('addmember', { ...actor(), ...fields }),
@@ -201,7 +264,10 @@ async function admit() {
         ? fields.signing_key
         : undefined,
     );
-    identity.value = '';
+    if (saved) {
+      identity.value = '';
+      creationPopup.value = false;
+    }
   } catch (cause) {
     error.value = friendlyError(cause);
   }
@@ -213,7 +279,12 @@ async function sign<K extends keyof EndorseActions>(
 ) {
   try {
     if (!module.value) return;
-    await run(module.value.deployment.account, action, encodeEndorse(action, payload), message);
+    return await run(
+      module.value.deployment.account,
+      action,
+      encodeEndorse(action, payload),
+      message,
+    );
   } catch (cause) {
     error.value = friendlyError(cause);
   }
@@ -221,20 +292,24 @@ async function sign<K extends keyof EndorseActions>(
 async function sponsor() {
   if (!confirmed.value) return;
   try {
-    await sign(
+    if (!applicationId.value) applicationId.value = newId();
+    const saved = await sign(
       'applyjoin',
       {
         ...actor(),
         ...publicFields(),
-        application_id: applicationId.value || newId(),
+        application_id: applicationId.value,
         document_id: documentId.value,
         document_version: documentVersion.value,
         expires: Math.floor(Date.now() / 1000) + days.value * 86400,
       },
       'Application sponsored. Current eligible members must endorse its exact revision.',
     );
-    identity.value = '';
-    applicationId.value = '';
+    if (saved) {
+      identity.value = '';
+      applicationId.value = '';
+      creationPopup.value = false;
+    }
   } catch (cause) {
     error.value = friendlyError(cause);
   }
@@ -274,15 +349,18 @@ function eligibleAction(action: string) {
 </script>
 <template>
   <section v-if="state.account && !member" aria-labelledby="join-access-title">
-    <h3 id="join-access-title">Enable full access to join</h3>
+    <h2 id="join-access-title">Enable full access to join</h2>
     <p>
       Use the same Daclify account and recovery kit for this community. After setup, share your
       public identity with an administrator or sponsor.
     </p>
     <Account access-setup join-setup />
   </section>
-  <section class="panel narrow">
-    <h3>{{ requiresEndorsement ? 'Member endorsement admission' : 'Administrator admission' }}</h3>
+  <WorkspaceDialog
+    v-model:open="creationPopup"
+    :title="requiresEndorsement ? 'Sponsor application' : 'Add member'"
+    :busy="busy"
+  >
     <p>
       Share your public join identity with
       {{
@@ -351,7 +429,11 @@ function eligibleAction(action: string) {
         Public keys only. Verify the keys with the applicant through a trusted channel. Multiple
         logins and endorsements do not prove a unique person.
       </p>
-      <label for="join-identity">Applicant public join identity (JSON)</label
+      <p class="field-help">
+        Paste the applicant’s public join identity copied from Account. Confirm it with the
+        applicant before adding them.
+      </p>
+      <label for="join-identity">Public join identity</label
       ><textarea
         id="join-identity"
         v-model="identity"
@@ -366,18 +448,14 @@ function eligibleAction(action: string) {
       ><label v-if="kind === 1"
         >Declared operator<input v-model="operator" maxlength="64" required /></label
       ><template v-if="requiresEndorsement"
-        ><label
-          >Existing application ID (leave blank for a new application)<input
-            v-model="applicationId"
-            inputmode="numeric" /></label
-        ><label
-          >Application document ID<input v-model="documentId" inputmode="numeric" required /></label
-        ><label
-          >Document version<input
-            v-model.number="documentVersion"
-            type="number"
-            min="1"
-            required /></label
+        ><label for="join-document">Application document</label
+        ><select id="join-document" v-model="documentChoice" required :disabled="busy">
+          <option value="" disabled>Choose a published document version</option>
+          <option v-for="document in content?.documents" :key="document.id" :value="document.id">
+            {{ documentLabel(document) }}
+          </option></select
+        ><RouterLink :to="`/dao/${dao.reference.daoId}/documents`" target="_blank"
+          >Add a document (opens in a new tab)</RouterLink
         ><label
           >Expires in days<input v-model.number="days" type="number" min="1" max="30" required
         /></label>
@@ -417,78 +495,104 @@ function eligibleAction(action: string) {
     </form>
     <p v-if="error" class="alert" role="alert">{{ error }}</p>
     <p v-if="success" class="notice" role="status">{{ success }}</p>
-  </section>
-  <article v-for="app in data?.joinApplications" :key="app.id" class="panel">
-    <h3>
-      Join application {{ app.id }} ·
-      {{ app.admitted ? 'Admitted member ' + app.member_id : 'Pending' }}
-    </h3>
-    <p>
-      Sponsor {{ app.sponsor }} · revision {{ app.revision }} · policy {{ app.policy_revision }} ·
-      {{ app.kind === 1 ? 'Agent: ' + app.operator_label : 'Human' }} · expires
-      {{ new Date(app.expires * 1000).toLocaleString() }}
+  </WorkspaceDialog>
+  <div
+    v-show="showApplications !== false"
+    id="members-applications"
+    role="tabpanel"
+    aria-labelledby="members-tab-applications"
+  >
+    <p v-if="error" class="alert" role="alert">{{ error }}</p>
+    <p v-if="data && !data.joinApplications.length" class="empty-state">
+      No membership applications yet.
     </p>
-    <p>
-      Document {{ app.document_id }} / v{{ app.document_version }} · recorded endorsements
-      {{ app.witnesses.join(', ') || 'none' }}. Admission rechecks whether they remain eligible.
-    </p>
-    <details>
-      <summary>Review complete public identity and document commitment</summary>
-      <p class="mono wrap">{{ app.signing_key }}</p>
-      <p class="mono wrap">{{ app.encryption_key }}</p>
-      <p>
-        {{ app.custody === 0 ? 'User-controlled' : 'Managed' }} · document commitment
-        <span class="mono wrap">{{ app.document_commitment }}</span>
-      </p>
-    </details>
-    <template v-if="!app.admitted && member?.active"
-      ><label class="checkbox"
-        ><input v-model="reviewed[app.id]" type="checkbox" />I reviewed this exact revision and
-        confirmed the applicant identity</label
-      ><button
-        v-if="!app.witnesses.includes(member.memberId)"
-        :disabled="
-          !reviewed[app.id] || !eligibleAction('witness') || app.policy_revision !== rule?.revision
-        "
-        @click="
-          sign(
-            'witness',
-            { ...actor(), application_id: app.id, revision: app.revision },
-            'Endorsement recorded for this revision.',
-          )
-        "
-      >
-        Sign endorsement</button
-      ><button
-        v-else
+    <article v-for="app in data?.joinApplications" :key="app.id" class="panel">
+      <button
+        v-if="app.sponsor === member?.memberId && member?.active && !app.admitted"
+        type="button"
         class="secondary"
-        :disabled="!eligibleAction('unwitness')"
-        @click="
-          sign(
-            'unwitness',
-            { ...actor(), application_id: app.id, revision: app.revision },
-            'Endorsement withdrawn.',
-          )
-        "
+        @click="renew(app)"
       >
-        Withdraw endorsement</button
-      ><button
-        :disabled="
-          !reviewed[app.id] || !eligibleAction('admit') || app.policy_revision !== rule?.revision
-        "
-        @click="
-          sign(
-            'admit',
-            { ...actor(), application_id: app.id, revision: app.revision },
-            'Member admitted once. Roles, credits and private access remain separate.',
-          )
-        "
+        Renew application
+      </button>
+      <h3>
+        Join application {{ app.id }} ·
+        {{ app.admitted ? 'Admitted member ' + app.member_id : 'Pending' }}
+      </h3>
+      <p>
+        Sponsor {{ app.sponsor }} · revision {{ app.revision }} · policy {{ app.policy_revision }} ·
+        {{ app.kind === 1 ? 'Agent: ' + app.operator_label : 'Human' }} · expires
+        {{ new Date(app.expires * 1000).toLocaleString() }}
+      </p>
+      <p>
+        Document {{ app.document_id }} / v{{ app.document_version }} · recorded endorsements
+        {{ app.witnesses.join(', ') || 'none' }}. Admission rechecks whether they remain eligible.
+      </p>
+      <details>
+        <summary>Review complete public identity and document commitment</summary>
+        <p class="mono wrap">{{ app.signing_key }}</p>
+        <p class="mono wrap">{{ app.encryption_key }}</p>
+        <p>
+          {{ app.custody === 0 ? 'User-controlled' : 'Managed' }} · document commitment
+          <span class="mono wrap">{{ app.document_commitment }}</span>
+        </p>
+      </details>
+      <template v-if="!app.admitted && member?.active"
+        ><label class="checkbox"
+          ><input v-model="reviewed[app.id]" type="checkbox" />I reviewed this exact revision and
+          confirmed the applicant identity</label
+        ><button
+          v-if="!app.witnesses.includes(member.memberId)"
+          :disabled="
+            !reviewed[app.id] ||
+            !eligibleAction('witness') ||
+            app.policy_revision !== rule?.revision
+          "
+          @click="
+            sign(
+              'witness',
+              { ...actor(), application_id: app.id, revision: app.revision },
+              'Endorsement recorded for this revision.',
+            )
+          "
+        >
+          Sign endorsement</button
+        ><button
+          v-else
+          class="secondary"
+          :disabled="!eligibleAction('unwitness')"
+          @click="
+            sign(
+              'unwitness',
+              { ...actor(), application_id: app.id, revision: app.revision },
+              'Endorsement withdrawn.',
+            )
+          "
+        >
+          Withdraw endorsement</button
+        ><button
+          :disabled="
+            !reviewed[app.id] || !eligibleAction('admit') || app.policy_revision !== rule?.revision
+          "
+          @click="
+            sign(
+              'admit',
+              { ...actor(), application_id: app.id, revision: app.revision },
+              'Member admitted once. Roles, credits and private access remain separate.',
+            )
+          "
+        >
+          Sign admission request
+        </button></template
       >
-        Sign admission request
-      </button></template
+    </article>
+    <button
+      v-if="data?.next.joinApplications"
+      class="secondary"
+      :disabled="busy"
+      @click="load(true)"
     >
-  </article>
-  <button v-if="data?.next.joinApplications" class="secondary" :disabled="busy" @click="load(true)">
-    Load more join applications
-  </button>
+      Load more join applications
+    </button>
+  </div>
 </template>

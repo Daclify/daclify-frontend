@@ -111,6 +111,8 @@ async function approve() {
           data,
         ),
       );
+      // Delegate creation consumes the Root nonce; the next ordinary account action needs the current membership.
+      await state.refresh();
     }
     if (started !== generation) return;
     await api.mcpApprove({

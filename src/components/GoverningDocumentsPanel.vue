@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import WorkspaceDialog from './WorkspaceDialog.vue';
+import { documentLabel } from '../content/document-labels';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import type { DaoContent, DaoSummary, UserMembership } from '@daclify/core-protocol';
 import {
@@ -17,6 +19,7 @@ const props = defineProps<{
   dao: DaoSummary;
   member: UserMembership | undefined;
   content: DaoContent | undefined;
+  registrationRequest?: number;
   openVersion: (document: DaoContent['documents'][number]) => Promise<string | undefined>;
 }>();
 const emit = defineEmits<{ updated: [] }>();
@@ -37,6 +40,24 @@ const documentId = ref(''),
   category = ref(0),
   approval = ref(0),
   track = ref(true);
+const registrationPopup = ref(false);
+watch(
+  () => props.registrationRequest,
+  (value) => {
+    if (value && admin.value) registrationPopup.value = true;
+  },
+);
+function documentName(id: string) {
+  const row = props.content?.documents
+    .filter((doc) => doc.document_id === id)
+    .sort((a, b) => b.version - a.version)[0];
+  return row ? documentLabel(row) : `Document ${id}`;
+}
+function registeredName(row: Registration) {
+  const adoption = change(row.adopted_id);
+  const document = adoption ? documentFor(adoption) : undefined;
+  return document ? documentLabel(document) : documentName(row.document_id);
+}
 const versions = ref(new Map<string, number>());
 const busy = ref(false),
   loading = ref(true),
@@ -235,7 +256,10 @@ async function register() {
     },
     'Document registered. Propose a version to adopt it.',
   );
-  documentId.value = '';
+  if (notice.value) {
+    documentId.value = '';
+    registrationPopup.value = false;
+  }
 }
 async function propose(row: Registration) {
   if (!admin.value) return;
@@ -394,7 +418,7 @@ async function details(kind: 'history' | 'acceptances', id: string, more = false
 <template>
   <section class="panel governing-documents" aria-labelledby="governing-heading">
     <div class="panel-heading">
-      <h3 id="governing-heading">Constitution and legal documents</h3>
+      <h2 id="governing-heading">Constitution and legal documents</h2>
       <RouterLink class="help-link" to="/docs/governing-documents">Help ↗</RouterLink>
     </div>
     <p>Keep an official version, approve amendments and record member acceptance.</p>
@@ -406,13 +430,16 @@ async function details(kind: 'history' | 'acceptances', id: string, more = false
         Enable Decide to make changes to this register. Adopted documents and acceptance history
         remain available.
       </p>
-      <details v-if="admin && data.module?.enabled" :open="!data.registrations.length">
-        <summary>Register a managed document</summary>
+      <WorkspaceDialog
+        v-model:open="registrationPopup"
+        title="Register managed document"
+        :busy="busy"
+      >
         <form @submit.prevent="register" class="document-register-form">
           <label for="managed-document">Managed document</label
           ><select id="managed-document" v-model="documentId" required :disabled="busy">
             <option value="" disabled>Choose an uploaded document</option>
-            <option v-for="id in uploaded" :key="id" :value="id">Document {{ id }}</option>
+            <option v-for="id in uploaded" :key="id" :value="id">{{ documentName(id) }}</option>
           </select>
           <label for="managed-category">Document type</label
           ><select id="managed-category" v-model="category" :disabled="busy">
@@ -440,10 +467,11 @@ async function details(kind: 'history' | 'acceptances', id: string, more = false
           </p>
           <button :disabled="busy || !documentId || !allowed('regdoc')">Register document</button>
           <p v-if="!uploaded.length" class="field-help">
-            Upload a document below before registering it.
+            Add a document in the Library before registering it.
           </p>
         </form>
-      </details>
+        <p v-if="error" role="alert" class="alert">{{ error }}</p>
+      </WorkspaceDialog>
       <p v-if="!data.registrations.length" class="muted">No managed documents registered yet.</p>
       <article
         v-for="registered in data.registrations"
@@ -451,7 +479,7 @@ async function details(kind: 'history' | 'acceptances', id: string, more = false
         class="managed-document"
       >
         <div class="panel-heading">
-          <h4>{{ categories[registered.category] }} · Document {{ registered.document_id }}</h4>
+          <h3>{{ categories[registered.category] }} · {{ registeredName(registered) }}</h3>
           <span class="pill">{{
             registered.approval ? 'Member vote' : 'Administrator approval'
           }}</span>

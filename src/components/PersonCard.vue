@@ -89,6 +89,7 @@ const avatar = computed(() =>
         >
       </div>
       <LastDaoActivity v-if="lastActive !== undefined" :last-active="lastActive" />
+      <slot />
     </div>
     <ArrowUpRight class="person-card-arrow" aria-hidden="true" />
   </article>

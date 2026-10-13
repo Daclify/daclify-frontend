@@ -16,11 +16,14 @@ test('shows an actual native award as a Works lifecycle without offering a visit
     ),
   );
   await page.goto(`/dao/${evidence.reference.daoId}/grants-rounds`);
-  await expect(page.getByRole('heading', { name: 'Grants rounds', exact: true })).toBeVisible();
-  await expect(page.getByText(/cumulative awards 1.0000 TLOS/)).toBeVisible();
-  await expect(page.getByRole('link', { name: /Continue Works project/ })).toBeVisible();
+  await expect(page.getByRole('tabpanel', { name: 'Rounds', exact: true })).toBeVisible();
+  await expect(page.getByText(/Awarded 1 TLOS/)).toBeVisible();
+  await page.getByRole('tab', { name: 'Applications', exact: true }).click();
+  await expect(page.getByRole('link', { name: 'Continue in Works', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Sign consent and submit' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Propose award vote' })).toBeDisabled();
+  await expect(
+    page.getByRole('button', { name: 'Propose funding vote', exact: true }),
+  ).toBeDisabled();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   );

@@ -1647,6 +1647,61 @@ nav a,
 }
 
 /* Public people and account workspace */
+.workspace-tools-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 24px 0;
+}
+.workspace-tools-toolbar .account-tabs {
+  margin: 0;
+}
+.workspace-tools-toolbar label {
+  margin: 0;
+}
+.workspace-tools-search {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+.workspace-tools-filter {
+  flex: 0 1 180px;
+}
+.workspace-tools-toolbar input,
+.workspace-tools-toolbar select {
+  margin: 0;
+}
+.workspace-tools-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.workspace-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  width: 44px;
+  height: 44px;
+  flex: none;
+  background: transparent;
+  color: var(--accent-amber);
+  border: 0;
+}
+.workspace-icon-button svg {
+  width: 24px;
+  height: 24px;
+}
+.workspace-add svg {
+  width: 32px;
+  height: 32px;
+}
+@media (max-width: 600px) {
+  .workspace-tools-toolbar .account-tabs {
+    flex: 1 1 100%;
+  }
+}
 .people-toolbar,
 .profile-identity,
 .profile-facts {
