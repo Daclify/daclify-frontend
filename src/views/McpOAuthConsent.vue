@@ -109,7 +109,7 @@ async function approve() {
 }
 </script>
 <template>
-  <div class="page">
+  <div class="page panel consent-card">
     <h1>Connect a hosted AI harness</h1>
     <p v-if="!state.account">
       <RouterLink :to="{ path: '/account', query: { returnTo: route.fullPath } }"
@@ -119,7 +119,10 @@ async function approve() {
     </p>
     <p v-if="error" role="alert">{{ error }}</p>
     <section v-if="consent" aria-label="Hosted connection permissions">
-      <p>Client {{ consent.clientId }} requests {{ consent.scopes.join(', ') }}.</p>
+      <p>
+        Client <span class="identifier">{{ consent.clientId }}</span> requests
+        {{ consent.scopes.join(', ') }}.
+      </p>
       <p>
         Approved return address: <span class="identifier">{{ consent.redirectUri }}</span>
       </p>
@@ -144,14 +147,15 @@ async function approve() {
         </select></label
       >
       <p v-if="consent.scopes.includes('daclify:submit') && !grant">
-        This connection will receive read and preview access only. Signed submission requires an
-        approved local companion; connect one through Mini apps and request hosted consent again.
+        This connection will receive read and preview access only. To enable signed submissions,
+        approve a local companion through Mini apps, then reconnect.
       </p>
       <fieldset v-if="consent.scopes.includes('daclify:prepare')">
         <legend>Permitted preparation</legend>
         <label
           v-for="scope in grant?.scopes ?? (['proposal', 'vote', 'review'] as const)"
           :key="scope"
+          class="permission-choice"
           ><input v-model="nativeScopes" type="checkbox" :value="scope" />{{ scope }}</label
         >
       </fieldset>
@@ -160,25 +164,81 @@ async function approve() {
         profile decryption stay with you. Access lasts five minutes; refresh authorization lasts at
         most seven days.
       </p>
-      <ActionSigner v-if="member" :member="member" label="hosted connection approval" /><button
-        :disabled="busy || !ready"
-        @click="approve"
-      >
+      <ActionSigner
+        v-if="member"
+        class="consent-signer"
+        :member="member"
+        label="hosted connection approval"
+      /><button class="approve-connection" :disabled="busy || !ready" @click="approve">
         {{ busy ? 'Approving…' : 'Approve hosted connection' }}
       </button>
     </section>
   </div>
 </template>
 <style scoped>
+.consent-card {
+  max-width: 34rem;
+  margin: 0 auto;
+  padding: 1.25rem;
+}
+.consent-card h1 {
+  font-size: 1.375rem;
+  letter-spacing: -0.4px;
+  margin-bottom: 1rem;
+}
+.consent-card p {
+  margin-bottom: 0.75rem;
+  line-height: 1.5;
+}
 .identifier {
   overflow-wrap: anywhere;
 }
 label {
   display: block;
-  margin: 0.75rem 0;
+  margin: 0.75rem 0 0;
 }
 select {
   display: block;
   max-width: 100%;
+  margin-top: 0.375rem;
+}
+fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin: 0.75rem 0;
+  padding: 0;
+  border: 0;
+}
+legend {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.permission-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  margin: 0;
+  cursor: pointer;
+}
+.permission-choice input {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent-amber);
+}
+.consent-signer {
+  padding: 0.875rem;
+  margin: 0.75rem 0;
+}
+.consent-signer :deep(label) {
+  margin-top: 0;
+}
+.approve-connection {
+  width: 100%;
 }
 </style>

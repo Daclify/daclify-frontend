@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { createHash, randomBytes } from 'node:crypto';
 import { PrivateKey } from '@wharfkit/antelope';
+import AxeBuilder from '@axe-core/playwright';
 import { z } from 'zod';
 import {
   RecoveryKitSchema,
@@ -209,6 +210,20 @@ test('approves read and preview without a companion when the client requests eve
     .getByRole('combobox', { name: 'Community membership', exact: true })
     .selectOption({ label: 'DAO ' + context.dao.daoId + ', member ' + context.memberId });
   await page.getByLabel('vote', { exact: true }).check();
+  const permissions = page.getByRole('region', { name: 'Hosted connection permissions' });
+  const bounds = await permissions.boundingBox();
+  expect(bounds).not.toBeNull();
+  expect(bounds?.width).toBeLessThanOrEqual(560);
+  for (const checkbox of await permissions.getByRole('checkbox').all()) {
+    const bounds = await checkbox.boundingBox();
+    expect(bounds?.width).toBeLessThanOrEqual(24);
+    expect(bounds?.height).toBeLessThanOrEqual(24);
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  expect((await new AxeBuilder({ page }).include('main').analyze()).violations).toEqual([]);
+  await permissions.locator('..').screenshot({
+    path: '.artifacts/browser/compact-consent-' + test.info().project.name + '.png',
+  });
   const approve = page.getByRole('button', { name: 'Approve hosted connection', exact: true });
   await expect(approve).toBeEnabled();
   await expect(
