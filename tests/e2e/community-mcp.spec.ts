@@ -144,3 +144,111 @@ test('downloads public setup and retires a real native connection', async ({ pag
   const inventory = ApiRoutes.mcpConnections.response.parse(await inventoryResponse.json());
   expect(inventory.local.find((item) => item.grant.id === result.grant.id)?.revoked).toBe(true);
 });
+
+test('approves read and preview without a companion when the client requests every OAuth scope', async ({
+  page,
+}) => {
+  const api = 'http://127.0.0.1:' + (process.env.DACLIFY_TEST_API_PORT ?? '3008'),
+    origin = 'http://127.0.0.1:' + (process.env.DACLIFY_TEST_UI_PORT ?? '5178'),
+    password = 'owned hosted preview password',
+    vault = await createVault(password);
+  const kit = RecoveryKitSchema.parse({
+    version: 1,
+    localEnvelope: vault.localEnvelope,
+    recoveryEnvelope: vault.recoveryEnvelope,
+    signingPublicKey: vault.signingPublicKey,
+    encryptionPublicKey: vault.encryptionPublicKey,
+  });
+  const owner = z
+    .object({ token: z.string() })
+    .parse(
+      JSON.parse(
+        await readFile('../daclify-backend-core/.artifacts/native/browser-owner.json', 'utf8'),
+      ),
+    );
+  const created = await page.request.post(api + '/fixture/dao', {
+    headers: { 'x-fixture-token': owner.token, origin },
+    data: {
+      signingKey: vault.signingPublicKey,
+      encryptionKey: vault.encryptionPublicKey,
+      admin: true,
+    },
+  });
+  expect(created.status()).toBe(200);
+  const context = z.object({ dao: DaoRefSchema, memberId: z.string() }).parse(await created.json());
+  const verifier = randomBytes(32).toString('base64url');
+  const parameters = new URLSearchParams({
+    response_type: 'code',
+    client_id: 'browser-fixture',
+    redirect_uri: 'https://client.example/callback',
+    resource: api + '/mcp',
+    scope: 'daclify:read daclify:prepare daclify:submit',
+    state: 'owned-preview',
+    code_challenge: createHash('sha256').update(verifier).digest('base64url'),
+    code_challenge_method: 'S256',
+  });
+  const authorization = await page.request.get(api + '/mcp/oauth/authorize?' + parameters, {
+    maxRedirects: 0,
+  });
+  expect(authorization.status()).toBe(302);
+  const consentUrl = z.url().parse(authorization.headers()['location']);
+  await page.addInitScript(
+    (record) => localStorage.setItem('daclify.vault.v1', JSON.stringify(record)),
+    kit,
+  );
+  await page.goto(
+    '/account?returnTo=' +
+      encodeURIComponent(new URL(consentUrl).pathname + new URL(consentUrl).search),
+  );
+  const main = page.getByRole('main');
+  await main.getByRole('button', { name: 'Login', exact: true }).click();
+  await main.getByLabel('Vault password', { exact: true }).fill(password);
+  await main.getByRole('button', { name: 'Unlock and sign in', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Connect a hosted AI harness' })).toBeVisible();
+  await page
+    .getByRole('combobox', { name: 'Community membership', exact: true })
+    .selectOption({ label: 'DAO ' + context.dao.daoId + ', member ' + context.memberId });
+  await page.getByLabel('vote', { exact: true }).check();
+  const approve = page.getByRole('button', { name: 'Approve hosted connection', exact: true });
+  await expect(approve).toBeEnabled();
+  await expect(
+    page.getByText('This connection will receive read and preview access only.', { exact: false }),
+  ).toBeVisible();
+  await page.route('https://client.example/callback*', (route) =>
+    route.fulfill({ body: 'Owned callback captured' }),
+  );
+  const callback = page.waitForRequest((request) =>
+    request.url().startsWith('https://client.example/callback?'),
+  );
+  await approve.click();
+  const redirected = new URL((await callback).url());
+  expect(redirected.searchParams.get('state')).toBe('owned-preview');
+  expect(redirected.searchParams.get('iss')).toBe(api + '/mcp/oauth');
+  const code = z.string().min(1).parse(redirected.searchParams.get('code'));
+  const exchanged = await page.request.post(api + '/mcp/oauth/token', {
+    form: {
+      grant_type: 'authorization_code',
+      client_id: 'browser-fixture',
+      redirect_uri: 'https://client.example/callback',
+      resource: api + '/mcp',
+      code,
+      code_verifier: verifier,
+    },
+  });
+  expect(exchanged.status()).toBe(200);
+  const token = z
+    .object({ access_token: z.string(), scope: z.string() })
+    .parse(await exchanged.json());
+  expect(token.scope.split(' ')).toEqual(['daclify:read', 'daclify:prepare']);
+  const replay = await page.request.post(api + '/mcp/oauth/token', {
+    form: {
+      grant_type: 'authorization_code',
+      client_id: 'browser-fixture',
+      redirect_uri: 'https://client.example/callback',
+      resource: api + '/mcp',
+      code,
+      code_verifier: verifier,
+    },
+  });
+  expect(replay.status()).toBe(400);
+});

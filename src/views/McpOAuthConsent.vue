@@ -35,7 +35,7 @@ const member = computed(() =>
       !!consent.value &&
       !!member.value &&
       canSignMember(member.value) &&
-      (!consent.value.scopes.includes('daclify:submit') || !!grant.value),
+      (consent.value.scopes.some((scope) => scope !== 'daclify:submit') || !!grant.value),
   );
 let generation = 0;
 watch(
@@ -144,8 +144,8 @@ async function approve() {
         </select></label
       >
       <p v-if="consent.scopes.includes('daclify:submit') && !grant">
-        Signed submission requires an existing local companion. Connect one through Mini apps and
-        request hosted consent again.
+        This connection will receive read and preview access only. Signed submission requires an
+        approved local companion; connect one through Mini apps and request hosted consent again.
       </p>
       <fieldset v-if="consent.scopes.includes('daclify:prepare')">
         <legend>Permitted preparation</legend>

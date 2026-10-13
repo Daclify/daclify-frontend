@@ -245,6 +245,38 @@ npx daclify-community-mcp serve --credentials /absolute/private-directory/delega
       >. Use a preregistered client; read and preview work without a local signer. Signed submission
       needs a separately approved companion.
     </p>
+    <details
+      v-if="
+        state.network?.capabilities.includes('community-mcp-http-v1') &&
+        resolveApiUrl('/mcp') === 'https://testnet.api.daclify.com/mcp'
+      "
+    >
+      <summary>Connect Codex CLI, Claude Code or ChatGPT on testnet</summary>
+      <h3>Codex CLI</h3>
+      <p>Add this public configuration to your Codex config, then run the login command.</p>
+      <pre><code>[mcp_servers.daclify_testnet]
+url = "https://testnet.api.daclify.com/mcp"
+
+[mcp_servers.daclify_testnet.oauth]
+client_id = "daclify-codex-testnet"
+callback_url = "http://127.0.0.1:35829/callback"
+callback_port = 35829</code></pre>
+      <pre><code>codex mcp login daclify_testnet</code></pre>
+      <h3>Claude Code</h3>
+      <pre><code>claude mcp add --transport http --client-id daclify-claude-testnet --callback-port 35839 daclify_testnet https://testnet.api.daclify.com/mcp
+claude mcp login daclify_testnet</code></pre>
+      <h3>ChatGPT</h3>
+      <p>
+        Add a custom MCP connection with this same endpoint and OAuth authentication. Choose client
+        metadata registration when offered. Daclify verifies ChatGPT’s published client metadata and
+        exact callback. The ChatGPT account connection still needs its first complete client test.
+      </p>
+      <p>
+        Sign in to Daclify, select your community and choose read and preview access or an existing
+        signing companion. These configurations contain no secret. The local callback ports must be
+        free on the computer where you run each CLI.
+      </p>
+    </details>
     <p>
       Official SDK transports and individual harness versions are qualified separately. Check the
       versioned MCP guide’s capability matrix before connecting a client.
