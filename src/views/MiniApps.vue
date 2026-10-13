@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useWorkspace } from '../state/workspace';
+import McpConnection from '../components/McpConnection.vue';
 import MiniAppConnection from '../components/MiniAppConnection.vue';
 const state = useWorkspace(),
   selectedDao = ref('');
@@ -90,6 +91,7 @@ const daos = computed(() =>
         harness on a trusted host.
       </p>
       <p v-else>MCP connection setup is being qualified for this deployment.</p>
+      <McpConnection v-if="state.network?.capabilities.includes('community-mcp-local-v1')" />
       <RouterLink to="/docs/community-mcp">MCP connection guide ↗</RouterLink> ·
       <RouterLink to="/docs/agents">AI participant guide ↗</RouterLink>
     </section>
