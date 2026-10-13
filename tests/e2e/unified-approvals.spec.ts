@@ -10,7 +10,7 @@ import {
   DaoClaimViewSchema,
   PlatformStatusSchema,
 } from '@daclify/core-protocol';
-import { PublicKey, Signature } from '@wharfkit/antelope';
+import { PrivateKey, PublicKey, Signature } from '@wharfkit/antelope';
 import { instructionDigest } from '@daclify/core-protocol/sdk';
 import { createVault } from '../../src/auth/vault';
 import AxeBuilder from '@axe-core/playwright';
@@ -251,6 +251,14 @@ async function approvalFixture(page: Page) {
     summary: base.summary,
     members,
     password,
+    address,
+    kit: RecoveryKitSchema.parse({
+      version: 1,
+      localEnvelope: vault.localEnvelope,
+      recoveryEnvelope: vault.recoveryEnvelope,
+      signingPublicKey: vault.signingPublicKey,
+      encryptionPublicKey: vault.encryptionPublicKey,
+    }),
     submitted,
     priorWallet: (dao: string, wallet: string) => prior.set(dao, wallet),
     failNextSecond: () => {
@@ -258,6 +266,224 @@ async function approvalFixture(page: Page) {
     },
   };
 }
+
+test('locked wallet activation opens account recovery and resumes the selected DAOs', async ({
+  page,
+}) => {
+  const fixture = await approvalFixture(page);
+  await page.goto('/account?setup=approvals&dao=2&returnTo=/dao/2/documents');
+  await page.getByLabel('Default approval method').selectOption('evm');
+  await page.getByRole('button', { name: 'Connect your paired wallet' }).click();
+  const setup = page.getByRole('region', { name: 'Approval setup', exact: true });
+  await expect(setup.getByText('Unlock account to enable', { exact: false })).toBeVisible();
+  await setup.getByRole('button', { name: 'Unlock account to continue', exact: true }).click();
+  await expect(setup.getByLabel('Vault password', { exact: true })).toBeFocused();
+  await page.screenshot({ path: test.info().outputPath('approval-recovery.png'), fullPage: true });
+  expect(fixture.submitted).toEqual([]);
+  await setup.getByLabel('Vault password', { exact: true }).fill('incorrect disposable password');
+  await setup.getByRole('button', { name: 'Unlock and sign in', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText(
+    'The vault could not be unlocked. Check your password or recovery kit.',
+  );
+  expect(fixture.submitted).toEqual([]);
+  await setup.getByLabel('Vault password', { exact: true }).fill(fixture.password);
+  await setup.getByRole('button', { name: 'Unlock and sign in', exact: true }).click();
+  await expect(
+    setup.getByRole('button', { name: 'Approve selected DAOs', exact: true }),
+  ).toBeFocused();
+  await expect(page).toHaveURL(/\/account\?.*setup=approvals/);
+  await expect(page.getByRole('checkbox', { name: /Community 2/ })).toBeChecked();
+  expect(fixture.submitted).toEqual([]);
+  await setup.getByRole('button', { name: 'Approve selected DAOs', exact: true }).click();
+  await expect(setup.getByText('1 of 1 selected DAOs enabled.', { exact: true })).toBeVisible();
+  expect(fixture.submitted).toEqual(['2']);
+});
+
+test('sign-in-only kit recovery preserves DAO selections through cancellation and restoration', async ({
+  page,
+}) => {
+  const fixture = await approvalFixture(page);
+  await page.addInitScript(() => localStorage.removeItem('daclify.vault.v1'));
+  await page.goto('/account?setup=approvals&dao=2');
+  await page.getByLabel('Default approval method').selectOption('evm');
+  await page.getByRole('button', { name: 'Connect your paired wallet' }).click();
+  await page.getByRole('checkbox', { name: /Community 1/ }).check();
+  const setup = page.getByRole('region', { name: 'Approval setup', exact: true });
+  await setup.getByRole('button', { name: 'Unlock account to continue', exact: true }).click();
+  await expect(
+    setup.getByText(/Your paired sign-ins do not currently unlock your account keys/),
+  ).toBeVisible();
+  await expect(setup.getByRole('group', { name: 'Paired sign-in methods' })).toBeHidden();
+  await setup.getByRole('button', { name: 'Recover from an encrypted kit' }).click();
+  const restore = page.getByRole('dialog', { name: 'Restore your existing keys', exact: true });
+  await expect(restore).toBeVisible();
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  await restore.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(restore).toBeHidden();
+  await expect(setup.getByRole('checkbox', { name: /Community 1/ })).toBeChecked();
+  await expect(setup.getByRole('checkbox', { name: /Community 2/ })).toBeChecked();
+  expect(fixture.submitted).toEqual([]);
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  await setup.getByRole('button', { name: 'Recover from an encrypted kit' }).click();
+  await restore.getByLabel('Encrypted recovery kit', { exact: true }).setInputFiles({
+    name: 'disposable-recovery-kit.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(fixture.kit)),
+  });
+  await restore
+    .getByLabel('Vault password or recovery code', { exact: true })
+    .fill(fixture.password);
+  await restore
+    .getByLabel('New vault password', { exact: true })
+    .fill('disposable restored password');
+  await restore.getByRole('button', { name: 'Restore', exact: true }).click();
+  await expect(restore).toBeHidden();
+  await expect(
+    setup.getByRole('button', { name: 'Approve selected DAOs', exact: true }),
+  ).toBeFocused();
+  await expect(setup.getByRole('checkbox', { name: /Community 1/ })).toBeChecked();
+  await expect(setup.getByRole('checkbox', { name: /Community 2/ })).toBeChecked();
+  expect(fixture.submitted).toEqual([]);
+  await setup.getByRole('button', { name: 'Approve selected DAOs', exact: true }).click();
+  await expect(setup.getByText('2 of 2 selected DAOs enabled.', { exact: true })).toBeVisible();
+  expect(fixture.submitted).toEqual(['1', '2']);
+});
+
+test('an enabled wallet approves its selected DAO without recovering account keys', async ({
+  page,
+}) => {
+  const fixture = await approvalFixture(page);
+  fixture.priorWallet('1', fixture.address);
+  await page.addInitScript(() => localStorage.removeItem('daclify.vault.v1'));
+  await page.goto('/account?setup=approvals&dao=1');
+  await page.getByLabel('Default approval method').selectOption('evm');
+  await page.getByRole('button', { name: 'Connect your paired wallet' }).click();
+  const setup = page.getByRole('region', { name: 'Approval setup', exact: true });
+  await expect(setup.getByText(/Already enabled/)).toBeVisible();
+  await setup.getByRole('button', { name: 'Approve selected DAOs', exact: true }).click();
+  await expect(setup.getByText('1 of 1 selected DAOs enabled.', { exact: true })).toBeVisible();
+  await expect(
+    setup.getByRole('button', { name: 'Unlock account to continue', exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByText('Wallet ready', { exact: true })).toBeVisible();
+  expect(fixture.submitted).toEqual([]);
+});
+
+test('different member keys are rejected without an endless unlock step', async ({ page }) => {
+  const fixture = await approvalFixture(page),
+    member = fixture.members[1];
+  if (!member) throw new Error('Member fixture required');
+  member.signingKey = PrivateKey.generate('K1').toPublic().toString();
+  await page.goto('/account?setup=approvals&dao=2');
+  await page.getByLabel('Default approval method').selectOption('evm');
+  await page.getByRole('button', { name: 'Connect your paired wallet' }).click();
+  const setup = page.getByRole('region', { name: 'Approval setup', exact: true });
+  await setup.getByRole('button', { name: 'Unlock account to continue', exact: true }).click();
+  await setup.getByLabel('Vault password', { exact: true }).fill(fixture.password);
+  await setup.getByRole('button', { name: 'Unlock and sign in', exact: true }).click();
+  await expect(
+    setup.getByRole('button', { name: 'Approve selected DAOs', exact: true }),
+  ).toBeVisible();
+  await setup.getByRole('button', { name: 'Approve selected DAOs', exact: true }).click();
+  await expect(setup.getByRole('alert')).toContainText('do not match this DAO member');
+  expect(fixture.submitted).toEqual([]);
+});
+
+test('approval recovery offers only paired methods with full access enabled', async ({ page }) => {
+  await approvalFixture(page);
+  await page.addInitScript(() => localStorage.removeItem('daclify.vault.v1'));
+  await page.route('**/v1/account/recovery', (route) =>
+    route.fulfill({
+      json: {
+        configured: true,
+        assistedEver: true,
+        assistedRevision: 1,
+        reason: null,
+        methods: [
+          {
+            credentialKey: 'email:fixture@example.test',
+            kind: 'email',
+            subject: 'fixture@example.test',
+            chainId: null,
+            mode: 'daclify-assisted',
+            availableModes: ['daclify-assisted'],
+            reason: null,
+          },
+          {
+            credentialKey: 'evm:41:0x7e5f4552091a69125d5dfcb7b8c2659029395bdf',
+            kind: 'evm',
+            subject: '0x7e5f4552091a69125d5dfcb7b8c2659029395bdf',
+            chainId: '41',
+            mode: null,
+            availableModes: ['wallet-protected'],
+            reason: null,
+          },
+        ],
+      },
+    }),
+  );
+  await page.goto('/account?setup=approvals&dao=2');
+  await page.getByLabel('Default approval method').selectOption('evm');
+  await page.getByRole('button', { name: 'Connect your paired wallet' }).click();
+  const setup = page.getByRole('region', { name: 'Approval setup', exact: true });
+  await setup.getByRole('button', { name: 'Unlock account to continue', exact: true }).click();
+  const picker = setup.getByRole('group', { name: 'Paired sign-in methods' });
+  await expect(picker.getByRole('button')).toHaveCount(1);
+  await expect(picker.getByRole('button', { name: 'E-Mail', exact: true })).toBeVisible();
+  await expect(
+    setup.getByRole('heading', { name: 'Unlock with a paired sign-in', exact: true }),
+  ).toBeVisible();
+});
+
+test('Google full-access recovery is available when it is the only enabled sign-in', async ({
+  page,
+}) => {
+  await approvalFixture(page);
+  await page.addInitScript(() => localStorage.removeItem('daclify.vault.v1'));
+  await page.route('**/v1/account/recovery', (route) =>
+    route.fulfill({
+      json: {
+        configured: true,
+        assistedEver: true,
+        assistedRevision: 1,
+        reason: null,
+        methods: [
+          {
+            credentialKey: 'google:fixture-subject',
+            kind: 'google',
+            subject: 'fixture-subject',
+            chainId: null,
+            mode: 'daclify-assisted',
+            availableModes: ['daclify-assisted'],
+            reason: null,
+          },
+        ],
+      },
+    }),
+  );
+  await page.route('**/v1/sign-in/google', (route) =>
+    route.fulfill({ json: { clientId: 'fixture.apps.googleusercontent.com' } }),
+  );
+  await page.route('https://accounts.google.com/gsi/client', (route) =>
+    route.fulfill({
+      contentType: 'application/javascript',
+      body: `window.google = {accounts: {id: {initialize() {}, renderButton(host) {
+      const button = document.createElement('button'); button.textContent = 'Continue with Google'; host.append(button);
+    }}}};`,
+    }),
+  );
+  await page.goto('/account?setup=approvals&dao=2');
+  await page.getByLabel('Default approval method').selectOption('evm');
+  await page.getByRole('button', { name: 'Connect your paired wallet' }).click();
+  const setup = page.getByRole('region', { name: 'Approval setup', exact: true });
+  await setup.getByRole('button', { name: 'Unlock account to continue', exact: true }).click();
+  await expect(setup.getByRole('group', { name: 'Paired sign-in methods' })).toBeHidden();
+  await expect(
+    setup
+      .getByRole('region', { name: 'Paired Google sign-in' })
+      .getByRole('button', { name: 'Continue with Google' }),
+  ).toBeVisible();
+});
 
 test('unlocking during approval setup stays on the setup screen', async ({ page }) => {
   const fixture = await approvalFixture(page);
@@ -270,6 +496,7 @@ test('unlocking during approval setup stays on the setup screen', async ({ page 
   await expect(
     page.getByText('Default saved for this account and network on this browser.'),
   ).toBeVisible();
+  await page.getByText('Account keys and recovery', { exact: true }).click();
   await page.getByLabel('Vault password', { exact: true }).fill(fixture.password);
   await page.getByRole('button', { name: 'Unlock and sign in', exact: true }).click();
   await expect(
@@ -352,6 +579,7 @@ test('one setup enables two selected DAOs and a retry skips the first confirmed 
   expect(checkbox?.width).toBeLessThanOrEqual(24);
   expect(checkbox?.height).toBeLessThanOrEqual(24);
   await expect(page.getByText(/Replaces 0x22222222/)).toBeVisible();
+  await page.getByRole('button', { name: 'Unlock account to continue', exact: true }).click();
   await page.getByLabel('Vault password', { exact: true }).fill(fixture.password);
   await page.getByRole('button', { name: 'Unlock and sign in', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toBeEnabled();

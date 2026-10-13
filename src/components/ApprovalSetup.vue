@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import type { UserMembership } from '@daclify/core-protocol';
 import { useWorkspace } from '../state/workspace';
@@ -9,9 +9,10 @@ import { selectedSigner, activateMemberWallet } from '../auth/action-signer';
 import { preferredApproval, saveApprovalPreference } from '../auth/approval-preference';
 import { nativeWallet, connectNative } from '../auth/telos-zero';
 import { evmWallet, connectEvm } from '../auth/telos-evm';
-import { vaultUnlocked } from '../auth/session';
+import { canUseVaultKey, vaultUnlocked } from '../auth/session';
 import NativeWalletPanel from './NativeWalletPanel.vue';
 import LinkedAccounts from './LinkedAccounts.vue';
+const emit = defineEmits<{ unlockNeeded: [] }>();
 const state = useWorkspace(),
   route = useRoute();
 const kind = ref(selectedSigner.value),
@@ -21,6 +22,9 @@ const kind = ref(selectedSigner.value),
   error = ref('');
 const chosen = ref<string[]>([]),
   completed = ref<string[]>([]);
+const accessOpen = ref(true),
+  unlockRequested = ref(false),
+  approvalButton = ref<HTMLButtonElement>();
 const bindings = ref(new Map<string, Awaited<ReturnType<typeof api.evmBinding>>['binding']>()),
   bindingsLoading = ref(false),
   bindingsReady = ref(false);
@@ -47,6 +51,48 @@ const savedWallet = computed(() =>
     ? preferredApproval.value.wallet
     : undefined,
 );
+function enabled(member: UserMembership): boolean {
+  if (kind.value === 'native') return !!wallet.value && member.nativeAccount === wallet.value;
+  const binding = bindings.value.get(memberKey(member));
+  return (
+    kind.value === 'evm' &&
+    bindingsReady.value &&
+    !!binding?.active &&
+    binding.chain_id === String(evmWallet.value?.chainId) &&
+    binding.address === wallet.value?.slice(2)
+  );
+}
+const needsUnlock = computed(
+  () =>
+    !vaultUnlocked.value &&
+    kind.value !== 'vault' &&
+    members.value.some(
+      (member) =>
+        chosen.value.includes(memberKey(member)) &&
+        !enabled(member) &&
+        !canUseVaultKey(member.signingKey),
+    ),
+);
+watch(
+  kind,
+  (mode) => {
+    accessOpen.value = mode === 'vault';
+  },
+  { immediate: true },
+);
+watch(vaultUnlocked, (ready) => {
+  if (ready && unlockRequested.value && !needsUnlock.value)
+    void nextTick(() => approvalButton.value?.focus());
+});
+function requestUnlock() {
+  error.value = '';
+  accessOpen.value = true;
+  unlockRequested.value = true;
+  emit('unlockNeeded');
+}
+function toggleAccess(event: Event) {
+  if (event.target instanceof HTMLDetailsElement) accessOpen.value = event.target.open;
+}
 const context = () =>
   JSON.stringify([
     state.account?.id,
@@ -128,6 +174,7 @@ watch(
   () => {
     if (!connecting) busy.value = false;
     completed.value = [];
+    unlockRequested.value = false;
     void checkPairing();
   },
   { immediate: true },
@@ -201,6 +248,10 @@ async function approve() {
     chosen.value.length > 20
   )
     return;
+  if (needsUnlock.value) {
+    requestUnlock();
+    return;
+  }
   const stamp = context(),
     generation = revision,
     mode = kind.value;
@@ -221,7 +272,14 @@ async function approve() {
         completed.value.push(memberKey(member));
       }
   } catch (cause) {
-    if (stamp === context()) error.value = friendlyError(cause);
+    if (stamp === context()) {
+      if (cause instanceof Error && cause.message === 'VAULT_LOCKED' && !vaultUnlocked.value)
+        requestUnlock();
+      else if (cause instanceof Error && cause.message === 'VAULT_LOCKED')
+        error.value =
+          'Your unlocked account keys do not match this DAO member. Use its currently authorized wallet or recover the matching keys.';
+      else error.value = friendlyError(cause);
+    }
   } finally {
     if (stamp === context()) {
       await state.refresh();
@@ -231,12 +289,17 @@ async function approve() {
 }
 function status(member: UserMembership): string {
   if (completed.value.includes(memberKey(member))) return 'Enabled';
+  const ready = canUseVaultKey(member.signingKey)
+    ? 'Ready to enable'
+    : vaultUnlocked.value
+      ? 'Different signing key'
+      : 'Unlock account to enable';
   if (kind.value === 'native' && wallet.value)
     return member.nativeAccount === wallet.value
       ? 'Already enabled'
       : member.nativeAccount
         ? 'Replaces ' + member.nativeAccount
-        : 'Ready to enable';
+        : ready;
   if (kind.value === 'evm' && paired.value && chosen.value.includes(memberKey(member))) {
     const binding = bindings.value.get(memberKey(member));
     if (!bindingsReady.value) return 'Checking wallet authorization…';
@@ -245,7 +308,7 @@ function status(member: UserMembership): string {
         binding.address === wallet.value?.slice(2)
         ? 'Already enabled'
         : 'Replaces 0x' + binding.address;
-    return 'Ready to enable';
+    return ready;
   }
   return 'Current authorization will be checked before approval';
 }
@@ -298,9 +361,10 @@ function status(member: UserMembership): string {
       Refresh wallet pairing
     </button>
     <template v-if="kind !== 'vault' && paired">
-      <p v-if="!vaultUnlocked" class="notice">
-        Unlock your account below once to enable this wallet in new DAOs. Wallets already enabled
-        can approve public actions without unlocking Daclify keys.
+      <p v-if="needsUnlock" class="notice">
+        Unlock your account once to enable this wallet in the selected DAOs. Choose the button below
+        to continue with account recovery. Already enabled wallets can approve public actions while
+        Daclify keys are locked.
       </p>
       <fieldset :disabled="busy || loading">
         <legend>Use this wallet in these DAOs</legend>
@@ -344,6 +408,7 @@ function status(member: UserMembership): string {
       {{ completed.length }} of {{ chosen.length }} selected DAOs enabled.
     </p>
     <button
+      ref="approvalButton"
       type="button"
       :disabled="
         busy || loading || bindingsLoading || (kind === 'evm' && !bindingsReady) || !paired
@@ -353,11 +418,20 @@ function status(member: UserMembership): string {
       {{
         busy
           ? 'Completing setup…'
-          : chosen.length && kind !== 'vault'
-            ? 'Approve selected DAOs'
-            : 'Save default approval method'
+          : needsUnlock
+            ? 'Unlock account to continue'
+            : chosen.length && kind !== 'vault'
+              ? 'Approve selected DAOs'
+              : 'Save default approval method'
       }}
     </button>
+    <p v-if="unlockRequested && !needsUnlock && vaultUnlocked" role="status">
+      Account unlocked. Approve selected DAOs to finish.
+    </p>
+    <details v-if="$slots.access" :open="accessOpen" class="approval-access" @toggle="toggleAccess">
+      <summary>Account keys and recovery</summary>
+      <slot name="access" :requested="unlockRequested" />
+    </details>
   </section>
 </template>
 <style scoped>
@@ -388,5 +462,11 @@ function status(member: UserMembership): string {
 }
 fieldset {
   margin: 16px 0;
+}
+.approval-access {
+  margin-top: 20px;
+}
+.approval-access summary {
+  margin-bottom: 16px;
 }
 </style>

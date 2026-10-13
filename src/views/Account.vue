@@ -41,6 +41,8 @@ import DeviceApproval from '../components/DeviceApproval.vue';
 import QuickSignup from '../components/QuickSignup.vue';
 import AssistedRecoveryOptOut from '../components/AssistedRecoveryOptOut.vue';
 import ApprovalSetup from '../components/ApprovalSetup.vue';
+import WorkspaceDialog from '../components/WorkspaceDialog.vue';
+import GoogleSignIn from '../components/GoogleSignIn.vue';
 import { restoreFastSignIn } from '../auth/fast-sign-in';
 import { canSignMember } from '../auth/action-signer';
 const props = defineProps<{
@@ -73,6 +75,7 @@ const recoveryCredential = ref('');
 const replacementAcknowledged = ref(false);
 const route = useRoute();
 const approvalSetup = computed(() => route.query.setup === 'approvals');
+const approvalRecoveryRequested = ref(false);
 const router = useRouter();
 const destination = computed(() =>
   props.accessSetup ? undefined : accountDestination(route.query.returnTo),
@@ -94,6 +97,15 @@ const joinRequested = computed(
       )),
 );
 const recoveryInfo = ref<RecoveryMethods>();
+const unlockMethods = computed(() =>
+  recoveryInfo.value?.methods.filter((method) => method.mode).map((method) => method.kind),
+);
+function openApprovalRecovery() {
+  approvalRecoveryRequested.value = true;
+  void nextTick(() =>
+    document.getElementById(accountKit.value ? 'unlock' : 'this-device-title')?.focus(),
+  );
+}
 const recoveryCheckFailed = ref(false);
 let recoveryRead = 0;
 async function checkRecoveryPolicy() {
@@ -113,6 +125,12 @@ watch(
   () => state.account?.id,
   () => void checkRecoveryPolicy(),
   { immediate: true },
+);
+watch(
+  () => JSON.stringify([state.account?.id, state.network?.chainId, state.network?.runtime]),
+  () => {
+    approvalRecoveryRequested.value = false;
+  },
 );
 onBeforeUnmount(() => {
   recoveryRead++;
@@ -409,7 +427,8 @@ async function unlock(mode: 'attach' | 'recover' | 'reconnect' = 'attach') {
     recoveredAccountFound.value = false;
     password.value = '';
     await state.refresh();
-    if (destination.value && !approvalSetup.value) await router.push(destination.value);
+    if (destination.value && !approvalSetup.value && !approvalRecoveryRequested.value)
+      await router.push(destination.value);
   } catch (cause) {
     if (cause instanceof ApiFailure && cause.code === 'VAULT_ALREADY_REGISTERED') {
       recoveredAccountFound.value = true;
@@ -431,12 +450,16 @@ async function onSignedIn(account: Account) {
   error.value = '';
   if (route.query.signup) await router.replace({ query: { ...route.query, signup: undefined } });
   try {
-    await restoreFastSignIn(account);
+    const restored = await restoreFastSignIn(account);
+    if (approvalRecoveryRequested.value && !restored && !vaultUnlocked.value)
+      error.value =
+        'This sign-in did not unlock your account keys. Try another full-access method, an unlocked device, or your original encrypted kit.';
   } catch (cause) {
     error.value = friendlyError(cause);
   }
   await state.refresh();
-  if (destination.value && !approvalSetup.value) await router.push(destination.value);
+  if (destination.value && !approvalSetup.value && !approvalRecoveryRequested.value)
+    await router.push(destination.value);
 }
 async function logout() {
   busy.value = true;
@@ -469,7 +492,7 @@ function backup() {
 </script>
 <template>
   <div
-    v-if="!embedded && !accessSetup"
+    v-if="!embedded && !accessSetup && (!restoring || state.account)"
     class="page-heading account-heading"
     :class="{ 'settings-heading': state.account }"
   >
@@ -491,7 +514,7 @@ function backup() {
   <p v-if="route.query.notice === 'signin-removed'" class="notice" role="status">
     Sign-in method removed. Its sessions were revoked; sign in with a remaining method.
   </p>
-  <p v-if="error" class="alert" role="alert">{{ error }}</p>
+  <p v-if="error && !restoring" class="alert" role="alert">{{ error }}</p>
   <section v-if="recoveredAccountFound" class="panel narrow" aria-labelledby="recovered-title">
     <h2 id="recovered-title">Your original account was found</h2>
     <p>
@@ -525,8 +548,14 @@ function backup() {
       Choose a paired wallet
     </button>
   </section>
-  <section v-if="restoring" class="panel narrow account-flow">
-    <h2>Restore your existing keys</h2>
+  <WorkspaceDialog
+    v-if="restoring"
+    :open="restoring"
+    :title="state.account ? 'Restore your existing keys' : 'Recover your account'"
+    :busy="busy"
+    @update:open="restoring = $event"
+  >
+    <p v-if="error" class="alert" role="alert">{{ error }}</p>
     <p>
       Choose your encrypted kit and enter the vault password saved with that kit, or its separate
       recovery code. Your new password protects this device.
@@ -536,6 +565,7 @@ function backup() {
       ><input
         id="kit"
         type="file"
+        autofocus
         accept="application/json,.json"
         required
         :disabled="busy"
@@ -565,13 +595,10 @@ function backup() {
         <button type="submit" :disabled="busy || !kitText">
           {{ busy ? 'Restoring…' : 'Restore' }}
         </button>
-        <button type="button" class="secondary" :disabled="busy" @click="restoring = false">
-          Cancel
-        </button>
       </div>
     </form>
-  </section>
-  <section v-else-if="created" class="panel narrow account-flow">
+  </WorkspaceDialog>
+  <section v-if="created" class="panel narrow account-flow">
     <h2>Keep access on a new device</h2>
     <p>
       Your password unlocks this device and the password-protected copy in your downloaded kit. The
@@ -680,91 +707,135 @@ function backup() {
       role="tabpanel"
       aria-labelledby="account-tab-keys"
     >
-      <ApprovalSetup />
-      <div class="access-grid">
-        <section class="device-access" aria-labelledby="this-device-title">
-          <div class="panel-heading">
-            <h2 id="this-device-title">This device</h2>
-            <span :class="['pill', { success: vaultUnlocked }]">{{
-              vaultUnlocked
-                ? 'Keys unlocked'
-                : walletApprovalsReady
-                  ? 'Wallet approvals ready'
-                  : 'Sign-in only'
-            }}</span>
+      <ApprovalSetup @unlock-needed="openApprovalRecovery">
+        <template #access="{ requested }">
+          <div class="access-grid">
+            <section class="device-access" aria-labelledby="this-device-title">
+              <div class="panel-heading">
+                <h2 id="this-device-title" tabindex="-1">This device</h2>
+                <span :class="['pill', { success: vaultUnlocked }]">{{
+                  vaultUnlocked
+                    ? 'Keys unlocked'
+                    : walletApprovalsReady
+                      ? 'Wallet approvals ready'
+                      : 'Sign-in only'
+                }}</span>
+              </div>
+              <p v-if="vaultUnlocked">Ready to sign actions and open your private documents.</p>
+              <p
+                v-if="state.account.signingKey === null && state.account.walletOrigin === 'signup'"
+                class="notice"
+                role="status"
+              >
+                Your wallet opens this Daclify account. Enable full access once to create or join
+                DAOs and open private content. One recovery kit protects your account.
+              </p>
+              <p v-else-if="state.account.signingKey === null" class="notice" role="status">
+                Your wallet restores access to its current on-chain memberships and permissions.
+                Your original document-decryption keys and lost social-login pairings have not been
+                restored. To recover private content, import your original encrypted kit and confirm
+                with your wallet.
+              </p>
+              <form v-if="!vaultUnlocked && accountKit" @submit.prevent="unlock()">
+                <label for="unlock">Vault password</label
+                ><input
+                  id="unlock"
+                  v-model="password"
+                  type="password"
+                  autocomplete="current-password"
+                  required
+                /><button :disabled="busy">Unlock and sign in</button>
+              </form>
+              <div v-else-if="vaultUnlocked" class="button-row">
+                <button class="secondary" @click="lockVault">Lock vault</button
+                ><button v-if="accountKit" class="secondary" @click="backup">
+                  Download encrypted backup
+                </button>
+              </div>
+              <p v-if="!vaultUnlocked && !accountKit" class="muted">
+                {{
+                  walletApprovalsReady
+                    ? 'Your wallet can approve actions in enabled DAOs. To open private documents, recover your account keys below.'
+                    : 'Your account is signed in. To enable a wallet in a new DAO or open private documents, use a paired method with full access, approve this device, or restore your encrypted kit.'
+                }}
+              </p>
+              <SignInMethods
+                v-if="
+                  (accessSetup || approvalSetup || requested) &&
+                  !vaultUnlocked &&
+                  state.account.signingKey !== null &&
+                  (!requested || unlockMethods?.some((method) => method !== 'google'))
+                "
+                mode="enter"
+                :unlock-methods="requested ? unlockMethods : undefined"
+                @authenticated="onSignedIn"
+                @busy="providerBusy = $event"
+              />
+              <GoogleSignIn
+                v-if="requested && !vaultUnlocked && unlockMethods?.includes('google')"
+                :inert="busy || providerBusy"
+                @authenticated="onSignedIn"
+                @busy="providerBusy = $event"
+              />
+              <p
+                v-if="
+                  requested &&
+                  !vaultUnlocked &&
+                  !accountKit &&
+                  recoveryInfo &&
+                  !unlockMethods?.length
+                "
+                class="notice"
+              >
+                Your paired sign-ins do not currently unlock your account keys. Use another unlocked
+                device or your original encrypted kit to continue. Signing in again will not enable
+                this wallet in a new DAO.
+              </p>
+              <p v-if="requested && !vaultUnlocked && !accountKit && !recoveryInfo" role="status">
+                {{
+                  recoveryCheckFailed
+                    ? 'Account recovery options could not be checked.'
+                    : 'Checking account recovery options…'
+                }}
+                <button
+                  v-if="recoveryCheckFailed"
+                  type="button"
+                  class="text-button"
+                  @click="checkRecoveryPolicy"
+                >
+                  Retry recovery check
+                </button>
+              </p>
+              <button
+                v-if="!vaultUnlocked && !accountKit"
+                type="button"
+                class="secondary"
+                @click="restoring = true"
+              >
+                Recover from an encrypted kit
+              </button>
+              <p class="field-help">Keys lock after ten minutes without a signing action.</p>
+              <button
+                v-if="!vaultUnlocked"
+                type="button"
+                class="text-button"
+                @click="openTab('sign-in')"
+              >
+                View paired sign-in methods <ArrowUpRight aria-hidden="true" />
+              </button>
+            </section>
+            <DeviceApproval
+              v-if="state.account.signingKey !== null"
+              :account="state.account"
+              :approve-id="
+                typeof route.query.deviceApproval === 'string'
+                  ? route.query.deviceApproval
+                  : undefined
+              "
+            />
           </div>
-          <p v-if="vaultUnlocked">Ready to sign actions and open your private documents.</p>
-          <p
-            v-if="state.account.signingKey === null && state.account.walletOrigin === 'signup'"
-            class="notice"
-            role="status"
-          >
-            Your wallet opens this Daclify account. Enable full access once to create or join DAOs
-            and open private content. One recovery kit protects your account.
-          </p>
-          <p v-else-if="state.account.signingKey === null" class="notice" role="status">
-            Your wallet restores access to its current on-chain memberships and permissions. Your
-            original document-decryption keys and lost social-login pairings have not been restored.
-            To recover private content, import your original encrypted kit and confirm with your
-            wallet.
-          </p>
-          <form v-if="!vaultUnlocked && accountKit" @submit.prevent="unlock()">
-            <label for="unlock">Vault password</label
-            ><input
-              id="unlock"
-              v-model="password"
-              type="password"
-              autocomplete="current-password"
-              required
-            /><button :disabled="busy">Unlock and sign in</button>
-          </form>
-          <div v-else-if="vaultUnlocked" class="button-row">
-            <button class="secondary" @click="lockVault">Lock vault</button
-            ><button v-if="accountKit" class="secondary" @click="backup">
-              Download encrypted backup
-            </button>
-          </div>
-          <p v-if="!vaultUnlocked && !accountKit" class="muted">
-            {{
-              walletApprovalsReady
-                ? 'Your wallet can approve actions in enabled DAOs. To open private documents, recover your account keys below.'
-                : 'Your account is signed in. To enable a wallet in a new DAO or open private documents, use a paired method with full access, approve this device, or restore your encrypted kit.'
-            }}
-          </p>
-          <SignInMethods
-            v-if="
-              (accessSetup || approvalSetup) && !vaultUnlocked && state.account.signingKey !== null
-            "
-            mode="enter"
-            @authenticated="onSignedIn"
-            @busy="providerBusy = $event"
-          />
-          <button
-            v-if="!vaultUnlocked && !accountKit"
-            type="button"
-            class="secondary"
-            @click="restoring = true"
-          >
-            Recover from an encrypted kit
-          </button>
-          <p class="field-help">Keys lock after ten minutes without a signing action.</p>
-          <button
-            v-if="!vaultUnlocked"
-            type="button"
-            class="text-button"
-            @click="openTab('sign-in')"
-          >
-            View paired sign-in methods <ArrowUpRight aria-hidden="true" />
-          </button>
-        </section>
-        <DeviceApproval
-          v-if="state.account.signingKey !== null"
-          :account="state.account"
-          :approve-id="
-            typeof route.query.deviceApproval === 'string' ? route.query.deviceApproval : undefined
-          "
-        />
-      </div>
+        </template>
+      </ApprovalSetup>
       <AssistedRecoveryOptOut
         :account="state.account"
         :methods="recoveryInfo"
@@ -1096,7 +1167,7 @@ function backup() {
 }
 .access-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 24px;
   align-items: start;
 }

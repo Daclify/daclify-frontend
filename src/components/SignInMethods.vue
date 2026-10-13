@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { FingerprintPattern, Mail, Send, Anchor, Gem, RefreshCw, ChevronRight } from '@lucide/vue';
-import type { Account } from '@daclify/core-protocol';
+import type { Account, RecoveryMethod } from '@daclify/core-protocol';
 import { api, friendlyError, type SignInMethods, type SignInOptions } from '../api/client';
 import { acceptProviderSession, vaultUnlocked, lockVault } from '../auth/session';
 import { mountTelegramWidget, telegramMiniAppProof } from '../auth/telegram-login';
@@ -20,7 +20,11 @@ import {
   passkeyRecoveryMaterial,
 } from '../auth/webauthn';
 import { rememberPasskeyRecovery } from '../auth/fast-sign-in';
-const props = defineProps<{ mode: 'manage' | 'enter'; returnTo?: string }>();
+const props = defineProps<{
+  mode: 'manage' | 'enter';
+  returnTo?: string;
+  unlockMethods?: RecoveryMethod['kind'][] | undefined;
+}>();
 const route = useRoute(),
   router = useRouter();
 const pendingTelegram = ref<Awaited<ReturnType<typeof api.telegramPendingPair>>>();
@@ -43,6 +47,14 @@ const choices = [
   { id: 'evm', name: 'Telos EVM', wordmark: telosEvmWordmark },
 ] as const;
 const selected = ref<(typeof choices)[number]['id']>();
+const availableChoices = computed(() =>
+  props.mode === 'enter' && props.unlockMethods
+    ? choices.filter((choice) => props.unlockMethods?.includes(choice.id))
+    : choices,
+);
+watch(availableChoices, (rows) => {
+  if (!rows.some((choice) => choice.id === selected.value)) selected.value = undefined;
+});
 function choose(id: (typeof choices)[number]['id']) {
   if (!working.value) {
     selected.value = id;
@@ -360,8 +372,13 @@ onUnmounted(() => {
 <template>
   <section :class="mode === 'manage' ? 'panel method-settings' : 'sign-in-choices'">
     <h2 v-if="mode === 'manage'">Sign-in methods</h2>
-    <h3 v-else>Choose your sign-in method</h3>
-    <p class="sign-in-scope">
+    <h3 v-else>
+      {{ unlockMethods ? 'Unlock with a paired sign-in' : 'Choose your sign-in method' }}
+    </h3>
+    <p v-if="unlockMethods" class="sign-in-scope">
+      These paired methods have full access enabled for this account.
+    </p>
+    <p v-else class="sign-in-scope">
       Use a method you’ve already paired to sign in to this account. Methods enabled for full access
       also unlock your signing and private-document keys.
     </p>
@@ -394,7 +411,7 @@ onUnmounted(() => {
       aria-label="Paired sign-in methods"
     >
       <button
-        v-for="choice in choices"
+        v-for="choice in availableChoices"
         :key="choice.id"
         type="button"
         class="secondary sign-in-choice"

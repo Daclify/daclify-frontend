@@ -246,6 +246,7 @@ for (const keepSignIns of [true, false]) {
     await page.getByRole('button', { name: 'Use paired EVM wallet for account control' }).click();
     await page.getByRole('tab', { name: 'Access & recovery', exact: true }).click();
     await page.getByRole('button', { name: 'Recover from an encrypted kit' }).click();
+    const recovery = page.getByRole('dialog', { name: 'Restore your existing keys', exact: true });
     const kit = RecoveryKitSchema.parse({
       version: 1,
       localEnvelope: original.localEnvelope,
@@ -253,14 +254,16 @@ for (const keepSignIns of [true, false]) {
       signingPublicKey: original.signingPublicKey,
       encryptionPublicKey: original.encryptionPublicKey,
     });
-    await page.getByLabel('Encrypted recovery kit').setInputFiles({
+    await recovery.getByLabel('Encrypted recovery kit').setInputFiles({
       name: 'account-kit.json',
       mimeType: 'application/json',
       buffer: Buffer.from(JSON.stringify(kit)),
     });
-    await page.getByLabel('Vault password or recovery code').fill(original.recoveryCredential);
-    await page.getByLabel('New vault password', { exact: true }).fill('restored fixture password');
-    await page.getByRole('button', { name: 'Restore', exact: true }).click();
+    await recovery.getByLabel('Vault password or recovery code').fill(original.recoveryCredential);
+    await recovery
+      .getByLabel('New vault password', { exact: true })
+      .fill('restored fixture password');
+    await recovery.getByRole('button', { name: 'Restore', exact: true }).click();
     await expect(
       page.getByRole('heading', { name: 'Your original account was found' }),
     ).toBeVisible();

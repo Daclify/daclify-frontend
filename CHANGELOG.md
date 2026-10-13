@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.15.0-alpha.31 development
+
+Guide locked wallet activation into account recovery inside the approval card. Offer configured full-access sign-ins, retain selected DAOs through kit recovery and cancellation, and return keyboard focus to explicit approval after unlocking. Already enabled wallets work while account keys are locked. Keep existing membership, native/EVM consent, private-key and recovery checks.
+
 ## 0.15.0-alpha.30 development
 
 Unify wallet activation in Account > Approval setup. Remember a default per account/operator/network on this browser; review and activate selected DAOs with existing member and incoming-wallet consent. Reread current bindings/nonces, disclose replacements, stop on failure and skip confirmed authorizations on retry. Create, join and action cards use the same setup destination; recovery preserves the chosen wallet and stays in setup. Retain separate private-content keys, current permissions and last-native-executive safeguards.
