@@ -50,12 +50,12 @@ async function signIn(page: Page, admin = true) {
     (record) => localStorage.setItem('daclify.vault.v1', JSON.stringify(record)),
     kit,
   );
-  await page.goto('/account?returnTo=/mini-apps');
+  await page.goto('/account?returnTo=' + encodeURIComponent('/mini-apps#connect'));
   const main = page.getByRole('main');
   await main.getByRole('button', { name: 'Login', exact: true }).click();
   await main.getByLabel('Vault password', { exact: true }).fill(password);
   await main.getByRole('button', { name: 'Unlock and sign in', exact: true }).click();
-  await expect(page).toHaveURL(/\/mini-apps$/);
+  await expect(page).toHaveURL(/\/mini-apps#connect$/);
   await page.getByLabel('Choose a DAO', { exact: true }).selectOption(fixture.dao.daoId);
   return fixture;
 }
@@ -171,10 +171,10 @@ test('signed-out learning is reachable from the keyboard and mobile menu', async
   await navigation.focus();
   await page.keyboard.press('Enter');
   await expect(page.getByRole('heading', { name: 'Mini apps', exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Learn', exact: true })).toBeVisible();
-  await expect(
-    page.getByText('MCP connections are planned for this release.', { exact: false }),
-  ).toBeVisible();
+  await page.getByText('How mini apps work', { exact: true }).click();
+  await expect(page.getByText('Register the app', { exact: true })).toBeVisible();
+  await page.locator('#ai-connections > summary').click();
+  await expect(page.getByRole('link', { name: /MCP connection guide/ })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 test('native member sees consent guidance and no administrator registration', async ({ page }) => {
@@ -302,7 +302,7 @@ test('native administrator registers exact callbacks and downloads bound configu
   expect(ApiRoutes.appRelay.response.parse(await recorded.json()).transactionId).toMatch(
     /^[a-f0-9]{64}$/,
   );
-  await openSaved(page, '/mini-apps');
+  await openSaved(page, '/mini-apps#connect');
   await page.getByLabel('Choose a DAO', { exact: true }).selectOption(fixture.dao.daoId);
   await expect(page.getByRole('heading', { name: /Browser Garden · Receipt/ })).toBeVisible();
   await page.getByText('Your app recording grants', { exact: true }).click();

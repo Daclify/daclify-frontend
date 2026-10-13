@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.15.0-alpha.28 development
+
+Simplify Mini Apps to a single browse-first page. Expand connection and AI setup in place, and show publishing, reporting, app details and moderation controls only when requested. Preserve drafts and deep links, add loading/empty/retry states, and clear old origin proofs and reports when their listing changes. Keep existing permission, registration, consent and connection-binding checks.
+
 ## 0.15.0-alpha.27 development
 
 Let eligible Daclify governing-DAO executives prepare a setup and create/revoke claim links. Add a compact recipient card with explicit confirmation, new/existing account entry, immutable payment resume and locked-vault claims. Preserve invitation secrets in URL fragments and temporary tab storage while login redirects receive only an opaque checkpoint. Consume exact core20/modules28 artifacts and retain passkey shared-creation behavior.
