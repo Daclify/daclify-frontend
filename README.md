@@ -52,6 +52,15 @@ read configuration without acquiring permissions; inactive members retain their
 Treasury exit links. Network and full DAO reference are expandable below the workspace.
 See [workspace evidence](docs/evidence/2026-10-10-dao-workspace-experience.md).
 
+In Documents, Add document shows a file picker, a name defaulted from the file and
+one Add document action. If keys are locked, unlock the matching account's saved
+keys inside the dialog or choose an authorized wallet. The file remains selected
+while unlocking. Private uploads also require the original document encryption
+keys and the DAO's access grant. Upload verification finishes before the signed
+record is published. A failed approval retains the verified upload for retry;
+Resume an earlier upload restores its status after a reload. Storage recovery
+and capacity administration are in Resources.
+
 The brand opens the welcome page. Guests can explore DAOs before signing in;
 signed-in users get a shortcut to My DAO. Old root Hub bookmarks containing
 `mine`, `q`, `purpose` or `sort` redirect to `/hub` with their query and hash

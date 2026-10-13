@@ -34,7 +34,7 @@ import GoverningDocumentsPanel from './GoverningDocumentsPanel.vue';
 import { sha256Hex } from '../auth/vault';
 import { useWorkspace } from '../state/workspace';
 import { canSignMember } from '../auth/action-signer';
-import {validatePrivateHandover} from '../auth/private-handover';
+import { validatePrivateHandover } from '../auth/private-handover';
 import { planPrivateAccess, privateSuccessors } from '../auth/private-access';
 import Account from '../views/Account.vue';
 const props = defineProps<{
@@ -551,8 +551,8 @@ async function checkHandover(departing: DaoContent['members'][number]) {
   if (!(await refresh())) throw new ApiFailure('PRIVATE_HANDOVER_REQUIRED');
   if (disposed || domain !== context.value || fingerprint !== accessFingerprint.value)
     throw new Error('WALLET_CONTEXT_CHANGED');
-  if (!privatePolicy.value||!content.value)throw new ApiFailure('PRIVATE_HANDOVER_REQUIRED');
-  validatePrivateHandover(content.value,privatePolicy.value,departing.id,chosen,confirmed);
+  if (!privatePolicy.value || !content.value) throw new ApiFailure('PRIVATE_HANDOVER_REQUIRED');
+  validatePrivateHandover(content.value, privatePolicy.value, departing.id, chosen, confirmed);
 }
 async function decrypt(document: DaoContent['documents'][number]) {
   const m = props.member;
@@ -1001,21 +1001,13 @@ async function openManagedVersion(
     </div>
     <WorkspaceDialog
       v-model:open="documentPopup"
+      class="document-dialog"
       :title="documentPopupTitle"
       :busy="busy || uploadBusy"
     >
       <p v-if="documentTarget">
         New version of {{ documentTargetLabel }}. Previous versions are retained.
       </p>
-      <label for="document-format">Document format</label
-      ><select
-        id="document-format"
-        v-model="format"
-        :disabled="busy || uploadBusy || uploadPending"
-      >
-        <option value="file">File upload</option>
-        <option value="json">Small structured document (JSON)</option>
-      </select>
       <template v-if="format === 'json'"
         ><p class="field-help">
           Up to 4096 stored bytes.
@@ -1050,7 +1042,22 @@ async function openManagedVersion(
         @published="filePublished"
       />
 
-      <p v-if="!signerReady" class="notice">Choose an authorized signer before publishing.</p>
+      <details class="settings-advanced" :open="format === 'json'">
+        <summary>Other formats</summary>
+        <label for="document-format">Document format</label>
+        <select
+          id="document-format"
+          v-model="format"
+          :disabled="busy || uploadBusy || uploadPending"
+        >
+          <option value="file">File upload</option>
+          <option value="json">Small structured document (JSON)</option>
+        </select>
+      </details>
+
+      <p v-if="format === 'json' && !signerReady" class="notice">
+        Choose an authorized signer before publishing.
+      </p>
       <p v-if="error" class="alert" role="alert">{{ error }}</p>
     </WorkspaceDialog>
   </template>

@@ -19,6 +19,7 @@ import { preparePublicFile } from '../content/files';
 import { useWorkspace } from '../state/workspace';
 import { canSignMember } from '../auth/action-signer';
 import StorageUsagePanel from './StorageUsagePanel.vue';
+import ActionSigner from './ActionSigner.vue';
 
 const props = defineProps<{
   dao: DaoSummary;
@@ -34,6 +35,9 @@ const configured = ref(false);
 const localFixture = ref(false);
 const loading = ref(true);
 const busy = ref(false);
+const adding = ref(false);
+const working = computed(() => busy.value || adding.value);
+const documentName = ref('');
 const error = ref('');
 const notice = ref('');
 let disposed = false;
@@ -49,7 +53,7 @@ const upload = shallowRef<HostedUpload>();
 const receipt = ref<HostedDocument>();
 const requestId = ref('');
 const storedRequestId = ref('');
-watch(busy, (value) => emit('busy', value));
+watch(working, (value) => emit('busy', value));
 watch(
   () => !!storedRequestId.value || !!receipt.value,
   (value) => emit('pending', value),
@@ -100,11 +104,15 @@ function clearPending() {
   upload.value = undefined;
   documentId.value = '';
   file.value = undefined;
+  documentName.value = '';
   if (fileInput.value) fileInput.value.value = '';
 }
 function selectFile(event: Event) {
   const target = event.target;
-  if (target instanceof HTMLInputElement) file.value = target.files?.item(0) ?? undefined;
+  if (target instanceof HTMLInputElement) {
+    file.value = target.files?.item(0) ?? undefined;
+    documentName.value = file.value?.name ?? '';
+  }
 }
 watch(vaultUnlocked, (unlocked) => {
   if (!unlocked && privateDao.value) {
@@ -171,7 +179,7 @@ async function send() {
       const version = previous + 1;
       const metadata = FileMetadataSchema.parse({
         version: 1,
-        filename: selected.name,
+        filename: documentName.value.trim(),
         mediaType: selected.type || 'application/octet-stream',
       });
       const bytes = new Uint8Array(await selected.arrayBuffer());
@@ -307,16 +315,25 @@ async function publish() {
     if (current()) busy.value = false;
   }
 }
+async function addDocument() {
+  if (
+    working.value ||
+    !props.member?.active ||
+    !signerReady.value ||
+    (!receipt.value && privateDao.value && !vaultUnlocked.value)
+  )
+    return;
+  adding.value = true;
+  try {
+    if (!receipt.value) await send();
+    if (receipt.value && !disposed) await publish();
+  } finally {
+    adding.value = false;
+  }
+}
 </script>
 <template>
-  <section class="panel narrow">
-    <h3>{{ privateDao ? 'Upload an encrypted file' : 'Upload a file' }}</h3>
-    <StorageUsagePanel
-      v-if="configured && member?.active"
-      :dao="dao.reference"
-      :member="member"
-      :revision="`${content?.documents.length ?? 0}:${receipt?.requestId ?? ''}`"
-    />
+  <section class="document-upload">
     <p v-if="loading" role="status">Checking hosted storage…</p>
     <p v-else-if="!configured" class="notice">
       Hosted storage is not configured on this service. Small JSON documents remain available.
@@ -326,23 +343,18 @@ async function publish() {
       ><p v-if="localFixture" class="notice">
         Local storage fixture: these files have not been published to Pinata or the IPFS network.
       </p>
-      <p>
-        Upload and verify the file first, then sign its on-chain record. Stored files are limited to
-        5 MiB; encryption and encoding reduce the maximum original file size.
-      </p>
-      <p v-if="privateDao" class="field-help">
-        The filename and contents are encrypted in your browser. Document IDs, sizes, hashes and
-        timing remain public.
+      <p class="field-help">
+        {{
+          privateDao
+            ? 'The file and its name are encrypted before upload.'
+            : 'This file will be public.'
+        }}
+        Maximum stored size: 5 MiB.
       </p>
       <form
-        v-if="
-          member?.active &&
-          signerReady &&
-          (!privateDao || vaultUnlocked) &&
-          !storedRequestId &&
-          !receipt
-        "
-        @submit.prevent="send"
+        id="document-upload-form"
+        v-if="member?.active && !storedRequestId && !receipt"
+        @submit.prevent="addDocument"
       >
         <label for="document-file">Document file</label
         ><input
@@ -350,24 +362,40 @@ async function publish() {
           ref="fileInput"
           type="file"
           required
-          :disabled="busy"
+          :disabled="working"
           @change="selectFile"
-        /><button :disabled="!mayUpload || !file">
-          {{ busy ? 'Uploading…' : privateDao ? 'Encrypt and upload file' : 'Upload file' }}
-        </button>
+        />
+        <label for="document-name">Document name</label>
+        <input
+          id="document-name"
+          v-model="documentName"
+          maxlength="160"
+          required
+          :disabled="working"
+        />
       </form>
       <p v-if="!member?.active" class="field-help">
         An active DAO membership is required for a new upload.
       </p>
-      <p v-else-if="!signerReady || (privateDao && !vaultUnlocked)" class="field-help">
-        Unlock your vault before uploading or publishing.
-      </p>
-      <p v-else-if="privateDao && !currentKey" class="field-help">
+      <ActionSigner v-if="member?.active && !signerReady" :member="member" compact />
+      <template v-if="member?.active && !receipt && privateDao && !vaultUnlocked && signerReady">
+        <p class="field-help">Unlock your Daclify keys to encrypt this file.</p>
+        <ActionSigner :member="member" compact />
+      </template>
+      <p v-if="member?.active && privateDao && vaultUnlocked && !currentKey" class="field-help">
         A key grant for the current epoch is required for a new encrypted file.
       </p>
+      <button
+        v-if="member?.active && !storedRequestId && !receipt"
+        type="submit"
+        form="document-upload-form"
+        :disabled="working || !mayUpload || !file || !documentName.trim()"
+      >
+        {{ working ? 'Uploading…' : 'Add document' }}
+      </button>
       <div v-if="storedRequestId && !receipt">
         <p class="mono wrap">Pending request: {{ storedRequestId }}</p>
-        <button v-if="upload" :disabled="busy || !mayUpload" @click="send">
+        <button v-if="upload" :disabled="working || !mayUpload" @click="addDocument">
           Retry this upload
         </button>
         <p class="field-help">
@@ -401,8 +429,8 @@ async function publish() {
             <dd class="mono wrap">{{ receipt.cid }}</dd>
           </dl>
         </details>
-        <button :disabled="busy || !member?.active || !signerReady" @click="publish">
-          Sign and publish file record
+        <button :disabled="working || !member?.active || !signerReady" @click="addDocument">
+          {{ working ? 'Publishing…' : 'Add document' }}
         </button>
         <p class="field-help">
           The record is not published until its blockchain transaction succeeds. Keep the request ID
@@ -411,6 +439,13 @@ async function publish() {
         <p class="mono wrap">Request: {{ receipt.requestId }}</p>
       </div>
     </template>
+    <StorageUsagePanel
+      v-if="configured && member?.active"
+      :dao="dao.reference"
+      :member="member"
+      compact
+      :revision="`${content?.documents.length ?? 0}:${receipt?.requestId ?? ''}`"
+    />
     <p v-if="error" class="alert" role="alert">{{ error }}</p>
     <p v-if="notice" class="notice" role="status">{{ notice }}</p>
   </section>

@@ -1,22 +1,55 @@
 <script setup lang="ts">
 import { useRoute } from 'vue-router';
-import { computed, ref, watch } from 'vue';
+import { computed, ref, useId, watch } from 'vue';
 import type { GovernanceState } from '@daclify/core-protocol';
 import { executiveStatus } from '../auth/executives';
 import type { UserMembership } from '@daclify/core-protocol';
 import { encodeAction, makeInstruction } from '@daclify/core-protocol/sdk';
 import { selectedSigner, canSignMember, refreshEvmAuthorization } from '../auth/action-signer';
-import { vaultUnlocked, signInstruction, relayInstruction, relayWithVault } from '../auth/session';
+import {
+  vaultUnlocked,
+  signInstruction,
+  relayInstruction,
+  relayWithVault,
+  savedVault,
+  unlockAndLogin,
+  lockVault,
+} from '../auth/session';
 import { nativeWallet, connectNative, nativeIdentity, nativeGovernance } from '../auth/telos-zero';
 import { useWorkspace } from '../state/workspace';
 import { api, friendlyError } from '../api/client';
 import { evmWallet, connectEvm, signEvmBinding } from '../auth/telos-evm';
-const props = defineProps<{ member: UserMembership | undefined }>();
+const props = defineProps<{ member: UserMembership | undefined; compact?: boolean }>();
+const inputId = useId();
+const password = ref('');
 const state = useWorkspace(),
   busy = ref(false),
   error = ref('');
+const localKeys = computed(
+  () => !!state.account?.signingKey && savedVault()?.signingPublicKey === state.account.signingKey,
+);
 const route = useRoute();
 const ready = computed(() => canSignMember(props.member));
+async function unlock() {
+  const account = state.account;
+  if (!account || !localKeys.value || busy.value) return;
+  busy.value = true;
+  error.value = '';
+  try {
+    const opened = await unlockAndLogin(password.value, account, 'recover');
+    if (opened.id !== account.id) {
+      lockVault();
+      throw new Error('ACCOUNT_KEY_MISMATCH');
+    }
+    state.account = opened;
+    await state.refresh();
+  } catch (cause) {
+    error.value = friendlyError(cause);
+  } finally {
+    password.value = '';
+    busy.value = false;
+  }
+}
 watch(
   [() => props.member, evmWallet],
   () => {
@@ -227,9 +260,13 @@ async function revokeEthereum() {
 }
 </script>
 <template>
-  <section v-if="member" class="panel narrow" aria-label="Action signer">
-    <label for="action-signer">Authorize actions with</label>
-    <select id="action-signer" v-model="selectedSigner" :disabled="busy">
+  <section
+    v-if="member"
+    :class="compact ? 'document-signer' : 'panel narrow'"
+    aria-label="Action signer"
+  >
+    <label :for="inputId">{{ compact ? 'Approve with' : 'Authorize actions with' }}</label>
+    <select :id="inputId" v-model="selectedSigner" :disabled="busy">
       <option value="vault">Daclify keys {{ vaultUnlocked ? '(unlocked)' : '(locked)' }}</option>
       <option value="native">
         Telos Zero wallet {{ nativeWallet ? `(${nativeWallet.actor})` : '(connect wallet)' }}
@@ -239,8 +276,23 @@ async function revokeEthereum() {
         {{ evmWallet ? `(${evmWallet.address.slice(0, 10)}…)` : '(connect wallet)' }}
       </option>
     </select>
+    <form
+      v-if="compact && selectedSigner === 'vault' && !vaultUnlocked && localKeys"
+      @submit.prevent="unlock"
+    >
+      <label :for="inputId + '-password'">Vault password</label>
+      <input
+        :id="inputId + '-password'"
+        v-model="password"
+        type="password"
+        autocomplete="current-password"
+        required
+        :disabled="busy"
+      />
+      <button :disabled="busy || !password">{{ busy ? 'Unlocking…' : 'Unlock keys' }}</button>
+    </form>
     <RouterLink
-      v-if="selectedSigner === 'vault' && !vaultUnlocked"
+      v-else-if="selectedSigner === 'vault' && !vaultUnlocked"
       class="button secondary"
       :to="{ path: '/account', query: { returnTo: route.fullPath } }"
       >Unlock Daclify keys</RouterLink
@@ -283,16 +335,22 @@ async function revokeEthereum() {
           Authorize EVM wallet for this DAO
         </button></template
       >
-      <button v-else type="button" class="secondary" :disabled="busy" @click="revokeEthereum">
+      <button
+        v-else-if="!compact"
+        type="button"
+        class="secondary"
+        :disabled="busy"
+        @click="revokeEthereum"
+      >
         Remove EVM DAO authorization
       </button>
     </template>
-    <p v-if="ready" class="muted">
+    <p v-if="ready && !compact" class="muted">
       The DAO checks your membership and permissions for every action. Private documents require
       separate decryption keys.
     </p>
     <button
-      v-if="member.nativeAccount && ready"
+      v-if="!compact && member.nativeAccount && ready"
       type="button"
       class="secondary"
       :disabled="

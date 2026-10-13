@@ -58,6 +58,9 @@ function close() {
   margin: auto;
   color: var(--text-primary);
 }
+.workspace-dialog.document-dialog {
+  width: min(560px, calc(100% - 32px));
+}
 .workspace-dialog::backdrop {
   background: rgb(0 0 0 / 72%);
   backdrop-filter: blur(6px);

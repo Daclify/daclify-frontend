@@ -80,7 +80,10 @@ test('resumes a verified public upload after a lost response and a browser reloa
     mimeType: 'application/octet-stream',
     buffer: payload,
   });
-  await page.getByRole('button', { name: 'Upload file', exact: true }).click();
+  await page
+    .getByRole('dialog', { name: 'Add document', exact: true })
+    .getByRole('button', { name: 'Add document', exact: true })
+    .click();
   const documentId = HostedUploadSchema.parse((await intent).postDataJSON()).documentId;
   await expect(page.getByText('Pending request:', { exact: false })).toBeVisible();
   await expect(page.getByRole('alert')).toBeVisible();
@@ -90,23 +93,12 @@ test('resumes a verified public upload after a lost response and a browser reloa
   await page.getByText('Resume an earlier upload', { exact: true }).click();
   await page.getByRole('button', { name: 'Check upload completion' }).click();
   await expect(page.getByRole('heading', { name: 'Verified file record' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Sign and publish file record' })).toBeDisabled();
-  await page.getByRole('link', { name: 'Your account', exact: true }).click();
-  await page.getByLabel('Vault password', { exact: true }).fill(password);
-  await page.getByRole('button', { name: 'Unlock and sign in' }).click();
+  const popup = page.getByRole('dialog', { name: 'Add document', exact: true });
+  await expect(popup.getByRole('button', { name: 'Add document', exact: true })).toBeDisabled();
+  await popup.getByLabel('Vault password', { exact: true }).fill(password);
+  await popup.getByRole('button', { name: 'Unlock keys', exact: true }).click();
   await expect(page.getByText('Vault unlocked', { exact: true })).toBeVisible();
-  await expect(page).toHaveURL(/\/dao\/\d+\/documents$/);
-  await openMenu(page);
-  await page.getByRole('link', { name: 'Hub', exact: true }).click();
-  await expect(page).toHaveURL(/^http:\/\/127\.0\.0\.1:[0-9]+\/$/);
-  await page
-    .getByRole('link')
-    .filter({ has: page.getByRole('heading', { name: title, exact: true }) })
-    .click();
-  await page.getByRole('link', { name: 'Documents', exact: true }).click();
-  await page.getByText('Resume an earlier upload', { exact: true }).click();
-  await page.getByRole('button', { name: 'Check upload completion' }).click();
-  await page.getByRole('button', { name: 'Sign and publish file record' }).click();
+  await popup.getByRole('button', { name: 'Add document', exact: true }).click();
   await expect(
     page.getByRole('heading', { name: 'binary-fixture.bin · version 1', exact: true }),
   ).toBeVisible();
@@ -134,15 +126,16 @@ test('publishes only ciphertext for a private file and decrypts its original fil
   const requestEvent = page.waitForRequest(
     (request) => request.method() === 'POST' && new URL(request.url()).pathname === '/v1/uploads',
   );
-  await page.getByRole('button', { name: 'Encrypt and upload file' }).click();
+  await page
+    .getByRole('dialog', { name: 'Add document', exact: true })
+    .getByRole('button', { name: 'Add document', exact: true })
+    .click();
   const request = await requestEvent;
   const input = HostedUploadSchema.parse(JSON.parse(request.postData() ?? '{}'));
   expect(input.metadata).toBe('{}');
   const stored = Buffer.from(input.content, 'base64').toString('utf8');
   expect(stored).not.toContain(filename);
   expect(stored).not.toContain(payload.toString());
-  await expect(page.getByRole('heading', { name: 'Verified file record' })).toBeVisible();
-  await page.getByRole('button', { name: 'Sign and publish file record' }).click();
   await expect(
     page.getByRole('heading', {
       name: `Private document #${input.documentId} · version 1`,
@@ -180,16 +173,15 @@ test('shows one shared storage object for two published document references', as
       mimeType: 'application/octet-stream',
       buffer: payload,
     });
-    await page.getByRole('button', { name: 'Upload file', exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'Verified file record' })).toBeVisible();
-    await page.getByRole('button', { name: 'Sign and publish file record' }).click();
+    await page
+      .getByRole('dialog', { name: 'Add document', exact: true })
+      .getByRole('button', { name: 'Add document', exact: true })
+      .click();
     await expect(
       page.getByRole('heading', { name: 'repeated.bin · version 1', exact: true }),
     ).toHaveCount(index + 1);
   }
   await page.getByRole('button', { name: 'Add document', exact: true }).click();
-  await page.getByRole('button', { name: 'Refresh storage usage' }).click();
-  await expect(page.getByText('1 unique files · 2 references.', { exact: false })).toBeVisible();
   await expect(page.getByText(`${payload.length} bytes used of`, { exact: false })).toBeVisible();
   await page.getByRole('link', { name: 'Manage resources →', exact: true }).click();
   await expect(
@@ -283,6 +275,8 @@ test('recovers bounded hosted references, displays uncertain files and distingui
   page,
 }) => {
   await createWorkspace(page);
+  await page.getByRole('button', { name: 'Add document', exact: true }).click();
+  await page.getByRole('link', { name: 'Manage resources →', exact: true }).click();
   const panel = page
     .locator('aside')
     .filter({ has: page.getByRole('heading', { name: 'Hosted storage', exact: true }) });

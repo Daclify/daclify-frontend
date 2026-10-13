@@ -9,6 +9,7 @@ const props = defineProps<{
   member: UserMembership;
   revision: string;
   headingLevel?: 2;
+  compact?: boolean;
 }>();
 const workspace = useWorkspace();
 const usage = ref<z.infer<typeof ApiRoutes.storageUsage.response>>();
@@ -88,8 +89,15 @@ onBeforeUnmount(() => {
 });
 </script>
 <template>
-  <aside class="notice" aria-labelledby="hosted-storage-heading">
-    <component :is="props.headingLevel === 2 ? 'h2' : 'h4'" id="hosted-storage-heading"
+  <aside
+    :class="compact ? 'field-help' : 'notice'"
+    :aria-labelledby="compact ? undefined : 'hosted-storage-heading'"
+    :aria-label="compact ? 'Storage usage' : undefined"
+  >
+    <component
+      v-if="!compact"
+      :is="props.headingLevel === 2 ? 'h2' : 'h4'"
+      id="hosted-storage-heading"
       >Hosted storage</component
     >
     <p v-if="loading" role="status">Reading storage usage…</p>
@@ -98,27 +106,27 @@ onBeforeUnmount(() => {
       <p>
         {{ megabytes(usage.totalBytes) }} used of {{ megabytes(usage.capacityBytes) }} capacity.
       </p>
-      <p class="field-help">
+      <p v-if="!compact" class="field-help">
         {{ megabytes(usage.verifiedBytes) }} verified; {{ megabytes(usage.reservedBytes) }} held for
         unfinished uploads. {{ usage.objects }} unique files · {{ usage.references }} references. A
         repeated CID counts once per DAO.
       </p>
-      <p class="field-help">
+      <p v-if="!compact" class="field-help">
         Encrypted bytes, previous versions and archives share this allowance. 1 MB = 1,000,000
         bytes. Administrators manage approved storage capacity in Resources.
       </p>
-      <p v-if="usage.cleanup === 'disabled'" class="field-help">
+      <p v-if="!compact && usage.cleanup === 'disabled'" class="field-help">
         Automatic deletion is disabled on this operator.
       </p>
-      <p v-else class="field-help">
+      <p v-else-if="!compact" class="field-help">
         The operator enabled guarded hosting cleanup after the original unpaid term and 30-day grace
         period. Keep whole files within funded capacity or export them before the deadline.
       </p>
     </template>
-    <button type="button" class="secondary" :disabled="loading" @click="refresh">
+    <button v-if="!compact" type="button" class="secondary" :disabled="loading" @click="refresh">
       Refresh storage usage
     </button>
-    <details v-if="member.active && member.admin">
+    <details v-if="!compact && member.active && member.admin">
       <summary>Recover hosted records after database loss</summary>
       <p class="field-help">
         Verify surviving on-chain references against this operator's provider inventory. This
@@ -159,7 +167,7 @@ onBeforeUnmount(() => {
       </template>
       <RouterLink to="/docs/recovery">Recovery responsibilities ↗</RouterLink>
     </details>
-    <RouterLink to="/docs/documents">Storage documentation ↗</RouterLink>
+    <RouterLink v-if="!compact" to="/docs/documents">Storage documentation ↗</RouterLink>
     <RouterLink :to="{ path: '/resources', query: { dao: JSON.stringify(props.dao) } }"
       >Manage resources →</RouterLink
     >

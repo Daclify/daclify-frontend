@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.15.0-alpha.28 development
+
+Keep the file picker and editable document name visible when signing keys are locked. Offer matching-account key unlock and existing wallet approval inside Add document. One Add document action verifies the upload and publishes its record; interrupted approval reuses the verified upload. Show compact storage usage in the dialog and retain recovery and administration in Resources. Preserve private encryption and existing signer permissions.
+
 ## 0.15.0-alpha.27 development
 
 Let eligible Daclify governing-DAO executives prepare a setup and create/revoke claim links. Add a compact recipient card with explicit confirmation, new/existing account entry, immutable payment resume and locked-vault claims. Preserve invitation secrets in URL fragments and temporary tab storage while login redirects receive only an opaque checkpoint. Consume exact core20/modules28 artifacts and retain passkey shared-creation behavior.

@@ -9,6 +9,7 @@ import {
   PeopleRoutes,
   RecoveryKitSchema,
   TreasurySchema,
+  HostedIntentSchema,
 } from '@daclify/core-protocol';
 import {
   encodeAction,
@@ -140,6 +141,156 @@ async function authenticate(
   return vault;
 }
 
+async function documentStorage(page: Page, state: Awaited<ReturnType<typeof fixture>>) {
+  await page.route('**' + ApiRoutes.storage.path, (route) =>
+    route.fulfill({
+      json: ApiRoutes.storage.response.parse({
+        provider: 'local-fixture',
+        configured: true,
+        uploadLimit: 5242880,
+      }),
+    }),
+  );
+  await page.route('**' + ApiRoutes.storageUsage.path.replace(':id', state.dao.daoId), (route) =>
+    route.fulfill({
+      json: ApiRoutes.storageUsage.response.parse({
+        dao: state.dao,
+        capacityBytes: '100000000',
+        verifiedBytes: '0',
+        reservedBytes: '0',
+        totalBytes: '0',
+        objects: 0,
+        references: 0,
+        cleanup: 'disabled',
+      }),
+    }),
+  );
+}
+
+async function jsonDocument(page: Page) {
+  const formats = page.getByText('Other formats', { exact: true });
+  if (!(await formats.evaluate((node) => node.parentElement?.hasAttribute('open'))))
+    await formats.click();
+  await page.getByLabel('Document format', { exact: true }).selectOption('json');
+}
+
+test('document upload stays usable while keys are locked and offers approval in the dialog', async ({
+  page,
+}) => {
+  const state = await fixture(page);
+  await documentStorage(page, state);
+  await authenticate(page, state, 'Documents');
+  await page.getByRole('button', { name: 'Lock keys', exact: true }).click();
+  await page.getByRole('button', { name: 'Add document', exact: true }).click();
+  const popup = page.getByRole('dialog', { name: 'Add document', exact: true });
+  await expect(popup.getByLabel('Document file', { exact: true })).toBeVisible();
+  await popup.getByLabel('Document file', { exact: true }).setInputFiles({
+    name: 'Community rules.pdf',
+    mimeType: 'application/pdf',
+    buffer: Buffer.from('document fixture'),
+  });
+  await expect(popup.getByLabel('Document name', { exact: true })).toHaveValue(
+    'Community rules.pdf',
+  );
+  await expect(
+    popup.getByText('Recover hosted records after database loss', { exact: true }),
+  ).toHaveCount(0);
+  await expect(popup.getByRole('button', { name: 'Add document', exact: true })).toBeDisabled();
+  await popup.screenshot({ path: `.artifacts/document-dialog-${test.info().project.name}.png` });
+  await popup
+    .getByLabel('Vault password', { exact: true })
+    .fill('disposable workspace design fixture');
+  await popup.getByRole('button', { name: 'Unlock keys', exact: true }).click();
+  await expect(popup.getByRole('button', { name: 'Add document', exact: true })).toBeEnabled();
+  await expect(popup.getByLabel('Document name', { exact: true })).toHaveValue(
+    'Community rules.pdf',
+  );
+  await accessible(page);
+});
+
+test('one document approval publishes the chosen file and a failed signature retries without reuploading', async ({
+  page,
+}) => {
+  const state = await fixture(page);
+  await documentStorage(page, state);
+  let uploads = 0,
+    publications = 0;
+  await page.route('**' + ApiRoutes.upload.path, (route) => {
+    const input = ApiRoutes.upload.input.parse(route.request().postDataJSON());
+    uploads++;
+    expect(JSON.parse(input.metadata).filename).toBe('Community charter.pdf');
+    return route.fulfill({
+      json: ApiRoutes.upload.response.parse({
+        ...HostedIntentSchema.strip().parse(input),
+        cid: 'bafkreiaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      }),
+    });
+  });
+  const vault = await authenticate(page, state, 'Documents');
+  await page.route('**' + ApiRoutes.relay.path, (route) => {
+    const input = ApiRoutes.relay.input.parse(route.request().postDataJSON());
+    expect(input.request.action).toBe('putdoc');
+    expect(
+      Signature.from(input.sig).verifyDigest(
+        instructionDigest(input.request),
+        PublicKey.from(vault.signingPublicKey),
+      ),
+    ).toBe(true);
+    const decoded = z.record(z.string(), z.unknown()).parse(
+      Serializer.objectify(
+        Serializer.decode({
+          abi: ABI.from(runtimeAbi),
+          type: 'putdoc',
+          data: input.request.data,
+        }),
+      ),
+    );
+    for (const key of ['dao_id', 'member_id', 'document_id', 'key_epoch'])
+      if (typeof decoded[key] === 'number') decoded[key] = String(decoded[key]);
+    const args = RuntimeActionSchemas.putdoc.parse(decoded);
+    if (++publications === 1)
+      return route.fulfill({
+        status: 503,
+        json: { code: 'SERVICE_UNAVAILABLE', message: 'Synthetic unavailable service' },
+      });
+    state.content.documents.push({
+      id: '50',
+      document_id: args.document_id,
+      version: args.version,
+      author: '1',
+      cid: args.cid,
+      metadata: args.metadata,
+      commitment: args.commitment,
+      bytes: args.bytes,
+      envelope_version: args.envelope_version,
+      key_epoch: args.key_epoch,
+    });
+    return route.fulfill({
+      json: ApiRoutes.relay.response.parse({ transactionId: 'ab'.repeat(32) }),
+    });
+  });
+  await page.getByRole('button', { name: 'Add document', exact: true }).click();
+  const popup = page.getByRole('dialog', { name: 'Add document', exact: true });
+  await popup.getByLabel('Document file', { exact: true }).setInputFiles({
+    name: 'source.pdf',
+    mimeType: 'application/pdf',
+    buffer: Buffer.from('document fixture'),
+  });
+  await popup.getByLabel('Document name', { exact: true }).fill('Community charter.pdf');
+  await popup.getByRole('button', { name: 'Add document', exact: true }).click();
+  await expect.poll(() => publications).toBe(1);
+  await expect(popup.getByRole('alert')).toBeVisible();
+  expect(uploads).toBe(1);
+  expect(publications).toBe(1);
+  await popup.getByRole('button', { name: 'Add document', exact: true }).click();
+  await expect(popup).not.toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Community charter.pdf · version 1', exact: true }),
+  ).toBeVisible();
+  expect(uploads).toBe(1);
+  expect(publications).toBe(2);
+});
+
 test('signed JSON retries keep one document identity and prevent editing or closing during publication', async ({
   page,
 }) => {
@@ -184,7 +335,7 @@ test('signed JSON retries keep one document identity and prevent editing or clos
   });
   await page.getByRole('button', { name: 'Add document', exact: true }).click();
   const popup = page.getByRole('dialog', { name: 'Add document', exact: true });
-  await popup.getByLabel('Document format', { exact: true }).selectOption('json');
+  await jsonDocument(page);
   await popup.getByLabel('JSON content', { exact: true }).fill('{"title":"Stable signed draft"}');
   await popup.getByRole('button', { name: 'Publish JSON', exact: true }).click();
   await expect(popup.getByRole('alert')).toBeVisible();
@@ -303,7 +454,7 @@ test('Documents uses titles and stable drafts instead of asking for document IDs
   await expect(popup).toBeVisible();
   await expect(popup.getByLabel('Document ID', { exact: true })).toHaveCount(0);
   await expect(popup.getByLabel('File document ID', { exact: true })).toHaveCount(0);
-  await page.getByLabel('Document format', { exact: true }).selectOption('json');
+  await jsonDocument(page);
   await popup.getByLabel('JSON content', { exact: true }).fill('{"title":"A saved draft"}');
   await accessible(page);
   await popup.getByRole('button', { name: 'Cancel', exact: true }).click();
@@ -341,7 +492,7 @@ test('keeps a new document draft separate from a draft revision of an existing d
   await page.goto('/dao/1/documents');
   await page.getByRole('button', { name: 'Add document', exact: true }).click();
   let popup = page.getByRole('dialog');
-  await popup.getByLabel('Document format', { exact: true }).selectOption('json');
+  await jsonDocument(page);
   await popup.getByLabel('JSON content', { exact: true }).fill('{"title":"New draft"}');
   await popup.getByRole('button', { name: 'Cancel', exact: true }).click();
   const document = page
