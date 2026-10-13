@@ -4,6 +4,7 @@ import { useRouter, useRoute } from 'vue-router';
 import { ArrowRight } from '@lucide/vue';
 import {
   DaoPresets,
+  DaoClaimSetupSchema,
   DeploymentOptions,
   DaoSetupSchema,
   FoundingAgentSchema,
@@ -16,6 +17,7 @@ import {
 import { useWorkspace } from '../state/workspace';
 import { api, friendlyError } from '../api/client';
 import Account from './Account.vue';
+import DaoClaimIssuer from '../components/DaoClaimIssuer.vue';
 import VotingDurationInput from '../components/VotingDurationInput.vue';
 import PercentageInput from '../components/PercentageInput.vue';
 import { readableDuration, percentageText } from '../content/governance-inputs';
@@ -55,6 +57,27 @@ function acceptOrder(result: CreationOrderView) {
   )
     throw new Error('DAO_REFERENCE');
   order.value = result;
+}
+const canIssueClaim = ref(false),
+  claimEligibilityError = ref('');
+async function loadClaimEligibility() {
+  const accountId = state.account?.id,
+    chainId = state.network?.chainId,
+    runtime = state.network?.runtime;
+  canIssueClaim.value = false;
+  claimEligibilityError.value = '';
+  if (!accountId || !state.network?.capabilities.includes('dao-claim-links')) return;
+  try {
+    const result = await api.daoClaimEligibility();
+    if (
+      accountId === state.account?.id &&
+      chainId === state.network?.chainId &&
+      runtime === state.network?.runtime
+    )
+      canIssueClaim.value = result.eligible;
+  } catch (cause) {
+    if (accountId === state.account?.id) claimEligibilityError.value = friendlyError(cause);
+  }
 }
 const title = ref('');
 const description = ref('');
@@ -103,6 +126,21 @@ const resolved = computed(() => {
   } catch {
     return null;
   }
+});
+const claimRequest = computed(() => {
+  if (!state.network || !resolved.value || deployment.value !== 'shared') return null;
+  const result = DaoClaimSetupSchema.safeParse({
+    metadata: { schemaVersion: 1, title: title.value, description: description.value },
+    privacy: privacy.value,
+    token: {
+      chainId: state.network.chainId,
+      contract: token.value,
+      symbol: symbol.value,
+      precision: precision.value,
+    },
+    setup: resolved.value,
+  });
+  return result.success ? result.data : null;
 });
 const foundingAgent = computed(() => {
   try {
@@ -290,7 +328,14 @@ function newOrder() {
   void router.replace('/create');
 }
 watch(
-  () => JSON.stringify([state.account?.id, state.network?.chainId, state.network?.runtime]),
+  () =>
+    JSON.stringify([
+      state.account?.id,
+      state.account?.signingKey,
+      state.network?.chainId,
+      state.network?.runtime,
+      state.network?.capabilities,
+    ]),
   () => {
     orderSequence++;
     busy.value = false;
@@ -300,6 +345,7 @@ watch(
     previousOrders.value = [];
     quotedInput.value = undefined;
     void loadPlatform();
+    void loadClaimEligibility();
     if (state.account && state.network && orderId.value) void checkOrder();
   },
   { flush: 'sync', immediate: true },
@@ -378,7 +424,10 @@ onBeforeUnmount(() => {
       >Set up account</RouterLink
     >
   </div>
-  <section v-else-if="state.account.signingKey === null" class="full-access-setup">
+  <section
+    v-else-if="state.account.signingKey === null && !canIssueClaim"
+    class="full-access-setup"
+  >
     <h2>Enable full access</h2>
     <p>
       Open your Daclify account on this device to create a DAO. Your paired sign-ins and one
@@ -423,6 +472,10 @@ onBeforeUnmount(() => {
         </dd>
         <dt>Guardian</dt>
         <dd>{{ order.setup.setup.governance.guardian || 'None' }}</dd></template
+      >
+      <template v-if="order.founderExecutive !== undefined"
+        ><dt>Founding roles</dt>
+        <dd>Sole initial member, administrator and executive</dd></template
       >
       <dt>Founding participant</dt>
       <dd class="mono wrap">{{ order.creator.signingKey }} · {{ order.creator.custody }}</dd>
@@ -733,10 +786,25 @@ onBeforeUnmount(() => {
           Check governance limits and required founding agent public keys.
         </p>
         <span v-if="!available" class="muted">{{ availabilityReason }}</span
-        ><button :disabled="busy || !available || !ready || deployment !== 'shared'">
+        ><button
+          :disabled="
+            busy ||
+            !available ||
+            !ready ||
+            deployment !== 'shared' ||
+            state.account.signingKey === null
+          "
+        >
           {{ busy ? 'Preparing order…' : 'Review free DAO setup' }}
         </button>
       </div>
+      <DaoClaimIssuer v-if="canIssueClaim" :request="claimRequest" />
+      <p v-if="claimEligibilityError" role="status">
+        Invitation eligibility could not be checked: {{ claimEligibilityError }}
+        <button type="button" class="secondary" @click="loadClaimEligibility">
+          Retry invitation eligibility
+        </button>
+      </p>
     </form>
     <aside class="panel create-summary" aria-label="Your DAO setup">
       <p class="eyebrow">YOUR DAO SETUP</p>

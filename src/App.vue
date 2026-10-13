@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, ref } from 'vue';
+import { onMounted, onBeforeUnmount, ref, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
   Activity,
@@ -20,12 +20,14 @@ import { useWorkspace } from './state/workspace';
 import { lockVault, vaultUnlocked } from './auth/session';
 import {
   chooseNetwork,
+  resolveApiUrl,
   selectedNetwork,
   currentOperator,
   closeOperator,
   type DeployedNetwork,
   deploymentNetwork,
 } from './api/networks';
+import { accountEntryDestination } from './auth/dao-claim-entry';
 import HelpWindow from './components/HelpWindow.vue';
 const helpOpen = ref(false),
   helpStarted = ref(false);
@@ -50,6 +52,13 @@ const removeRouteError = router.onError((_error, to) => {
 });
 const removeRouteSuccess = router.afterEach((_to, _from, failure) => {
   if (!failure) routeError.value = '';
+});
+const accountReturn = computed(() => {
+  try {
+    return accountEntryDestination(route.fullPath, sessionStorage, resolveApiUrl('/'));
+  } catch {
+    return route.path === '/claim-dao' ? '/claim-dao' : route.fullPath;
+  }
 });
 onBeforeUnmount(() => {
   removeRouteError();
@@ -267,7 +276,7 @@ onMounted(() => {
             class="account-link"
             :to="{
               path: state.account ? '/users/me' : '/account',
-              query: route.path === '/account' ? {} : { returnTo: route.fullPath },
+              query: route.path === '/account' ? {} : { returnTo: accountReturn },
             }"
             >{{ state.account ? 'Your account' : 'Sign in' }}</RouterLink
           >

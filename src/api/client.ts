@@ -57,6 +57,7 @@ import {
   type UserMembership,
   SessionSchema,
   AccountControlPaths,
+  PairedApprovalPaths,
   ProfileContextSchema,
   profileCipherDomain,
   type ProfileContext,
@@ -164,7 +165,7 @@ async function request<T>(
   const csrf = sessionStorage.getItem(csrfKey) ?? '';
   const encoded = input === undefined ? undefined : JSON.stringify(input);
   const controlHeaders: Record<string, string> = {};
-  if (pairedSignInApproval && path !== ApiRoutes.mcpOAuthApprove.path)
+  if (pairedSignInApproval && !PairedApprovalPaths.some((allowed) => allowed === path))
     throw new ApiFailure('ACCOUNT_CONTROL_REQUIRED');
   if (encoded !== undefined && AccountControlPaths.some((route) => route === path)) {
     if (!accountControlSigner && !pairedSignInApproval)
@@ -180,7 +181,7 @@ async function request<T>(
     checkNetwork();
     controlHeaders['x-account-intent-id'] = challenge.id;
     let proof: AccountControlProof;
-    if (pairedSignInApproval && path === ApiRoutes.mcpOAuthApprove.path)
+    if (pairedSignInApproval && PairedApprovalPaths.some((allowed) => allowed === path))
       proof = { kind: 'sign-in' };
     else {
       if (!accountControlSigner) throw new ApiFailure('ACCOUNT_CONTROL_REQUIRED');
@@ -275,6 +276,40 @@ export function verifiedModuleRelease(state: ModuleState): ModuleState {
   };
 }
 export const api = {
+  daoClaimEligibility: () =>
+    request(ApiRoutes.daoClaimEligibility.path, ApiRoutes.daoClaimEligibility.response),
+  daoClaimList: () => request(ApiRoutes.daoClaimList.path, ApiRoutes.daoClaimList.response),
+  daoClaimSignInApproval: () =>
+    request(ApiRoutes.daoClaimSignInApproval.path, ApiRoutes.daoClaimSignInApproval.response),
+  daoClaimIssue: (input: z.infer<typeof ApiRoutes.daoClaimIssue.input>, paired = false) =>
+    request(
+      ApiRoutes.daoClaimIssue.path,
+      ApiRoutes.daoClaimIssue.response,
+      ApiRoutes.daoClaimIssue.input.parse(input),
+      15000,
+      paired,
+    ),
+  daoClaimRevoke: (id: string, paired = false) =>
+    request(
+      ApiRoutes.daoClaimRevoke.path,
+      ApiRoutes.daoClaimRevoke.response,
+      ApiRoutes.daoClaimRevoke.input.parse({ id }),
+      15000,
+      paired,
+    ),
+  daoClaimPreview: (token: string) =>
+    request(
+      ApiRoutes.daoClaimPreview.path,
+      ApiRoutes.daoClaimPreview.response,
+      ApiRoutes.daoClaimPreview.input.parse({ token }),
+    ),
+  daoClaimConfirm: (input: z.infer<typeof ApiRoutes.daoClaimConfirm.input>) =>
+    request(
+      ApiRoutes.daoClaimConfirm.path,
+      ApiRoutes.daoClaimConfirm.response,
+      ApiRoutes.daoClaimConfirm.input.parse(input),
+      60000,
+    ),
   clearGoverningDocuments: (input: z.infer<typeof ModuleApiRoutes.clearDocuments.input>) =>
     request(
       ModuleApiRoutes.clearDocuments.path,
@@ -1641,6 +1676,8 @@ export function friendlyError(error: unknown): string {
       AUTH_REQUIRED: 'Sign in to continue.',
       ACCOUNT_CONTROL_REQUIRED:
         'Prove control with your Daclify keys or an authorized linked wallet before changing sign-in methods.',
+      DAO_CLAIM_ENTRY_EXPIRED:
+        'The temporary invitation return has expired. Open the original claim link again.',
       MCP_SIGN_IN_REQUIRED:
         'Sign in again with a method paired to this account, then approve the connection.',
       MCP_REVIEWER_REQUIRED:

@@ -15,6 +15,7 @@ const guideGroups = [
       'account-exit',
       'deployments',
       'dao-presets',
+      'dao-claim-links',
       'docs-assistant',
     ],
   },

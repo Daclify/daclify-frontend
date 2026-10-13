@@ -40,6 +40,7 @@ const router = createRouter({
     { path: '/mcp/consent', component: () => import('./views/McpConsent.vue') },
     { path: '/daclify', component: () => import('./views/PlatformEntry.vue') },
     { path: '/status', component: () => import('./views/Status.vue') },
+    { path: '/claim-dao', component: () => import('./views/ClaimDao.vue') },
     { path: '/create', component: () => import('./views/CreateDao.vue') },
     { path: '/pricing', component: () => import('./views/Pricing.vue') },
     { path: '/hosting', component: () => import('./views/Hosting.vue') },
