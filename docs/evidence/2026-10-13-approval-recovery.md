@@ -23,8 +23,10 @@ Final checks passed:
 
 The browser fixtures use disposable encrypted kits, genuine K1 consent verification, synthetic HTTP responses and mocked external wallets/Google SDK. They do not prove physical-wallet or live Google qualification.
 
-Existing account-entry checks exposed initial dialog focus and duplicate password selectors. The final form uses dialog autofocus and the existing signed-out recovery title; wallet-recovery tests scope their input to the active dialog. An early unconstrained unit run hit host watcher exhaustion and was stopped; subsequent checks use polling and four workers.
+Existing account-entry checks exposed initial dialog focus and duplicate password selectors. The final form uses dialog autofocus and the existing signed-out recovery title; wallet-recovery tests scope their input to the active dialog. An early invocation incorrectly forwarded the worker limit to npm, exhausted host watchers and was stopped. The final run used polling and four Vitest workers.
 
 ## Delivery
 
-Publish the clean, pinned frontend candidate to testnet after verification. Preserve the previous entry and hashed assets for rollback; no API restart, native upgrade or production deployment is required. The private execution packet is `/data/daclify-runtime/approval-unlock-20261013`.
+Frontend code `f6dcf4f20f4732321bdfdb092ae7f157ba8c7ffb` was committed and pushed to dev. A clean detached checkout passed `npm ci` and its testnet-mode build. Candidate and actual hosted startup/network/page checks passed 8/8 each, on desktop and mobile, including a saved production preference and reload. The hosted HTML matched the checked candidate's SHA-256 `975da066dd24a868e3355973f1c3a832eb080691ae002da80e69e6583dfc08ae`.
+
+Published at 2026-10-13 23:08:30 UTC to https://testnet.app.daclify.com. The previous entry and hashed assets are retained for rollback. No API restart, native upgrade or production deployment occurred. The private execution packet is `/data/daclify-runtime/approval-unlock-20261013`.
