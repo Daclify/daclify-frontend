@@ -8,9 +8,201 @@ import {
   RecoveryKitSchema,
   DaoRefSchema,
   ApiRoutes,
+  daoPaymentKey,
   McpLocalConfigurationSchema,
 } from '@daclify/core-protocol';
 import { createVault, unlockVault } from '../../src/auth/vault';
+for (const reauthenticate of [false, true]) {
+  test(
+    (reauthenticate ? 'renews' : 'approves') +
+      ' a hosted connection with a paired email login while the vault stays locked',
+    async ({ page }) => {
+      const api = 'http://127.0.0.1:' + (process.env.DACLIFY_TEST_API_PORT ?? '3008'),
+        origin = 'http://127.0.0.1:' + (process.env.DACLIFY_TEST_UI_PORT ?? '5178'),
+        password = 'owned paired email MCP password',
+        vault = await createVault(password),
+        root = PrivateKey.from((await unlockVault(vault.localEnvelope, password)).signingKey),
+        email = 'mcp-' + randomBytes(12).toString('hex') + '@example.com';
+      const owner = z
+        .object({ token: z.string() })
+        .parse(
+          JSON.parse(
+            await readFile('../daclify-backend-core/.artifacts/native/browser-owner.json', 'utf8'),
+          ),
+        );
+      const created = await page.request.post(api + '/fixture/dao', {
+        headers: { 'x-fixture-token': owner.token, origin },
+        data: { signingKey: vault.signingPublicKey, encryptionKey: vault.encryptionPublicKey },
+      });
+      expect(created.status(), await created.text()).toBe(200);
+      const context = z
+        .object({ dao: DaoRefSchema, memberId: z.string() })
+        .parse(await created.json());
+      const challengeResponse = await page.request.post(api + ApiRoutes.challenge.path, {
+        headers: { origin },
+        data: { signingKey: vault.signingPublicKey, encryptionKey: vault.encryptionPublicKey },
+      });
+      const challenge = ApiRoutes.challenge.response.parse(await challengeResponse.json());
+      const login = await page.request.post(api + ApiRoutes.login.path, {
+        headers: { origin },
+        data: {
+          challengeId: challenge.id,
+          signature: root.signMessage(new TextEncoder().encode(challenge.message)).toString(),
+          encryptionKey: vault.encryptionPublicKey,
+        },
+      });
+      expect(login.status(), await login.text()).toBe(200);
+      const session = ApiRoutes.login.response.parse(await login.json()),
+        headers = { origin, 'x-csrf-token': session.csrfToken };
+      const started = await page.request.post(api + '/v1/sign-in/email/start', {
+        headers,
+        data: { email },
+      });
+      expect(started.status(), await started.text()).toBe(200);
+      const delivered = await page.request.post(api + '/fixture/email-code', {
+        headers: { 'x-fixture-token': owner.token, origin },
+        data: { email },
+      });
+      const confirmation = {
+          email,
+          code: z.object({ code: z.string() }).parse(await delivered.json()).code,
+        },
+        body = JSON.stringify(confirmation);
+      const controlResponse = await page.request.post(api + '/v1/account/control', {
+        headers,
+        data: {
+          path: '/v1/sign-in/email/confirm',
+          bodyHash: createHash('sha256').update(body).digest('hex'),
+        },
+      });
+      const control = z
+        .object({ id: z.string(), message: z.string() })
+        .parse(await controlResponse.json());
+      const paired = await page.request.post(api + '/v1/sign-in/email/confirm', {
+        headers: {
+          ...headers,
+          'content-type': 'application/json',
+          'x-account-intent-id': control.id,
+          'x-account-signature': root
+            .signMessage(new TextEncoder().encode(control.message))
+            .toString(),
+        },
+        data: body,
+      });
+      expect(paired.status(), await paired.text()).toBe(200);
+      expect(
+        (await page.request.post(api + '/v1/auth/logout', { headers, data: {} })).status(),
+      ).toBe(204);
+      const verifier = randomBytes(32).toString('base64url'),
+        parameters = new URLSearchParams({
+          response_type: 'code',
+          client_id: 'browser-fixture',
+          redirect_uri: 'https://client.example/callback',
+          resource: api + '/mcp',
+          scope: 'daclify:read daclify:prepare daclify:submit',
+          state: 'owned-email-preview',
+          code_challenge: createHash('sha256').update(verifier).digest('base64url'),
+          code_challenge_method: 'S256',
+        });
+      const authorization = await page.request.get(api + '/mcp/oauth/authorize?' + parameters, {
+        maxRedirects: 0,
+      });
+      expect(authorization.status()).toBe(302);
+      const destination = new URL(z.url().parse(authorization.headers()['location']));
+      await page.goto(
+        '/account?returnTo=' + encodeURIComponent(destination.pathname + destination.search),
+      );
+      const main = page.getByRole('main');
+      await main.getByRole('button', { name: 'Login', exact: true }).click();
+      await main.getByRole('button', { name: 'E-Mail', exact: true }).click();
+      await main.getByLabel('Sign-in email', { exact: true }).fill(email);
+      await main.getByRole('button', { name: 'Send code', exact: true }).click();
+      await expect(main.getByLabel('Email code', { exact: true })).toBeVisible();
+      const mailed = await page.request.post(api + '/fixture/email-code', {
+        headers: { 'x-fixture-token': owner.token, origin },
+        data: { email },
+      });
+      await main
+        .getByLabel('Email code', { exact: true })
+        .fill(z.object({ code: z.string() }).parse(await mailed.json()).code);
+      await main.getByRole('button', { name: 'Sign in with email', exact: true }).click();
+      await expect(
+        page.getByRole('heading', { name: 'Connect a hosted AI harness' }),
+      ).toBeVisible();
+      await page
+        .getByRole('combobox', { name: 'Community membership', exact: true })
+        .selectOption({ label: 'DAO ' + context.dao.daoId + ', member ' + context.memberId });
+      await page.getByLabel('vote', { exact: true }).check();
+      const approve = page.getByRole('button', { name: 'Approve hosted connection', exact: true });
+      await expect(approve).toBeEnabled();
+      if (reauthenticate) {
+        const expired = await page.request.post(api + '/fixture/expire-mcp-sign-in', {
+          headers: { 'x-fixture-token': owner.token, origin },
+          data: {},
+        });
+        expect(expired.status(), await expired.text()).toBe(200);
+        await page.reload();
+        await page
+          .getByRole('combobox', { name: 'Community membership', exact: true })
+          .selectOption({ label: 'DAO ' + context.dao.daoId + ', member ' + context.memberId });
+        await page.getByLabel('vote', { exact: true }).check();
+        await expect(approve).toBeDisabled();
+        await page.getByRole('button', { name: 'Sign in again', exact: true }).click();
+        await main.getByRole('button', { name: 'E-Mail', exact: true }).click();
+        await main.getByLabel('Sign-in email', { exact: true }).fill(email);
+        await main.getByRole('button', { name: 'Send code', exact: true }).click();
+        await expect(main.getByLabel('Email code', { exact: true })).toBeVisible();
+        const freshCode = await page.request.post(api + '/fixture/email-code', {
+          headers: { 'x-fixture-token': owner.token, origin },
+          data: { email },
+        });
+        await main
+          .getByLabel('Email code', { exact: true })
+          .fill(z.object({ code: z.string() }).parse(await freshCode.json()).code);
+        await main.getByRole('button', { name: 'Sign in with email', exact: true }).click();
+        await expect(approve).toBeEnabled();
+        await expect(
+          page.getByRole('combobox', { name: 'Community membership', exact: true }),
+        ).toHaveValue(daoPaymentKey(context.dao) + ':' + context.memberId);
+      }
+      expect(await page.evaluate(() => localStorage.getItem('daclify.vault.v1'))).toBeNull();
+      expect((await new AxeBuilder({ page }).include('main').analyze()).violations).toEqual([]);
+      await page.route('https://client.example/callback*', (route) =>
+        route.fulfill({ body: 'Owned callback captured' }),
+      );
+      const approved = page.waitForRequest(
+          (request) =>
+            request.url().endsWith('/v1/mcp/oauth/approve') && request.method() === 'POST',
+        ),
+        callback = page.waitForRequest((request) =>
+          request.url().startsWith('https://client.example/callback?'),
+        );
+      await approve.click();
+      const request = await approved;
+      expect(request.headers()['x-account-signature']).toBeUndefined();
+      expect(JSON.parse(z.string().parse(request.headers()['x-account-proof']))).toEqual({
+        kind: 'sign-in',
+      });
+      const redirected = new URL((await callback).url());
+      const exchange = {
+        grant_type: 'authorization_code',
+        client_id: 'browser-fixture',
+        redirect_uri: 'https://client.example/callback',
+        resource: api + '/mcp',
+        code: z.string().parse(redirected.searchParams.get('code')),
+        code_verifier: verifier,
+      };
+      const exchanged = await page.request.post(api + '/mcp/oauth/token', { form: exchange });
+      expect(exchanged.status(), await exchanged.text()).toBe(200);
+      expect(z.object({ scope: z.string() }).parse(await exchanged.json()).scope).toBe(
+        'daclify:read daclify:prepare',
+      );
+      expect((await page.request.post(api + '/mcp/oauth/token', { form: exchange })).status()).toBe(
+        400,
+      );
+    },
+  );
+}
 test('downloads public setup and retires a real native connection', async ({ page }) => {
   test.setTimeout(120000);
   const api = 'http://127.0.0.1:' + (process.env.DACLIFY_TEST_API_PORT ?? '3008'),

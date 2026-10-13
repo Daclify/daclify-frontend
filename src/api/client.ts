@@ -25,6 +25,7 @@ import {
   ServiceReceiptsSchema,
   MemberProfileSchema,
   SignInOptionsSchema,
+  GoogleSignInConfigurationSchema,
   SignInMethodsSchema,
   EmailStartSchema,
   EmailSubjectSchema,
@@ -141,6 +142,7 @@ async function request<T>(
   schema: z.ZodType<T>,
   input?: unknown,
   timeoutMs = 15000,
+  pairedSignInApproval = false,
 ): Promise<T> {
   const url = resolveApiUrl(path),
     csrfKey = csrfStorageKey();
@@ -162,8 +164,11 @@ async function request<T>(
   const csrf = sessionStorage.getItem(csrfKey) ?? '';
   const encoded = input === undefined ? undefined : JSON.stringify(input);
   const controlHeaders: Record<string, string> = {};
+  if (pairedSignInApproval && path !== ApiRoutes.mcpOAuthApprove.path)
+    throw new ApiFailure('ACCOUNT_CONTROL_REQUIRED');
   if (encoded !== undefined && AccountControlPaths.some((route) => route === path)) {
-    if (!accountControlSigner) throw new ApiFailure('ACCOUNT_CONTROL_REQUIRED');
+    if (!accountControlSigner && !pairedSignInApproval)
+      throw new ApiFailure('ACCOUNT_CONTROL_REQUIRED');
     const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(encoded));
     const bodyHash = Array.from(new Uint8Array(digest), (byte) =>
       byte.toString(16).padStart(2, '0'),
@@ -174,7 +179,13 @@ async function request<T>(
     });
     checkNetwork();
     controlHeaders['x-account-intent-id'] = challenge.id;
-    const proof = await accountControlSigner(challenge);
+    let proof: AccountControlProof;
+    if (pairedSignInApproval && path === ApiRoutes.mcpOAuthApprove.path)
+      proof = { kind: 'sign-in' };
+    else {
+      if (!accountControlSigner) throw new ApiFailure('ACCOUNT_CONTROL_REQUIRED');
+      proof = await accountControlSigner(challenge);
+    }
     if (proof.kind === 'root') controlHeaders['x-account-signature'] = proof.signature;
     else controlHeaders['x-account-proof'] = JSON.stringify(proof);
   }
@@ -455,11 +466,18 @@ export const api = {
       ApiRoutes.mcpOAuthConsent.path.replace(':id', z.uuid().parse(id)),
       ApiRoutes.mcpOAuthConsent.response,
     ),
-  mcpOAuthApprove: (input: z.infer<typeof ApiRoutes.mcpOAuthApprove.input>) =>
+  mcpOAuthSignInApproval: () =>
+    request(ApiRoutes.mcpOAuthSignInApproval.path, ApiRoutes.mcpOAuthSignInApproval.response),
+  mcpOAuthApprove: (
+    input: z.infer<typeof ApiRoutes.mcpOAuthApprove.input>,
+    pairedSignInApproval = false,
+  ) =>
     request(
       ApiRoutes.mcpOAuthApprove.path,
       ApiRoutes.mcpOAuthApprove.response,
       ApiRoutes.mcpOAuthApprove.input.parse(input),
+      15000,
+      pairedSignInApproval,
     ),
   mcpGrants: () => request(ApiRoutes.mcpGrants.path, ApiRoutes.mcpGrants.response),
   mcpRevokeGrant: (id: string) =>
@@ -1302,6 +1320,13 @@ export const api = {
     request(ApiRoutes.relay.path, ApiRoutes.relay.response, { request: requestData, sig }),
   serviceReceipts: () => request('/v1/billing/receipts', ServiceReceiptsSchema),
   signInOptions: () => request('/v1/sign-in/options', SignInOptionsSchema),
+  googleSignInConfiguration: () => request('/v1/sign-in/google', GoogleSignInConfigurationSchema),
+  loginWithGoogle: (proof: string, nonce: string) =>
+    request(
+      ApiRoutes.providerLogin.path,
+      ApiRoutes.providerLogin.response,
+      ApiRoutes.providerLogin.input.parse({ provider: 'google', proof, nonce }),
+    ),
   resumeSession: () => request('/v1/sign-in/session', SessionSchema, {}),
   startTelegram: (mode: 'login' | 'pair', returnTo?: string) =>
     request(
@@ -1614,6 +1639,10 @@ export function friendlyError(error: unknown): string {
       AUTH_REQUIRED: 'Sign in to continue.',
       ACCOUNT_CONTROL_REQUIRED:
         'Prove control with your Daclify keys or an authorized linked wallet before changing sign-in methods.',
+      MCP_SIGN_IN_REQUIRED:
+        'Sign in again with a method paired to this account, then approve the connection.',
+      GOOGLE_SIGN_IN_UNAVAILABLE:
+        'Google sign-in could not load. Retry the connection or choose another paired method.',
       VAULT_IDENTITY_REQUIRED:
         'Set up or restore your Daclify keys before creating a DAO. Wallet recovery alone does not restore document decryption keys.',
       LAST_CONTROL_CREDENTIAL:

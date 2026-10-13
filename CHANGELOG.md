@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.15.0-alpha.23 development
+
+The compact hosted AI connection card accepts paired sign-ins and account-paired Telos wallets. Expired sign-ins can be renewed on the card; the original membership and requested permissions stay selected. Google sign-in is offered when configured. Approval no longer requires a DAO wallet binding or unlocking Daclify keys for read/preview access. Consumes immutable core protocol 18 and modules 25; native MCP downloads retain their existing tested cohort.
+
 ## 0.15.0-alpha.11 development
 
 Use the native labelled form semantics for the compact Payroll toolbar and check accessibility again after closing its popup. Supersede the initial alpha.10 publication, whose toolbar used an invalid group role.

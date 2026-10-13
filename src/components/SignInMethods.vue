@@ -20,7 +20,7 @@ import {
   passkeyRecoveryMaterial,
 } from '../auth/webauthn';
 import { rememberPasskeyRecovery } from '../auth/fast-sign-in';
-const props = defineProps<{ mode: 'manage' | 'enter' }>();
+const props = defineProps<{ mode: 'manage' | 'enter'; returnTo?: string }>();
 const route = useRoute(),
   router = useRouter();
 const pendingTelegram = ref<Awaited<ReturnType<typeof api.telegramPendingPair>>>();
@@ -186,7 +186,7 @@ async function startTelegram() {
       return;
     const authorization = await api.startTelegram(
       props.mode === 'manage' ? 'pair' : 'login',
-      accountDestination(route.query.returnTo),
+      accountDestination(props.returnTo ?? route.query.returnTo),
     );
     check();
     const url = new URL(authorization.authorizationUrl);
