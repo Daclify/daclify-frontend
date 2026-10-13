@@ -12,17 +12,35 @@ import {
   McpLocalConfigurationSchema,
 } from '@daclify/core-protocol';
 import { createVault, unlockVault } from '../../src/auth/vault';
-for (const reauthenticate of [false, true]) {
+for (const { reauthenticate, popup } of [
+  { reauthenticate: false, popup: false },
+  { reauthenticate: true, popup: false },
+  { reauthenticate: false, popup: true },
+]) {
   test(
     (reauthenticate ? 'renews' : 'approves') +
-      ' a hosted connection with a paired email login while the vault stays locked',
-    async ({ page }) => {
+      ' a hosted connection with a paired email login while the vault stays locked' +
+      (popup ? ' in a popup' : ''),
+    async ({ page: initial }) => {
+      let page = initial;
+      const browserErrors: string[] = [];
+      initial.context().on('console', (message) => {
+        if (message.type() === 'error' || message.type() === 'warning') {
+          const source = message.location().url;
+          browserErrors.push(message.type() + ':' + (source ? new URL(source).pathname : 'none'));
+        }
+      });
+      initial.context().on('weberror', (event) => browserErrors.push(event.error().name));
       const api = 'http://127.0.0.1:' + (process.env.DACLIFY_TEST_API_PORT ?? '3008'),
         origin = 'http://127.0.0.1:' + (process.env.DACLIFY_TEST_UI_PORT ?? '5178'),
         password = 'owned paired email MCP password',
         vault = await createVault(password),
         root = PrivateKey.from((await unlockVault(vault.localEnvelope, password)).signingKey),
         email = 'mcp-' + randomBytes(12).toString('hex') + '@example.com';
+      // This native fixture has no billing provider; receipts are outside this consent journey.
+      await initial
+        .context()
+        .route('**/v1/billing/receipts', (route) => route.fulfill({ json: { receipts: [] } }));
       const owner = z
         .object({ token: z.string() })
         .parse(
@@ -109,6 +127,21 @@ for (const reauthenticate of [false, true]) {
       });
       expect(authorization.status()).toBe(302);
       const destination = new URL(z.url().parse(authorization.headers()['location']));
+      if (popup) {
+        await initial.route('https://client.example/connect', (route) =>
+          route.fulfill({
+            contentType: 'text/html',
+            body:
+              '<!doctype html><title>Owned OAuth client</title><button>Connect Daclify</button><p id="result"></p><script>document.querySelector("button").onclick=()=>window.open(' +
+              JSON.stringify(destination.toString()) +
+              ',"daclify-consent");addEventListener("message",event=>{if(event.origin===location.origin&&event.data==="connected")document.querySelector("#result").textContent="Connection completed";});</script>',
+          }),
+        );
+        await initial.goto('https://client.example/connect');
+        const opened = initial.waitForEvent('popup');
+        await initial.getByRole('button', { name: 'Connect Daclify', exact: true }).click();
+        page = await opened;
+      }
       await page.goto(
         '/account?returnTo=' + encodeURIComponent(destination.pathname + destination.search),
       );
@@ -171,7 +204,12 @@ for (const reauthenticate of [false, true]) {
       expect(await page.evaluate(() => localStorage.getItem('daclify.vault.v1'))).toBeNull();
       expect((await new AxeBuilder({ page }).include('main').analyze()).violations).toEqual([]);
       await page.route('https://client.example/callback*', (route) =>
-        route.fulfill({ body: 'Owned callback captured' }),
+        route.fulfill({
+          contentType: 'text/html',
+          body: popup
+            ? '<!doctype html><title>Owned OAuth callback</title><script>opener.postMessage("connected",location.origin);close();</script>'
+            : 'Owned callback captured',
+        }),
       );
       const approved = page.waitForRequest(
           (request) =>
@@ -180,6 +218,7 @@ for (const reauthenticate of [false, true]) {
         callback = page.waitForRequest((request) =>
           request.url().startsWith('https://client.example/callback?'),
         );
+      const closed = popup ? page.waitForEvent('close') : undefined;
       await approve.click();
       const request = await approved;
       expect(request.headers()['x-account-signature']).toBeUndefined();
@@ -187,6 +226,13 @@ for (const reauthenticate of [false, true]) {
         kind: 'sign-in',
       });
       const redirected = new URL((await callback).url());
+      expect(redirected.searchParams.get('state')).toBe('owned-email-preview');
+      expect(redirected.searchParams.get('iss')).toBe(api + '/mcp/oauth');
+      if (closed) {
+        await closed;
+        await expect(initial.getByText('Connection completed', { exact: true })).toBeVisible();
+        expect(initial.url()).toBe('https://client.example/connect');
+      }
       const exchange = {
         grant_type: 'authorization_code',
         client_id: 'browser-fixture',
@@ -203,6 +249,7 @@ for (const reauthenticate of [false, true]) {
       expect((await page.request.post(api + '/mcp/oauth/token', { form: exchange })).status()).toBe(
         400,
       );
+      expect(browserErrors).toEqual([]);
     },
   );
 }

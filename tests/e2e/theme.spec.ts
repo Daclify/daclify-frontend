@@ -14,7 +14,6 @@ const network = NetworkSchema.parse({
   coreVersion: '0.1.0-alpha.1',
   capabilities: [],
 });
-const signedOut = ErrorSchema.parse({ code: 'AUTH_REQUIRED', message: 'Sign in to continue.' });
 
 test.beforeEach(async ({ page }) => {
   await page.route('**/v1/**', (route) =>
@@ -35,9 +34,7 @@ test.beforeEach(async ({ page }) => {
   await page.route(`**${ApiRoutes.daos.path}`, (route) =>
     route.fulfill({ json: ApiRoutes.daos.response.parse({ daos: [] }) }),
   );
-  await page.route(`**${ApiRoutes.me.path}`, (route) =>
-    route.fulfill({ status: 401, json: signedOut }),
-  );
+  await page.route('**/v1/sign-in/session', (route) => route.fulfill({ status: 204 }));
   await page.goto('/hub');
   await expect(page.getByRole('heading', { name: 'Your DAO hub' })).toBeVisible();
   await expect(page.getByText('local network', { exact: true })).toBeAttached();

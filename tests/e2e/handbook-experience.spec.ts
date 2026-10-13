@@ -52,11 +52,7 @@ async function fixture(page: Page) {
     const path = new URL(route.request().url()).pathname;
     if (path === ApiRoutes.network.path) return route.fulfill({ json: network });
     if (path === ApiRoutes.daos.path) return route.fulfill({ json: { daos: [], next: null } });
-    if (path === '/v1/me')
-      return route.fulfill({
-        status: 401,
-        json: ErrorSchema.parse({ code: 'AUTH_REQUIRED', message: 'Sign in.' }),
-      });
+    if (path === '/v1/sign-in/session') return route.fulfill({ status: 204 });
     if (/^\/v1\/daos\/\d+\/modules$/.test(path))
       return route.fulfill({ json: moduleData(path.split('/')[3]) });
     return route.fulfill({ status: 503, json: unavailable });

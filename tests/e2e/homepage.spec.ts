@@ -18,8 +18,9 @@ const signedOut = ErrorSchema.parse({ code: 'AUTH_REQUIRED', message: 'Sign in t
 test.beforeEach(async ({ page }) => {
   await page.route('**/v1/**', (route) => {
     const path = new URL(route.request().url()).pathname;
+    if (path === '/v1/sign-in/session') return route.fulfill({ status: 204 });
     return route.fulfill({
-      status: path === '/v1/me' ? 401 : 200,
+      status: 200,
       json:
         path === '/v1/network'
           ? network
@@ -78,7 +79,7 @@ test('returning users get their communities and account shortcuts', async ({ pag
     signingKey: PrivateKey.generate('K1').toPublic().toString(),
     encryptionKey: { kty: 'EC', crv: 'P-256', x: jwk.x, y: jwk.y },
   });
-  await page.route('**/v1/me', (route) => route.fulfill({ json: { account } }));
+  await page.route('**/v1/sign-in/session', (route) => route.fulfill({ json: { account } }));
   await page.goto('/');
   await expect(
     page.locator('#main').getByRole('link', { name: 'Open my DAOs', exact: true }),
@@ -109,7 +110,7 @@ test('the introductory homepage remains readable when the API is unavailable', a
     page.getByRole('heading', { name: 'A home for your community.', exact: true }),
   ).toBeVisible();
   await expect(page.getByRole('alert')).toContainText('The blockchain node is unavailable.');
-  expect(requests).not.toContain('/v1/me');
+  expect(requests).not.toContain('/v1/sign-in/session');
   await expect(page.locator('#main').getByRole('link', { name: 'Explore DAOs' })).toBeVisible();
 });
 

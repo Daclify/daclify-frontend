@@ -81,12 +81,7 @@ test.beforeEach(async ({ page }) => {
   await page.route(`**${ApiRoutes.daos.path}`, (route) =>
     route.fulfill({ json: ApiRoutes.daos.response.parse({ daos: [] }) }),
   );
-  await page.route(`**${ApiRoutes.me.path}`, (route) =>
-    route.fulfill({
-      status: 401,
-      json: ErrorSchema.parse({ code: 'AUTH_REQUIRED', message: 'Sign in to continue.' }),
-    }),
-  );
+  await page.route('**/v1/sign-in/session', (route) => route.fulfill({ status: 204 }));
   await page.route('**/v1/marketplace', (route) => route.fulfill({ json: catalogue }));
   await page.route('**/v1/names', (route) => route.fulfill({ json: names }));
 });

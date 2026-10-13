@@ -65,7 +65,7 @@ test('a deployed build switches production and testnet with read-only payment hi
           : testnet
         : url.pathname === '/v1/daos'
           ? { daos: [] }
-          : url.pathname === '/v1/me'
+          : url.pathname === '/v1/sign-in/session'
             ? { account }
             : url.pathname === '/v1/me/memberships'
               ? { memberships: [] }

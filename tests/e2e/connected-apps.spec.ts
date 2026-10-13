@@ -139,7 +139,7 @@ test.beforeEach(async ({ page }) => {
       values: Record<string, unknown> = {
         '/v1/network': network,
         '/v1/daos': { daos: [summary] },
-        '/v1/me': { account },
+        '/v1/sign-in/session': { account },
         [ApiRoutes.memberships.path]: { memberships: [member] },
         '/v1/daos/1/apps': apps,
         '/v1/daos/1/modules': activity,

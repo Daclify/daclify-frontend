@@ -149,7 +149,7 @@ test('registers and adopts an exact constitution version, then signs one member 
           capabilities: ['governance-policy'],
         },
       });
-    if (path === '/v1/me') return route.fulfill({ json: { account } });
+    if (path === '/v1/sign-in/session') return route.fulfill({ json: { account } });
     if (path === '/v1/me/memberships') return route.fulfill({ json: { memberships: [member] } });
     if (path === '/v1/daos') return route.fulfill({ json: { daos: [summary], next: null } });
     if (path === '/v1/auth/challenge') {

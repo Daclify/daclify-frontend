@@ -174,7 +174,7 @@ export async function moduleFixture(page: Page, savedPolicy = true, visitor = fa
     const path = new URL(route.request().url()).pathname;
     if (path === '/v1/network') return route.fulfill({ json: network });
     if (path === '/v1/daos') return route.fulfill({ json: { daos: [summary], next: null } });
-    if (path === '/v1/me') return route.fulfill({ json: { account } });
+    if (path === '/v1/sign-in/session') return route.fulfill({ json: { account } });
     if (path === '/v1/me/memberships')
       return route.fulfill({ json: { memberships: visitor ? [] : [member] } });
     if (path === '/v1/daos/1/content') return route.fulfill({ json: content });

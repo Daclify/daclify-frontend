@@ -186,7 +186,7 @@ test('grants private history, verifies it on another device, and preserves it af
         });
       }
       if (path === '/v1/daos') return route.fulfill({ json: { daos: [summary()], next: null } });
-      if (path === '/v1/me') return route.fulfill({ json: { account } });
+      if (path === '/v1/sign-in/session') return route.fulfill({ json: { account } });
       if (path === '/v1/me/memberships') {
         const m = records.members.find((person) => person.id === memberId);
         if (!m) throw new Error('Missing member');

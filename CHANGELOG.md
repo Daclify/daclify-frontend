@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.15.0-alpha.25 development
+
+Use the optional session read for browser startup so signed-out visitors can connect without a failed authentication probe in the console. Existing authenticated account validation, fresh paired approval, CSRF renewal and permission checks remain enforced. Add desktop/mobile popup return coverage and console checks for hosted consent.
+
 ## 0.15.0-alpha.24 development
 
 Hosted MCP consent disables review preparation for members without the reviewer role and explains the permission requirement. Expired requests and reviewer refusals have clear messages; paired sign-in and wallet approval remain available.

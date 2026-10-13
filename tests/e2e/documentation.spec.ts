@@ -17,8 +17,7 @@ test.beforeEach(async ({ page }) => {
     const path = new URL(route.request().url()).pathname;
     if (path === '/v1/network') return route.fulfill({ json: network });
     if (path === '/v1/daos') return route.fulfill({ json: { daos: [], next: null } });
-    if (path === '/v1/me')
-      return route.fulfill({ status: 401, json: { code: 'AUTH_REQUIRED', message: 'Sign in.' } });
+    if (path === '/v1/sign-in/session') return route.fulfill({ status: 204 });
     return route.fulfill({
       status: 503,
       json: { code: 'SERVICE_UNAVAILABLE', message: 'Synthetic fixture unavailable.' },

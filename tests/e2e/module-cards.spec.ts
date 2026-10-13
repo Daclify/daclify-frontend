@@ -153,7 +153,7 @@ test.beforeEach(async ({ page }) => {
     const values: Record<string, unknown> = {
       [ApiRoutes.network.path]: network,
       [ApiRoutes.daos.path]: { daos },
-      [ApiRoutes.me.path]: { account },
+      '/v1/sign-in/session': { account },
       '/v1/me/memberships': { memberships },
       '/v1/marketplace': catalogue,
     };
@@ -306,12 +306,7 @@ test('rejects unverified code inside the activation dialog', async ({ page }) =>
 });
 
 test('requires sign-in before showing DAO activation choices', async ({ page }) => {
-  await page.route(`**${ApiRoutes.me.path}`, (route) =>
-    route.fulfill({
-      status: 401,
-      json: ErrorSchema.parse({ code: 'AUTH_REQUIRED', message: 'Sign in to continue.' }),
-    }),
-  );
+  await page.route('**/v1/sign-in/session', (route) => route.fulfill({ status: 204 }));
   await page.goto('/modules');
   await page.getByRole('button', { name: 'Activate Decide', exact: true }).click();
   const dialog = page.getByRole('dialog');

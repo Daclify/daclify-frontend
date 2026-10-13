@@ -164,7 +164,7 @@ test.beforeEach(async ({ page }) => {
     const values: Record<string, unknown> = {
       '/v1/network': network,
       '/v1/daos': { daos: [dao] },
-      '/v1/me': { account },
+      '/v1/sign-in/session': { account },
       [ApiRoutes.memberships.path]: { memberships: [member] },
       '/v1/people': profiles,
       '/v1/people/members': {
@@ -304,9 +304,7 @@ test('signed-out Users shows existing members before they publish profiles', asy
   await page.route('**/v1/people?*', (route) =>
     route.fulfill({ json: { profiles: [], next: null } }),
   );
-  await page.route('**/v1/me', (route) =>
-    route.fulfill({ status: 401, json: { code: 'AUTH_REQUIRED', message: 'Sign in' } }),
-  );
+  await page.route('**/v1/sign-in/session', (route) => route.fulfill({ status: 204 }));
   await page.route('**/v1/people/members?*', (route) =>
     route.fulfill({
       json: {
@@ -343,9 +341,7 @@ test('signed-out Users shows existing members before they publish profiles', asy
 test('Users loads the next DAO and replaces a native fallback with its published profile', async ({
   page,
 }) => {
-  await page.route('**/v1/me', (route) =>
-    route.fulfill({ status: 401, json: { code: 'AUTH_REQUIRED', message: 'Sign in' } }),
-  );
+  await page.route('**/v1/sign-in/session', (route) => route.fulfill({ status: 204 }));
   await page.route(
     (url) => url.pathname === PeopleRoutes.members.path,
     (route) => {
@@ -390,9 +386,7 @@ test('Users loads the next DAO and replaces a native fallback with its published
 test('a key-only membership uses its proven public account name even without any published profile', async ({
   page,
 }) => {
-  await page.route('**/v1/me', (route) =>
-    route.fulfill({ status: 401, json: { code: 'AUTH_REQUIRED', message: 'Sign in' } }),
-  );
+  await page.route('**/v1/sign-in/session', (route) => route.fulfill({ status: 204 }));
   await page.route(
     (url) => url.pathname === PeopleRoutes.members.path,
     (route) => {
@@ -430,9 +424,7 @@ test('unified users show all DAO links, published avatar and contacts, and lates
 }) => {
   const cid = 'bafkreiehxpuhtr5f6v4eu4byjo2j7kkrhjvd7psmfu4imnpdzb3bdqb7vy';
   const otherDao = { ...dao, reference: { ...reference, daoId: '4' }, title: 'Garden DAO' };
-  await page.route('**/v1/me', (route) =>
-    route.fulfill({ status: 401, json: { code: 'AUTH_REQUIRED', message: 'Sign in' } }),
-  );
+  await page.route('**/v1/sign-in/session', (route) => route.fulfill({ status: 204 }));
   await page.route('**/v1/daos', (route) => route.fulfill({ json: { daos: [dao, otherDao] } }));
   await page.route('https://ipfs.io/ipfs/**', (route) =>
     route.fulfill({
@@ -620,7 +612,7 @@ test('Help can be moved, resized, minimized and reopened without exposing anothe
     help.getByText('Pair wallets from your own account controls.', { exact: true }),
   ).toBeVisible();
   await page.screenshot({ path: test.info().outputPath('floating-help.png'), fullPage: true });
-  await page.route('**/v1/me', (route) =>
+  await page.route('**/v1/sign-in/session', (route) =>
     route.fulfill({
       json: { account: { ...account, id: '22222222-2222-4222-8222-222222222222' } },
     }),

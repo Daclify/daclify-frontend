@@ -122,13 +122,10 @@ async function fixture(
       return route.fulfill({
         json: { entries: options.entries ?? entries, next: null, skipped: 0 },
       });
-    if (path === ApiRoutes.me.path)
+    if (path === '/v1/sign-in/session')
       return options.signedIn
         ? route.fulfill({ json: { account } })
-        : route.fulfill({
-            status: 401,
-            json: { code: 'AUTH_REQUIRED', message: 'Sign in to continue.' },
-          });
+        : route.fulfill({ status: 204 });
     if (path === '/v1/me/memberships')
       return route.fulfill({ json: { memberships: options.memberships ?? [] } });
     return route.fulfill({ status: 503, json: unavailable });

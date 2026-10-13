@@ -75,7 +75,7 @@ test('approves a fresh browser without a JSON kit or vault password and transfer
           },
         });
       if (path === '/v1/daos') return route.fulfill({ json: { daos: [], next: null } });
-      if (path === '/v1/me') return route.fulfill({ json: { account } });
+      if (path === '/v1/sign-in/session') return route.fulfill({ json: { account } });
       if (path === '/v1/me/memberships') return route.fulfill({ json: { memberships: [] } });
       if (path === '/v1/account/recovery')
         return route.fulfill({

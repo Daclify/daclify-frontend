@@ -176,7 +176,7 @@ async function fixture(
         },
       });
     if (path === '/v1/daos') return route.fulfill({ json: { daos: [] } });
-    if (path === '/v1/me')
+    if (path === '/v1/sign-in/session')
       return route.fulfill(
         session ? { json: { account } } : { status: 401, json: { code: 'AUTH_REQUIRED' } },
       );

@@ -75,7 +75,7 @@ test.beforeEach(async ({ page }) => {
     const body =
       path === '/v1/network'
         ? network
-        : path === '/v1/me'
+        : path === '/v1/sign-in/session'
           ? { account }
           : path === ApiRoutes.memberships.path
             ? { memberships: [membership] }

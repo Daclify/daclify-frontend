@@ -67,12 +67,7 @@ test('pages the directory, restores URL filters, and keeps readable cards when i
       },
     });
   await page.route('**/v1/network', (r) => r.fulfill({ json: network }));
-  await page.route('**/v1/me', (r) =>
-    r.fulfill({
-      status: 401,
-      json: ErrorSchema.parse({ code: 'AUTH_REQUIRED', message: 'Sign in to continue.' }),
-    }),
-  );
+  await page.route('**/v1/sign-in/session', (r) => r.fulfill({ status: 204 }));
   await page.route(/\/v1\/daos(?:\?.*)?$/, (r) =>
     r.fulfill({
       json: r.request().url().includes('after=')

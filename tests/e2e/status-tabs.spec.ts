@@ -95,8 +95,9 @@ const status = ApiRoutes.status.response.parse({
 test.beforeEach(async ({ page }) => {
   await page.route('**/v1/**', (route) => {
     const path = new URL(route.request().url()).pathname;
+    if (path === '/v1/sign-in/session') return route.fulfill({ status: 204 });
     return route.fulfill({
-      status: path === '/v1/me' ? 401 : 200,
+      status: 200,
       json:
         path === '/v1/network'
           ? network

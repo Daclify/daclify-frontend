@@ -131,13 +131,10 @@ async function fixture(
     const path = new URL(route.request().url()).pathname;
     if (path === '/v1/network') return route.fulfill({ json: network });
     if (path === '/v1/daos') return route.fulfill({ json: { daos: [summary], next: null } });
-    if (path === '/v1/me')
+    if (path === '/v1/sign-in/session')
       return options.signedIn || options.member
         ? route.fulfill({ json: { account: options.account ?? account } })
-        : route.fulfill({
-            status: 401,
-            json: ErrorSchema.parse({ code: 'AUTH_REQUIRED', message: 'Sign in to continue.' }),
-          });
+        : route.fulfill({ status: 204 });
     if (path === '/v1/me/memberships')
       return route.fulfill({ json: { memberships: options.member ? [options.member] : [] } });
     if (path === '/v1/daos/1/modules')

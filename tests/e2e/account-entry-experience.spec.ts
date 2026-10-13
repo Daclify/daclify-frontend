@@ -48,11 +48,7 @@ async function fixture(page: Page, options = configured) {
     const path = new URL(route.request().url()).pathname;
     if (path === ApiRoutes.network.path) return route.fulfill({ json: network });
     if (path === ApiRoutes.daos.path) return route.fulfill({ json: { daos: [], next: null } });
-    if (path === '/v1/me')
-      return route.fulfill({
-        status: 401,
-        json: ErrorSchema.parse({ code: 'AUTH_REQUIRED', message: 'Sign in to continue.' }),
-      });
+    if (path === '/v1/sign-in/session') return route.fulfill({ status: 204 });
     if (path === '/v1/sign-in/options') return route.fulfill({ json: options });
     return route.fulfill({ status: 503, json: unavailable });
   });
@@ -175,13 +171,8 @@ async function vaultLogin(page: Page, accounts = new Map<string, Account>()) {
       json: ApiRoutes.login.response.parse({ account: current, csrfToken: 'ab'.repeat(32) }),
     });
   });
-  await page.route('**/v1/me', (route) =>
-    current
-      ? route.fulfill({ json: { account: current } })
-      : route.fulfill({
-          status: 401,
-          json: ErrorSchema.parse({ code: 'AUTH_REQUIRED', message: 'Sign in.' }),
-        }),
+  await page.route('**/v1/sign-in/session', (route) =>
+    current ? route.fulfill({ json: { account: current } }) : route.fulfill({ status: 204 }),
   );
   await page.route('**/v1/me/memberships', (route) => route.fulfill({ json: { memberships: [] } }));
   return accounts;
@@ -446,13 +437,8 @@ test('email opens a session without unlocking keys and returns to the complete d
     encryptionKey: vault.encryptionPublicKey,
   });
   let loggedIn = false;
-  await page.route('**/v1/me', (route) =>
-    loggedIn
-      ? route.fulfill({ json: { account } })
-      : route.fulfill({
-          status: 401,
-          json: ErrorSchema.parse({ code: 'AUTH_REQUIRED', message: 'Sign in.' }),
-        }),
+  await page.route('**/v1/sign-in/session', (route) =>
+    loggedIn ? route.fulfill({ json: { account } }) : route.fulfill({ status: 204 }),
   );
   await page.route('**/v1/me/memberships', (route) => route.fulfill({ json: { memberships: [] } }));
   await page.route('**/v1/sign-in/email/login/start', (route) =>

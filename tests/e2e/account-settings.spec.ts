@@ -49,7 +49,7 @@ test('keeps account tasks compact and all paired methods reachable by keyboard',
         capabilities: [],
       },
       '/v1/daos': { daos: [], next: null },
-      '/v1/me': { account },
+      '/v1/sign-in/session': { account },
       '/v1/me/memberships': { memberships: [] },
       '/v1/sign-in/options': {
         telegram: { configured: false, username: null, oidc: false, miniApp: false },

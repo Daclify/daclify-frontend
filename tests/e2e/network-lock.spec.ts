@@ -27,8 +27,16 @@ async function serve(page: Page, environment: 'testnet' | 'mainnet') {
       return;
     }
     const path = new URL(route.request().url()).pathname;
+    if (path === '/v1/sign-in/session') {
+      await route.fulfill({ status: 204, headers });
+      return;
+    }
     const body = path === '/v1/network' ? network : path === '/v1/daos' ? { daos: [] } : signedOut;
-    await route.fulfill({ status: path === '/v1/me' ? 401 : 200, headers, json: body });
+    await route.fulfill({
+      status: 200,
+      headers,
+      json: body,
+    });
   });
 }
 
@@ -59,7 +67,7 @@ test('blocks workspace screens and identity reads when the API reports mainnet',
   await page.goto('/create');
   await expect(page.getByRole('alert')).toContainText('different network');
   await expect(page.getByRole('heading', { name: 'Create a DAO' })).toHaveCount(0);
-  expect(requests.some((url) => new URL(url).pathname === '/v1/me')).toBe(false);
+  expect(requests.some((url) => new URL(url).pathname === '/v1/sign-in/session')).toBe(false);
 });
 
 test('keeps the welcome page readable without opening a wrong-network workspace', async ({
@@ -73,8 +81,8 @@ test('keeps the welcome page readable without opening a wrong-network workspace'
     page.getByRole('heading', { name: 'A home for your community.', exact: true }),
   ).toBeVisible();
   await expect(page.getByRole('alert')).toContainText('different network');
-  expect(requests).not.toContain('/v1/me');
+  expect(requests).not.toContain('/v1/sign-in/session');
   await page.locator('#main').getByRole('link', { name: 'Create a DAO', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Create a DAO', exact: true })).toHaveCount(0);
-  expect(requests).not.toContain('/v1/me');
+  expect(requests).not.toContain('/v1/sign-in/session');
 });

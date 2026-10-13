@@ -58,7 +58,7 @@ test('reviews sole-member closure without signing and keeps hosted erasure separ
         capabilities: ['account-exit-v1'],
       },
       '/v1/daos': { daos: [], next: null },
-      '/v1/me': { account },
+      '/v1/sign-in/session': { account },
       '/v1/me/memberships': { memberships: [] },
       '/v1/me/exit/preflight': preflight,
     };

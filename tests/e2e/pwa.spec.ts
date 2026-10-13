@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { ApiRoutes, ErrorSchema, NetworkSchema } from '@daclify/core-protocol';
+import { ApiRoutes, NetworkSchema } from '@daclify/core-protocol';
 
 test('built app is installable from a deep link with usable branded icons', async ({ page }) => {
   await page.route('**/v1/**', (route) => route.abort());
@@ -20,12 +20,7 @@ test('built app is installable from a deep link with usable branded icons', asyn
   await page.route(`**${ApiRoutes.daos.path}`, (route) =>
     route.fulfill({ json: ApiRoutes.daos.response.parse({ daos: [] }) }),
   );
-  await page.route(`**${ApiRoutes.me.path}`, (route) =>
-    route.fulfill({
-      status: 401,
-      json: ErrorSchema.parse({ code: 'AUTH_REQUIRED', message: 'Sign in to continue.' }),
-    }),
-  );
+  await page.route('**/v1/sign-in/session', (route) => route.fulfill({ status: 204 }));
   await page.goto('/docs/recovery?returnTo=%2Fdao%2F1');
   const manifestLink = page.locator('link[rel="manifest"]');
   await expect(manifestLink).toHaveAttribute('href', '/manifest.webmanifest');

@@ -202,6 +202,8 @@ async function request<T>(
   });
   const body: unknown = response.status === 204 ? null : await response.json();
   checkNetwork();
+  if (path === '/v1/sign-in/session' && input === undefined && response.status === 204)
+    throw new ApiFailure('AUTH_REQUIRED');
   if (!response.ok) {
     const error = ErrorSchema.safeParse(body);
     throw new ApiFailure(error.success ? error.data.code : 'SERVICE_UNAVAILABLE');
@@ -1196,7 +1198,7 @@ export const api = {
     return result.account;
   },
   me: async (): Promise<Account> =>
-    (await request(ApiRoutes.me.path, ApiRoutes.me.response)).account,
+    (await request('/v1/sign-in/session', ApiRoutes.me.response)).account,
   memberships: async (): Promise<UserMembership[]> => {
     const memberships = (await request(ApiRoutes.memberships.path, ApiRoutes.memberships.response))
         .memberships,

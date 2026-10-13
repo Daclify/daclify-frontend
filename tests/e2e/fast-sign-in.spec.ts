@@ -46,12 +46,8 @@ async function fixture(page: Page, withProfile = false) {
         }),
       });
     if (path === '/v1/daos') return route.fulfill({ json: { daos: [], next: null } });
-    if (path === '/v1/me')
-      return route.fulfill(
-        authenticated
-          ? { json: { account } }
-          : { status: 401, json: { code: 'AUTH_REQUIRED', message: 'Sign in' } },
-      );
+    if (path === '/v1/sign-in/session')
+      return route.fulfill(authenticated ? { json: { account } } : { status: 204 });
     if (path === '/v1/me/memberships')
       return route.fulfill({
         json: {
@@ -235,7 +231,7 @@ test('preserves another account’s local kit and does not offer it as the recov
   await expect(page.getByLabel('Vault password', { exact: true })).toBeHidden();
 });
 
-test('keeps public profile fields compact and retains drafts when optional sections close', async ({
+test('keeps private profile fields compact and retains drafts when optional sections close', async ({
   page,
 }) => {
   await fixture(page, true);
@@ -252,7 +248,7 @@ test('keeps public profile fields compact and retains drafts when optional secti
   await expect(page.getByLabel('Email', { exact: true })).toBeHidden();
   await expect(page.getByLabel('Avatar image CID', { exact: true })).toBeHidden();
   await page.screenshot({ path: test.info().outputPath('account-profile.png'), fullPage: true });
-  const contacts = page.getByText('Public contact & links', { exact: true });
+  const contacts = page.getByText('Private contact & links', { exact: true });
   await contacts.click();
   await page.getByLabel('Email', { exact: true }).fill('public@example.test');
   await contacts.click();

@@ -51,7 +51,7 @@ async function fixture(page: Page, registered = false) {
         },
       });
     if (path === '/v1/daos') return route.fulfill({ json: { daos: [] } });
-    if (path === '/v1/me') return route.fulfill({ json: { account } });
+    if (path === '/v1/sign-in/session') return route.fulfill({ json: { account } });
     if (path === '/v1/me/memberships')
       return route.fulfill({
         json: {

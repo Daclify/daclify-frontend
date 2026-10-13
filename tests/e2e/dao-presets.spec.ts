@@ -92,7 +92,7 @@ test.beforeEach(async ({ page }) => {
     const values: Record<string, unknown> = {
       '/v1/network': network,
       '/v1/daos': { daos: [dao] },
-      '/v1/me': { account },
+      '/v1/sign-in/session': { account },
       '/v1/me/memberships': { memberships: [] },
       '/v1/docs/agent/status': { configured: false },
       '/v1/daos/1/governance': {

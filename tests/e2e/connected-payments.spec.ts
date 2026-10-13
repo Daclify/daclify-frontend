@@ -105,7 +105,7 @@ test('requires admin access, a current signer and explicit monthly consent befor
     if (path === '/v1/network') response = network;
     else if (path === '/v1/daos') response = { daos: [], next: null };
     else if (path === '/v1/hub/directory') response = { entries: [], skipped: 0, next: null };
-    else if (path === '/v1/me') {
+    else if (path === '/v1/sign-in/session') {
       response = account ? { account } : { code: 'AUTH_REQUIRED', message: 'Sign in.' };
       code = account ? 200 : 401;
     } else if (path === '/v1/me/memberships')

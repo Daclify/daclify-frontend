@@ -261,7 +261,7 @@ async function serve(
         ? network
         : path === '/v1/daos'
           ? { daos: [dao], next: null }
-          : path === '/v1/me'
+          : path === '/v1/sign-in/session'
             ? { account }
             : path === ApiRoutes.memberships.path
               ? { memberships: [member] }

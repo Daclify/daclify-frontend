@@ -26,7 +26,7 @@ test.beforeEach(async ({ page }) => {
         capabilities: [],
       },
       '/v1/daos': { daos: [], next: null },
-      '/v1/me': { account },
+      '/v1/sign-in/session': { account },
       '/v1/me/memberships': { memberships: [] },
       '/v1/account/recovery': {
         configured: false,
