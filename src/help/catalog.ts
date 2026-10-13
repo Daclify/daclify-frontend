@@ -77,7 +77,7 @@ const guideGroups = [
     id: 'builders',
     title: 'Mini apps & builders',
     description: 'Connect community apps and understand their accounts, databases and permissions.',
-    topicIds: ['connected-apps', 'mini-app-database'],
+    topicIds: ['connected-apps', 'mini-app-database', 'mini-app-directory'],
   },
   {
     id: 'operators',

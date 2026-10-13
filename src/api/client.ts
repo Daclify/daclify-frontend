@@ -389,6 +389,61 @@ export const api = {
       ApiRoutes.stageConnectedApp.response,
       ApiRoutes.stageConnectedApp.input.parse(input),
     ),
+  miniAppDirectory: (input: z.infer<typeof ApiRoutes.miniAppDirectory.query> = {}) => {
+    const query = ApiRoutes.miniAppDirectory.query.parse(input),
+      params = new URLSearchParams();
+    if (query.after) params.set('after', query.after);
+    if (query.mine) params.set('mine', query.mine);
+    return request(
+      ApiRoutes.miniAppDirectory.path + (params.size ? '?' + params : ''),
+      ApiRoutes.miniAppDirectory.response,
+    );
+  },
+  miniAppListingReports: (input: z.infer<typeof ApiRoutes.miniAppListingReports.query>) => {
+    const query = ApiRoutes.miniAppListingReports.query.parse(input),
+      params = new URLSearchParams({ id: query.id });
+    if (query.after) params.set('after', query.after);
+    return request(
+      ApiRoutes.miniAppListingReports.path + '?' + params,
+      ApiRoutes.miniAppListingReports.response,
+    );
+  },
+  miniAppListingSubmit: (input: z.infer<typeof ApiRoutes.miniAppListingSubmit.input>) =>
+    request(
+      ApiRoutes.miniAppListingSubmit.path,
+      ApiRoutes.miniAppListingSubmit.response,
+      ApiRoutes.miniAppListingSubmit.input.parse(input),
+    ),
+  miniAppListingUpdate: (input: z.infer<typeof ApiRoutes.miniAppListingUpdate.input>) =>
+    request(
+      ApiRoutes.miniAppListingUpdate.path,
+      ApiRoutes.miniAppListingUpdate.response,
+      ApiRoutes.miniAppListingUpdate.input.parse(input),
+    ),
+  miniAppListingVerify: (input: z.infer<typeof ApiRoutes.miniAppListingVerify.input>) =>
+    request(
+      ApiRoutes.miniAppListingVerify.path,
+      ApiRoutes.miniAppListingVerify.response,
+      ApiRoutes.miniAppListingVerify.input.parse(input),
+    ),
+  miniAppListingTransfer: (input: z.infer<typeof ApiRoutes.miniAppListingTransfer.input>) =>
+    request(
+      ApiRoutes.miniAppListingTransfer.path,
+      ApiRoutes.miniAppListingTransfer.response,
+      ApiRoutes.miniAppListingTransfer.input.parse(input),
+    ),
+  miniAppListingReport: (input: z.infer<typeof ApiRoutes.miniAppListingReport.input>) =>
+    request(
+      ApiRoutes.miniAppListingReport.path,
+      ApiRoutes.miniAppListingReport.response,
+      ApiRoutes.miniAppListingReport.input.parse(input),
+    ),
+  miniAppListingModerate: (input: z.infer<typeof ApiRoutes.miniAppListingModerate.input>) =>
+    request(
+      ApiRoutes.miniAppListingModerate.path,
+      ApiRoutes.miniAppListingModerate.response,
+      ApiRoutes.miniAppListingModerate.input.parse(input),
+    ),
   mcpRelease: () => request(ApiRoutes.mcpRelease.path, ApiRoutes.mcpRelease.response),
   mcpConnections: () => request(ApiRoutes.mcpConnections.path, ApiRoutes.mcpConnections.response),
   mcpRevokeFamily: (id: string) =>
@@ -1400,6 +1455,24 @@ export const api = {
 };
 export function friendlyError(error: unknown): string {
   const handoverErrors: Record<string, string> = {
+    LISTING_ORIGIN_REGISTERED:
+      'This HTTPS origin already has a maintainer. Use its existing listing or a verified ownership transfer.',
+    LISTING_OWNER_REQUIRED:
+      'Only the current maintainer or an offered successor can change this listing.',
+    LISTING_PROOF_EXPIRED:
+      'Request a fresh ten-minute origin challenge and publish the new proof before completing verification.',
+    LISTING_PROOF_INVALID:
+      'Publish the exact challenge JSON at the supplied HTTPS URL. Check TLS, expiry and redirects, then retry.',
+    LISTING_LIMIT:
+      'This account has reached its listing limit. Withdraw obsolete listings and retry after their bounded cleanup.',
+    LISTING_REPORT_LIMIT: 'The report budget has been reached. Retry after its window expires.',
+    LISTING_MODERATOR_REQUIRED:
+      'Directory moderation needs current administrator authority in the governing DAO.',
+    LISTING_MODERATION_UNAVAILABLE:
+      'Publication is unavailable until the deployment has a governing DAO moderation policy.',
+    LISTING_VERIFICATION_REQUIRED:
+      'Restore requires a previously verified origin. Complete a fresh origin verification first.',
+
     EXIT_SETTLEMENT_CONTEXT:
       'This settlement belongs to another exit report. Open its original report before retrying the signed transaction.',
     EXIT_MEMBERSHIP_CHANGED:

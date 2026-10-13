@@ -3,6 +3,7 @@ import { computed, ref } from 'vue';
 import { useWorkspace } from '../state/workspace';
 import McpConnection from '../components/McpConnection.vue';
 import MiniAppConnection from '../components/MiniAppConnection.vue';
+import MiniAppListingForm from '../components/MiniAppListingForm.vue';
 const state = useWorkspace(),
   selectedDao = ref('');
 const daos = computed(() =>
@@ -75,10 +76,12 @@ const daos = computed(() =>
     </section>
     <section id="discover">
       <h2>Discover</h2>
-      <p>
-        A community app directory is being prepared. Your DAO’s registered apps are available above
-        after you sign in.
+      <MiniAppListingForm v-if="state.network?.capabilities.includes('mini-app-directory-v1')" />
+      <p v-else>
+        App discovery is unavailable on this deployment. Your DAO’s registered apps are available
+        above.
       </p>
+      <RouterLink to="/docs/mini-app-directory">Listing and verification guide ↗</RouterLink>
     </section>
     <section id="ai-connections">
       <h2>AI connections</h2>
