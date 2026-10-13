@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.15.0-alpha.29 development
+
+Simplify Mini Apps to a single browse-first page. Expand connection and AI setup in place, and show publishing, reporting, app details and moderation controls only when requested. Preserve drafts and deep links, add loading/empty/retry states, and clear old origin proofs and reports when their listing changes. Keep existing permission, registration, consent and connection-binding checks.
+
 ## 0.15.0-alpha.28 development
 
 Keep the file picker and editable document name visible when signing keys are locked. Offer matching-account key unlock and existing wallet approval inside Add document. One Add document action verifies the upload and publishes its record; interrupted approval reuses the verified upload. Show compact storage usage in the dialog and retain recovery and administration in Resources. Preserve private encryption and existing signer permissions.

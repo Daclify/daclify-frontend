@@ -44,6 +44,8 @@ test('publishes an owned origin, escapes its text, and moderates through actual 
   await page.getByRole('button', { name: 'Unlock and sign in', exact: true }).click();
   const region = page.getByRole('region', { name: 'Community app directory' }),
     form = region.getByRole('form', { name: 'Maintain app listing' });
+  await region.getByText('Manage listings', { exact: true }).click();
+  await region.getByRole('button', { name: 'List an app', exact: true }).click();
   await form
     .getByLabel('App HTTPS origin', { exact: true })
     .fill('https://browser-' + vault.signingPublicKey.slice(-10).toLowerCase() + '.example');
@@ -68,11 +70,19 @@ test('publishes an owned origin, escapes its text, and moderates through actual 
   await expect(region.getByRole('status')).toContainText('Listing published');
   await expect(region.getByRole('heading', { name: title, exact: true })).toBeVisible();
   expect(await region.locator('img').count()).toBe(0);
-  await region.getByRole('button', { name: 'Report this listing' }).click();
+  const card = region
+    .locator('.app-card')
+    .filter({ has: region.getByRole('heading', { name: title, exact: true }) });
+  await card.getByText('App details', { exact: true }).click();
+  await card.getByRole('button', { name: 'Report this listing' }).click();
   await region.getByLabel('Report reason', { exact: true }).fill('Broken callback');
   await region.getByRole('button', { name: 'Send report' }).click();
   await expect(region.getByRole('status')).toContainText('Report received');
   const moderation = region.getByRole('region', { name: 'Directory moderation' });
+  await region
+    .locator('summary')
+    .filter({ hasText: /^Directory moderation$/ })
+    .click();
   await expect(moderation).toBeVisible();
   await moderation.getByRole('button', { name: 'Review reports' }).click();
   await expect(moderation).toContainText('Broken callback');

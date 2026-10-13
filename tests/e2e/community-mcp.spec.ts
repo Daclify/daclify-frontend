@@ -333,6 +333,7 @@ test('downloads public setup and retires a real native connection', async ({ pag
   const menu = page.getByRole('button', { name: 'Menu', exact: true });
   if (await menu.isVisible()) await menu.click();
   await page.getByRole('link', { name: 'Mini apps', exact: true }).click();
+  await page.locator('#ai-connections > summary').click();
   const setup = page.getByRole('region', { name: 'AI connection setup' });
   await setup.getByLabel('AI community membership').selectOption({
     label: 'DAO ' + context.dao.daoId + ', member ' + context.memberId,
