@@ -10,7 +10,12 @@ import {
   RecoveryKitSchema,
   TreasurySchema,
 } from '@daclify/core-protocol';
-import { instructionDigest, runtimeAbi, RuntimeActionSchemas } from '@daclify/core-protocol/sdk';
+import {
+  encodeAction,
+  instructionDigest,
+  runtimeAbi,
+  RuntimeActionSchemas,
+} from '@daclify/core-protocol/sdk';
 import { z } from 'zod';
 import { GovernanceStateSchema } from '@daclify/core-protocol';
 import { ModuleApiRoutes } from '@daclify/modules';
@@ -65,7 +70,7 @@ async function accessible(page: Page) {
 async function authenticate(
   page: Page,
   state: Awaited<ReturnType<typeof fixture>>,
-  section: 'Documents' | 'Members',
+  section: 'Documents' | 'Members' | 'Settings',
 ) {
   const password = 'disposable workspace design fixture',
     vault = await createVault(password);
@@ -495,4 +500,132 @@ test('the legal register names the adopted version even when a newer library dra
   await expect(
     page.getByRole('heading', { name: 'Constitution · Council rules · version 1', exact: true }),
   ).toBeVisible();
+});
+
+test('settings shows saved values, retains cancelled edits and supports keyboard navigation', async ({
+  page,
+}) => {
+  await fixture(page);
+  await page.goto('/dao/1/settings?keep=1#configuration');
+  await expect(page.getByRole('heading', { name: 'DAO settings', exact: true })).toHaveCount(0);
+  const identity = page.getByRole('tab', { name: 'Identity', exact: true });
+  await expect(identity).toHaveAttribute('aria-selected', 'true');
+  const tabsBox = await page
+    .getByRole('tablist', { name: 'DAO settings sections', exact: true })
+    .boundingBox();
+  const helpBox = await page
+    .getByRole('link', { name: 'Settings help', exact: true })
+    .boundingBox();
+  if (!tabsBox || !helpBox) throw new Error('Missing settings toolbar');
+  expect(helpBox.y).toBeLessThan(tabsBox.y + tabsBox.height);
+  expect(helpBox.x).toBeGreaterThanOrEqual(tabsBox.x + tabsBox.width);
+  await expect(page.getByRole('link', { name: 'Settings help', exact: true })).toHaveAttribute(
+    'href',
+    '/docs/dao-governance?dao=1',
+  );
+  await page.getByRole('button', { name: 'Edit DAO name', exact: true }).click();
+  const rename = page.getByRole('dialog', { name: 'Edit DAO name', exact: true });
+  await rename.getByLabel('New DAO name', { exact: true }).fill('Cancelled name draft');
+  await rename.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.getByRole('button', { name: 'Edit DAO name', exact: true }).click();
+  await expect(rename.getByLabel('New DAO name', { exact: true })).toHaveValue(
+    'Cancelled name draft',
+  );
+  await page.keyboard.press('Escape');
+  await expect(rename).not.toBeVisible();
+  await page.getByRole('button', { name: 'Edit directory card', exact: true }).click();
+  const card = page.getByRole('dialog', { name: 'Edit directory card', exact: true });
+  await card.getByLabel('Card summary').fill('Cancelled public summary');
+  await card.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await identity.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(page).toHaveURL(/keep=1.*settings=governance.*#configuration$/);
+  await expect(page.getByRole('heading', { name: 'Voting rules', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Edit voting rules', exact: true }).click();
+  const policy = page.getByRole('dialog', { name: 'Edit voting rules', exact: true });
+  await expect(policy.getByLabel('Policy quorum (%)', { exact: true })).toHaveValue('50');
+  await policy.getByLabel('Policy quorum (%)', { exact: true }).fill('60');
+  await policy.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.getByRole('tab', { name: 'Identity', exact: true }).click();
+  await page.getByRole('button', { name: 'Edit directory card', exact: true }).click();
+  await expect(card.getByLabel('Card summary')).toHaveValue('Cancelled public summary');
+  await page.keyboard.press('Escape');
+  await page.getByRole('tab', { name: 'Governance', exact: true }).click();
+  await page.getByRole('button', { name: 'Edit voting rules', exact: true }).click();
+  await expect(policy.getByLabel('Policy quorum (%)', { exact: true })).toHaveValue('60');
+  await accessible(page);
+  await page.screenshot({ path: test.info().outputPath('settings-policy.png'), fullPage: true });
+});
+
+test('signed policy updates preserve exact limits and keep failed edits while blocking pending changes', async ({
+  page,
+}) => {
+  test.setTimeout(60000);
+  const state = await fixture(page);
+  const vault = await authenticate(page, state, 'Settings');
+  await page.getByRole('tab', { name: 'Governance', exact: true }).click();
+  await page.getByRole('button', { name: 'Edit voting rules', exact: true }).click();
+  const popup = page.getByRole('dialog', { name: 'Edit voting rules', exact: true });
+  await popup.getByLabel('Policy duration', { exact: true }).fill('7');
+  await popup.getByLabel('Policy quorum (%)', { exact: true }).fill('75');
+  await popup.getByLabel('Per milestone / installment maximum (TLOS)', { exact: true }).fill('250');
+  await popup.getByLabel('Daily commitment maximum (TLOS)', { exact: true }).fill('1000');
+  let attempts = 0;
+  let finish: (() => void) | undefined;
+  const settings = state.governance.policy?.config;
+  if (!settings) throw new Error('Missing governance fixture');
+  await page.route('**' + ApiRoutes.relay.path, async (route) => {
+    const input = ApiRoutes.relay.input.parse(route.request().postDataJSON());
+    expect(input.request.action).toBe('setdaogov');
+    expect(
+      Signature.from(input.sig).verifyDigest(
+        instructionDigest(input.request),
+        PublicKey.from(vault.signingPublicKey),
+      ),
+    ).toBe(true);
+    expect(input.request.data).toBe(
+      Buffer.from(
+        encodeAction('setdaogov', {
+          runtime: state.dao.contract,
+          dao_id: state.dao.daoId,
+          member_id: state.member.memberId,
+          settings: {
+            ...settings,
+            duration: 604800,
+            quorum: 7500,
+            max_commitment: '2500000',
+            daily_commitment: '10000000',
+          },
+        }),
+      ).toString('hex'),
+    );
+    attempts++;
+    if (attempts === 1)
+      return route.fulfill({
+        status: 503,
+        json: { code: 'SERVICE_UNAVAILABLE', message: 'Try again.' },
+      });
+    await new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    return route.fulfill({
+      json: ApiRoutes.relay.response.parse({ transactionId: 'd'.repeat(64) }),
+    });
+  });
+  await popup.getByRole('button', { name: 'Sign policy update', exact: true }).click();
+  await expect(popup.getByRole('alert')).toBeVisible();
+  await expect(popup.getByLabel('Policy quorum (%)', { exact: true })).toHaveValue('75');
+  await expect(popup.getByLabel('Daily commitment maximum (TLOS)', { exact: true })).toHaveValue(
+    '1000',
+  );
+  await popup.getByRole('button', { name: 'Sign policy update', exact: true }).click();
+  await expect.poll(() => attempts).toBe(2);
+  await expect(popup.getByRole('button', { name: 'Cancel', exact: true })).toBeDisabled();
+  await expect(popup.getByLabel('Policy quorum (%)', { exact: true })).toBeDisabled();
+  await page.keyboard.press('Escape');
+  await expect(popup).toBeVisible();
+  finish?.();
+  await expect(popup).not.toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: /Policy updated/ })).toBeVisible();
+  expect(attempts).toBe(2);
 });

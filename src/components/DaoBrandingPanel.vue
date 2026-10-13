@@ -16,10 +16,13 @@ import { resolveApiUrl } from '../api/networks';
 import { relayInstruction } from '../auth/session';
 import { canSignMember } from '../auth/action-signer';
 import { useWorkspace } from '../state/workspace';
+import WorkspaceDialog from './WorkspaceDialog.vue';
+import { Pencil } from '@lucide/vue';
 import { preparePublicFile } from '../content/files';
 const workspace = useWorkspace();
 const props = defineProps<{ dao: DaoSummary; member: UserMembership | undefined }>(),
   emit = defineEmits<{ updated: [] }>();
+const popup = ref(false);
 const summary = ref(''),
   logo = ref(''),
   cover = ref(''),
@@ -51,6 +54,7 @@ watch(
   () => JSON.stringify([context(), props.dao.branding]),
   async () => {
     const generation = ++revision;
+    popup.value = false;
     summary.value = props.dao.branding?.summary ?? '';
     logo.value = props.dao.branding?.logo ? JSON.stringify(props.dao.branding.logo) : '';
     cover.value = props.dao.branding?.cover ? JSON.stringify(props.dao.branding.cover) : '';
@@ -107,7 +111,7 @@ watch(
         if (image.success)
           options.value.push({
             value: JSON.stringify(image.data),
-            label: metadata.data.filename + ' · document ' + doc.document_id,
+            label: metadata.data.filename + ' · version ' + doc.version,
           });
       }
     } catch (cause) {
@@ -215,6 +219,8 @@ async function save() {
     await relayInstruction(request);
     if (generation === revision) {
       sessionStorage.removeItem(pendingKey.value);
+      popup.value = false;
+      notice.value = 'Directory card updated.';
       emit('updated');
     }
   } catch (cause) {
@@ -225,89 +231,140 @@ async function save() {
 }
 </script>
 <template>
-  <section class="panel narrow">
-    <h3>Public directory card</h3>
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <h2>Directory card</h2>
+        <p class="field-help">Your public summary, logo and cover image.</p>
+      </div>
+      <button
+        v-if="member?.active && member.admin"
+        type="button"
+        class="secondary settings-edit"
+        aria-haspopup="dialog"
+        :disabled="busy"
+        @click="popup = true"
+      >
+        <Pencil aria-hidden="true" />Edit directory card
+      </button>
+    </div>
+    <dl class="settings-values">
+      <dt>Summary</dt>
+      <dd>{{ dao.branding?.summary || 'No summary added' }}</dd>
+      <dt>Logo</dt>
+      <dd>{{ dao.branding?.logo ? 'Public image' : 'DAO initials' }}</dd>
+      <dt>Cover</dt>
+      <dd>{{ dao.branding?.cover ? 'Public image' : 'Daclify default' }}</dd>
+    </dl>
+    <p v-if="notice && !popup" role="status">{{ notice }}</p>
+  </section>
+  <WorkspaceDialog
+    v-if="member?.active && member.admin"
+    v-model:open="popup"
+    title="Edit directory card"
+    :busy="busy"
+  >
     <p>
       Keep the summary brief. This text and all card images are public, including for encrypted
       DAOs.
     </p>
     <p v-if="error" class="alert" role="alert">{{ error }}</p>
     <p v-if="notice" role="status">{{ notice }}</p>
-    <form v-if="member?.active && member.admin" @submit.prevent="save">
-      <label for="card-summary">Card summary</label
-      ><textarea id="card-summary" v-model="summary" maxlength="280" rows="3" />
-      <fieldset>
-        <legend>Upload a public card image</legend>
-        <p class="field-help">
-          PNG, JPEG or WebP, up to 2 MiB. Hosting counts toward this DAO's storage allowance
-          immediately, including before you sign the card update. Unavailable images use Daclify's
-          fallback.
-        </p>
-        <label for="brand-upload-slot">Image placement</label>
-        <select id="brand-upload-slot" v-model="uploadSlot" :disabled="busy || !!pending">
-          <option value="logo">Logo</option>
-          <option value="cover">Cover</option>
+    <form @submit.prevent="save">
+      <fieldset :disabled="busy">
+        <label for="card-summary">Card summary</label
+        ><textarea id="card-summary" v-model="summary" maxlength="280" rows="3" />
+        <fieldset>
+          <legend>Upload a public card image</legend>
+          <p class="field-help">
+            PNG, JPEG or WebP, up to 2 MiB. Hosting counts toward this DAO's storage allowance
+            immediately, including before you sign the card update. Unavailable images use Daclify's
+            fallback.
+          </p>
+          <label for="brand-upload-slot">Image placement</label>
+          <select id="brand-upload-slot" v-model="uploadSlot" :disabled="busy || !!pending">
+            <option value="logo">Logo</option>
+            <option value="cover">Cover</option>
+          </select>
+          <label for="brand-upload-file">Image file</label>
+          <input
+            id="brand-upload-file"
+            ref="fileInput"
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            :disabled="busy || !!pending"
+            @change="chooseFile"
+          />
+          <label class="checkbox"
+            ><input v-model="publicConsent" type="checkbox" :disabled="busy" /> I understand this
+            image is public and unencrypted, including for a private DAO.</label
+          >
+          <button
+            type="button"
+            :disabled="busy || !publicConsent || (!selectedFile && !pending)"
+            @click="uploadImage"
+          >
+            {{ busy ? 'Working…' : pending ? 'Retry the same upload' : 'Upload and verify image' }}
+          </button>
+          <p v-if="pending" class="field-help">
+            Upload request: {{ pending.requestId }}. Retry this request if completion is uncertain.
+          </p>
+        </fieldset>
+        <label for="card-logo">Logo</label
+        ><select id="card-logo" v-model="logo">
+          <option value="">Initials</option>
+          <option v-if="logo && !options.some((o) => o.value === logo)" :value="logo">
+            Current public logo
+          </option>
+          <option v-for="option in options" :key="option.value" :value="option.value">
+            {{ option.label }}
+          </option>
         </select>
-        <label for="brand-upload-file">Image file</label>
-        <input
-          id="brand-upload-file"
-          ref="fileInput"
-          type="file"
-          accept="image/png,image/jpeg,image/webp"
-          :disabled="busy || !!pending"
-          @change="chooseFile"
-        />
-        <label class="checkbox"
-          ><input v-model="publicConsent" type="checkbox" :disabled="busy" /> I understand this
-          image is public and unencrypted, including for a private DAO.</label
-        >
-        <button
-          type="button"
-          :disabled="busy || !publicConsent || (!selectedFile && !pending)"
-          @click="uploadImage"
-        >
-          {{ busy ? 'Working…' : pending ? 'Retry the same upload' : 'Upload and verify image' }}
+        <label for="card-cover">Cover</label
+        ><select id="card-cover" v-model="cover">
+          <option value="">Daclify fallback</option>
+          <option v-if="cover && !options.some((o) => o.value === cover)" :value="cover">
+            Current public cover
+          </option>
+          <option v-for="option in options" :key="option.value" :value="option.value">
+            {{ option.label }}
+          </option>
+        </select>
+        <details>
+          <summary>Use existing public IPFS images</summary>
+          <p class="field-help">
+            Optional JSON with logo and/or cover objects: cid, bytes, mediaType and commitment
+            (SHA-256). This replaces both image selections. Only public raster images are accepted;
+            do not reference encrypted documents.
+          </p>
+          <label for="card-image-refs">Public image references JSON</label
+          ><textarea id="card-image-refs" v-model="advanced" rows="5" spellcheck="false" />
+        </details>
+        <button :disabled="busy || !ready || !!pending">
+          {{ busy ? 'Submitting…' : 'Sign and update card' }}
         </button>
-        <p v-if="pending" class="field-help">
-          Upload request: {{ pending.requestId }}. Retry this request if completion is uncertain.
-        </p>
+        <p v-if="!ready" class="field-help">Choose an authorized administrator signer.</p>
       </fieldset>
-      <label for="card-logo">Logo</label
-      ><select id="card-logo" v-model="logo">
-        <option value="">Initials</option>
-        <option v-if="logo && !options.some((o) => o.value === logo)" :value="logo">
-          Current public logo
-        </option>
-        <option v-for="option in options" :key="option.value" :value="option.value">
-          {{ option.label }}
-        </option>
-      </select>
-      <label for="card-cover">Cover</label
-      ><select id="card-cover" v-model="cover">
-        <option value="">Daclify fallback</option>
-        <option v-if="cover && !options.some((o) => o.value === cover)" :value="cover">
-          Current public cover
-        </option>
-        <option v-for="option in options" :key="option.value" :value="option.value">
-          {{ option.label }}
-        </option>
-      </select>
-      <details>
-        <summary>Use existing public IPFS images</summary>
-        <p class="field-help">
-          Optional JSON with logo and/or cover objects: cid, bytes, mediaType and commitment
-          (SHA-256). This replaces both image selections. Only public raster images are accepted; do
-          not reference encrypted documents.
-        </p>
-        <label for="card-image-refs">Public image references JSON</label
-        ><textarea id="card-image-refs" v-model="advanced" rows="5" spellcheck="false" />
-      </details>
-      <button :disabled="busy || !ready || !!pending">
-        {{ busy ? 'Submitting…' : 'Sign and update card' }}
-      </button>
-      <p v-if="!ready" class="field-help">Choose an authorized administrator signer.</p>
     </form>
-    <p v-else>Administrator permission is required to update the card.</p>
     <RouterLink to="/docs/dao-discovery" class="help-link">Directory help ↗</RouterLink>
-  </section>
+  </WorkspaceDialog>
 </template>
+
+<style scoped>
+.settings-edit {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 44px;
+}
+.settings-edit svg {
+  width: 18px;
+  height: 18px;
+}
+fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+</style>

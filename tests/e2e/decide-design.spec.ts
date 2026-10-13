@@ -146,7 +146,7 @@ test('governance settings use the same duration units and percentage controls', 
 }) => {
   await fixture(page);
   await page.goto('/dao/1/settings?settings=governance');
-  await page.getByText('Edit ballot policy and commitment limits', { exact: true }).click();
+  await page.getByRole('button', { name: 'Edit voting rules', exact: true }).click();
   await expect(page.getByLabel('Policy duration', { exact: true })).toHaveValue('3');
   await expect(page.getByLabel('Policy duration unit', { exact: true })).toHaveValue('days');
   await expect(page.getByLabel('Policy quorum (%)', { exact: true })).toHaveValue('50');

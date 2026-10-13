@@ -8,6 +8,8 @@ import {
   TreasurySchema,
   AccountSchema,
   DaoSummarySchema,
+  DaoContentSchema,
+  PeopleRoutes,
   GovernanceStateSchema,
   NetworkSchema,
   UserMembershipSchema,
@@ -275,6 +277,7 @@ async function serve(
       json: body ?? { code: 'NOT_FOUND', message: 'Unavailable fixture service.' },
     });
   });
+  return { reference, governance, key };
 }
 
 test('protects the last paired controller and prepares an unsigned quorum appointment', async ({
@@ -283,15 +286,21 @@ test('protects the last paired controller and prepares an unsigned quorum appoin
   await serve(page);
   await page.goto('/dao/1/settings?settings=governance');
   await expect(page.getByRole('heading', { name: 'Executives and voting rights' })).toBeVisible();
+  await page.getByRole('button', { name: 'Manage voting eligibility', exact: true }).click();
   const votingToggle = await page
     .getByRole('checkbox', { name: 'Allow this member to vote' })
     .boundingBox();
   expect(votingToggle?.width).toBeLessThanOrEqual(24);
+  await page
+    .getByRole('dialog', { name: 'Manage voting eligibility', exact: true })
+    .getByRole('button', { name: 'Cancel', exact: true })
+    .click();
   await expect(
     page.getByText(
       'You are the last paired native executive. Replace your wallet atomically; unlinking is blocked.',
     ),
   ).toBeVisible();
+  await page.getByRole('button', { name: 'Manage executives', exact: true }).click();
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Prepare native appointment transaction' }).click();
   const path = await (await download).path();
@@ -351,6 +360,7 @@ test('shows creator and inline roles and downloads a complete atomic handover wi
 }) => {
   await serve(page, false);
   await page.goto('/dao/1/settings?settings=governance');
+  await page.getByText('Advanced: native contract ownership', { exact: true }).click();
   await expect(
     page.getByRole('heading', { name: 'Proposed native ownership policy' }),
   ).toBeVisible();
@@ -391,6 +401,7 @@ test('blocks an unsupported legacy ownership policy', async ({ page }) => {
   await page.goto('/dao/1/settings?settings=governance');
   await expect(page.getByText(/needs a reviewed ownership-policy upgrade/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Prepare atomic owner handover' })).toBeDisabled();
+  await page.getByRole('button', { name: 'Manage executives', exact: true }).click();
   await expect(
     page.getByRole('button', { name: 'Prepare native appointment transaction' }),
   ).toBeDisabled();
@@ -400,6 +411,84 @@ test('rejects a mismatched deployed runtime before downloading native authority 
 }) => {
   await serve(page, true, false, false);
   await page.goto('/dao/1/settings?settings=governance');
+  await page.getByRole('button', { name: 'Manage executives', exact: true }).click();
   await page.getByRole('button', { name: 'Prepare native appointment transaction' }).click();
   await expect(page.getByRole('alert')).toContainText(/reviewed ownership release/);
+});
+
+test('executive management selects named members and preserves exact quorum and current voting rights', async ({
+  page,
+}) => {
+  const { reference, governance } = await serve(page);
+  governance.excludedVoters.push({ member_id: '3' });
+  const first = governance.executiveMembers[0];
+  if (!first) throw new Error('Executive fixture missing');
+  const content = DaoContentSchema.parse({
+    dao: reference,
+    members: [
+      first,
+      {
+        ...first,
+        id: '3',
+        native_account: 'bob',
+        signing_key: PrivateKey.generate('K1').toPublic().toString(),
+        admin: false,
+      },
+    ],
+    documents: [],
+    keyGrants: [],
+    epochs: [],
+  });
+  await page.route('**/v1/daos/1/content', (route) => route.fulfill({ json: content }));
+  await page.route('**/v1/people*', (route) =>
+    route.fulfill({
+      json: PeopleRoutes.list.response.parse({
+        profiles: [
+          {
+            id: '1',
+            dao: reference,
+            memberId: '1',
+            accountName: 'alice',
+            profile: { name: 'alice', fullName: 'Alice Adams' },
+          },
+          {
+            id: '3',
+            dao: reference,
+            memberId: '3',
+            accountName: 'bob',
+            profile: { name: 'bob', fullName: 'Bob Builder' },
+          },
+        ],
+        next: null,
+      }),
+    }),
+  );
+  await page.goto('/dao/1/settings?settings=governance');
+  await page.getByRole('button', { name: 'Manage executives', exact: true }).click();
+  const popup = page.getByRole('dialog', { name: 'Manage executives', exact: true });
+  await expect(popup.getByRole('checkbox', { name: 'Alice Adams', exact: true })).toBeChecked();
+  await popup.getByLabel('Find a member', { exact: true }).fill('Bob');
+  await popup.getByRole('checkbox', { name: 'Bob Builder', exact: true }).check();
+  await popup.getByLabel('Native quorum percentage', { exact: true }).fill('75.89');
+  const download = page.waitForEvent('download');
+  await popup
+    .getByRole('button', { name: 'Prepare native appointment transaction', exact: true })
+    .click();
+  const path = await (await download).path();
+  if (!path) throw new Error('Missing appointment download');
+  expect(JSON.parse(await readFile(path, 'utf8'))).toMatchObject({
+    unsigned: true,
+    actions: [{ name: 'appoint', data: { dao_id: '1', member_ids: ['1', '3'], quorum_bps: 7589 } }],
+  });
+  await expect(popup).not.toBeVisible();
+  await page.getByRole('button', { name: 'Manage voting eligibility', exact: true }).click();
+  const voting = page.getByRole('dialog', { name: 'Manage voting eligibility', exact: true });
+  await voting.getByLabel('Member', { exact: true }).selectOption({ label: 'Bob Builder' });
+  await expect(
+    voting.getByRole('checkbox', { name: 'Allow this member to vote', exact: true }),
+  ).not.toBeChecked();
+  await expect(
+    voting.getByRole('button', { name: 'Sign voting eligibility change', exact: true }),
+  ).toBeDisabled();
+  expect((await new AxeBuilder({ page }).include('main').analyze()).violations).toEqual([]);
 });

@@ -207,9 +207,8 @@ test('uploads a public card image for a private DAO, retries the same request an
 }) => {
   await createWorkspace(page, true);
   await page.getByRole('link', { name: 'Settings', exact: true }).click();
-  const panel = page
-    .locator('section')
-    .filter({ has: page.getByRole('heading', { name: 'Public directory card', exact: true }) });
+  await page.getByRole('button', { name: 'Edit directory card', exact: true }).click();
+  const panel = page.getByRole('dialog', { name: 'Edit directory card', exact: true });
   const image = Buffer.from('iVBORw0KGgo=', 'base64');
   await panel
     .getByLabel('Image file', { exact: true })
@@ -240,14 +239,17 @@ test('uploads a public card image for a private DAO, retries the same request an
   const retry = panel.getByRole('button', { name: 'Retry the same upload', exact: true });
   await expect(retry).toBeEnabled();
   await page.reload();
+  await page.getByRole('button', { name: 'Edit directory card', exact: true }).click();
   await expect(retry).toBeEnabled();
   await expect(
     panel.getByRole('button', { name: 'Sign and update card', exact: true }),
   ).toBeDisabled();
+  await panel.getByRole('button', { name: 'Cancel', exact: true }).click();
   await page.getByRole('link', { name: 'Your account', exact: true }).click();
   await page.getByLabel('Vault password', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Unlock and sign in', exact: true }).click();
   await expect(page).toHaveURL(/\/dao\/\d+\/settings$/);
+  await page.getByRole('button', { name: 'Edit directory card', exact: true }).click();
   await retry.click();
   await expect(
     panel.getByText('Image verified and hosted. Sign the card update to publish this selection.'),
@@ -261,11 +263,14 @@ test('uploads a public card image for a private DAO, retries the same request an
   );
   await panel.getByRole('button', { name: 'Sign and update card', exact: true }).click();
   expect((await saved).status()).toBe(200);
+  await expect(panel).not.toBeVisible();
+  await page.getByRole('button', { name: 'Edit directory card', exact: true }).click();
   await expect(
     panel.getByRole('button', { name: 'Sign and update card', exact: true }),
   ).toBeEnabled();
   await expect(panel.getByLabel('Logo', { exact: true })).not.toHaveValue('');
   await page.reload();
+  await page.getByRole('button', { name: 'Edit directory card', exact: true }).click();
   await expect(panel.getByLabel('Card summary', { exact: true })).toHaveValue(
     'Private documents, public community identity.',
   );

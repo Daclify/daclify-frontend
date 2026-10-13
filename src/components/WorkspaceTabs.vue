@@ -1,6 +1,7 @@
 <script setup lang="ts">
 defineProps<{
   modelValue: string;
+  disabled?: boolean;
   prefix: string;
   label: string;
   items: readonly { value: string; label: string }[];
@@ -12,7 +13,10 @@ function navigate(event: KeyboardEvent) {
     !(event.currentTarget instanceof HTMLElement)
   )
     return;
-  const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+  const buttons = [
+    ...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]:not(:disabled)'),
+  ];
+  if (!buttons.length) return;
   const index = buttons.findIndex((button) => button === event.target);
   const next =
     event.key === 'Home'
@@ -32,6 +36,7 @@ function navigate(event: KeyboardEvent) {
       :id="`${prefix}-tab-${item.value}`"
       :key="item.value"
       type="button"
+      :disabled="disabled"
       role="tab"
       :aria-controls="`${prefix}-${item.value}`"
       :aria-selected="modelValue === item.value"

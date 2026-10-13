@@ -189,5 +189,5 @@ export async function moduleFixture(page: Page, savedPolicy = true, visitor = fa
       json: { code: 'NOT_FOUND', message: 'Fixture route unavailable.' },
     });
   });
-  return { account, member, modules, content, dao };
+  return { account, member, modules, content, dao, governance };
 }

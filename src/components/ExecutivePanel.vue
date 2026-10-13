@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import WorkspaceDialog from './WorkspaceDialog.vue';
+import { Pencil } from '@lucide/vue';
 import { APIClient } from '@wharfkit/antelope';
 import {
   IdSchema,
   NativeAccountSchema,
   SigningPublicKeySchema,
+  type DaoContent,
   type GovernanceState,
   type DaoSummary,
   type UserMembership,
@@ -22,6 +25,7 @@ import {
   RuntimeActionSchemas,
   RuntimeTableSchemas,
 } from '@daclify/core-protocol/sdk';
+import { percentageToBasisPoints } from '../content/governance-inputs';
 import { executiveStatus } from '../auth/executives';
 import { relayInstruction } from '../auth/session';
 import { canSignMember } from '../auth/action-signer';
@@ -37,7 +41,87 @@ const workspace = useWorkspace(),
   busy = ref(false),
   error = ref(''),
   notice = ref('');
-const members = ref('1'),
+const popup = ref(false),
+  mode = ref<'executives' | 'voting'>('executives'),
+  search = ref('');
+const directory = ref<DaoContent['members']>([]),
+  names = ref(new Map<string, string>()),
+  directoryError = ref(false);
+let readGeneration = 0;
+onBeforeUnmount(() => readGeneration++);
+const choices = computed(() => {
+  const rows = new Map(
+    [...(props.state?.executiveMembers ?? []), ...directory.value].map((m) => [
+      m.id,
+      {
+        id: m.id,
+        active: m.active,
+        label: names.value.get(m.id) || m.native_account || `Member ${m.id}`,
+      },
+    ]),
+  );
+  if (props.member && !rows.has(props.member.memberId))
+    rows.set(props.member.memberId, {
+      id: props.member.memberId,
+      active: props.member.active,
+      label: props.member.nativeAccount || `Member ${props.member.memberId}`,
+    });
+  return [...rows.values()];
+});
+const visibleChoices = computed(() =>
+  choices.value.filter(
+    (m) => m.active && m.label.toLowerCase().includes(search.value.trim().toLowerCase()),
+  ),
+);
+function memberName(id: string) {
+  return choices.value.find((m) => m.id === id)?.label || `Member ${id}`;
+}
+async function loadDirectory() {
+  if (!workspace.network?.capabilities.includes('executive-authority')) return;
+  const current = ++readGeneration,
+    reference = JSON.stringify(props.dao.reference);
+  directoryError.value = false;
+  try {
+    const result = await api.content(props.dao.reference.daoId);
+    if (current !== readGeneration) return;
+    if (JSON.stringify(result.dao) !== reference) throw new Error('DAO_REFERENCE');
+    directory.value = result.members;
+    let after: string | undefined;
+    const seen = new Set<string>();
+    do {
+      const page = await api.people({
+        daoId: props.dao.reference.daoId,
+        ...(after ? { after } : {}),
+      });
+      if (current !== readGeneration) return;
+      if (page.profiles.some((p) => JSON.stringify(p.dao) !== reference))
+        throw new Error('DAO_REFERENCE');
+      for (const person of page.profiles)
+        names.value.set(person.memberId, person.profile.fullName || person.profile.name);
+      after = page.next ?? undefined;
+      if (after && seen.has(after)) throw new Error('CHAIN_RESPONSE_INVALID');
+      if (after) seen.add(after);
+    } while (after);
+  } catch {
+    if (current === readGeneration) directoryError.value = true;
+  }
+}
+watch(
+  () => JSON.stringify(props.dao.reference),
+  () => {
+    directory.value = [];
+    names.value.clear();
+    popup.value = false;
+    void loadDirectory();
+  },
+  { immediate: true },
+);
+function open(value: typeof mode.value) {
+  mode.value = value;
+  popup.value = true;
+  error.value = '';
+}
+const members = ref<string[]>(['1']),
   days = ref(30),
   percent = ref(100),
   voter = ref(''),
@@ -48,6 +132,12 @@ const members = ref('1'),
   inlineContracts = ref('');
 const view = computed(() =>
   executiveStatus(props.state, props.member?.memberId, Math.floor(Date.now() / 1000)),
+);
+const canManage = computed(
+  () =>
+    !!props.member?.active &&
+    (props.member.admin ||
+      !!(native.value?.handed_over && view.value.office && props.member.nativeAccount)),
 );
 const canSign = computed(() => props.member?.active && canSignMember(props.member) && !busy.value);
 const native = computed(() => props.state?.nativeGovernance);
@@ -101,10 +191,11 @@ async function verifiedClient() {
 watch(
   () => props.state,
   (state) => {
-    members.value =
-      state?.executives.map((office) => office.member_id).join(', ') ||
-      props.member?.memberId ||
-      '';
+    members.value = state?.executives.length
+      ? state.executives.map((office) => office.member_id)
+      : props.member
+        ? [props.member.memberId]
+        : [];
     days.value = (state?.executivePolicy?.inactivity_seconds ?? 2592000) / 86400;
     percent.value = (state?.executivePolicy?.quorum_bps ?? 10000) / 100;
   },
@@ -119,13 +210,13 @@ function actor() {
   };
 }
 function selectedMembers() {
-  const ids = members.value.split(',').map((id) => IdSchema.parse(id.trim()));
+  const ids = members.value.map((id) => IdSchema.parse(id));
   if (ids.length < 1 || ids.length > 8 || new Set(ids).size !== ids.length)
     throw new Error('EXECUTIVE_LIMIT');
   return ids;
 }
 async function run(action: 'heartbeat' | 'setexecs' | 'setvoter' | 'refreshgov', data: Uint8Array) {
-  if (!props.member) return;
+  if (!canSign.value || !props.member) return;
   busy.value = true;
   error.value = '';
   notice.value = '';
@@ -144,6 +235,7 @@ async function run(action: 'heartbeat' | 'setexecs' | 'setvoter' | 'refreshgov',
     await workspace.refresh();
     emit('refresh');
     notice.value = 'Confirmed on chain.';
+    popup.value = false;
   } catch (cause) {
     error.value = friendlyError(cause);
   } finally {
@@ -153,7 +245,11 @@ async function run(action: 'heartbeat' | 'setexecs' | 'setvoter' | 'refreshgov',
 function heartbeat() {
   void run('heartbeat', encodeAction('heartbeat', actor()));
 }
+watch(voter, (id) => {
+  allowed.value = !props.state?.excludedVoters.some((m) => m.member_id === id);
+});
 function setVoter() {
+  if (!props.member?.active || !props.member.admin || !canSign.value) return;
   try {
     void run(
       'setvoter',
@@ -193,16 +289,19 @@ function download(actions: unknown[], review: unknown = undefined) {
   setTimeout(() => URL.revokeObjectURL(url), 0);
   notice.value =
     'Unsigned transaction downloaded. Verify its chain, accounts and full action list before owner/quorum signing.';
+  popup.value = false;
 }
 async function appoint() {
+  if (!canManage.value || busy.value) return;
   try {
     const data = RuntimeActionSchemas.appoint.parse({
       dao_id: props.dao.reference.daoId,
       member_ids: selectedMembers(),
       inactivity_seconds: Math.round(days.value * 86400),
-      quorum_bps: percent.value * 100,
+      quorum_bps: percentageToBasisPoints(String(percent.value), 'quorum'),
     });
     if (native.value) {
+      busy.value = true;
       await verifiedClient();
       download([
         {
@@ -218,7 +317,7 @@ async function appoint() {
         },
       ]);
     } else
-      void run(
+      await run(
         'setexecs',
         encodeAction('setexecs', {
           ...actor(),
@@ -229,6 +328,8 @@ async function appoint() {
       );
   } catch (cause) {
     error.value = friendlyError(cause);
+  } finally {
+    busy.value = false;
   }
 }
 async function prepareNativeSetup() {
@@ -362,7 +463,30 @@ function refresh() {
     class="panel"
     aria-labelledby="executive-heading"
   >
-    <h2 id="executive-heading">Executives and voting rights</h2>
+    <div class="panel-heading">
+      <h2 id="executive-heading">Executives and voting rights</h2>
+      <div class="button-row">
+        <button
+          v-if="canManage"
+          class="secondary settings-edit"
+          type="button"
+          aria-haspopup="dialog"
+          :disabled="busy"
+          @click="open('executives')"
+        >
+          <Pencil aria-hidden="true" />Manage executives</button
+        ><button
+          v-if="member?.active && member.admin"
+          class="secondary"
+          type="button"
+          aria-haspopup="dialog"
+          :disabled="busy"
+          @click="open('voting')"
+        >
+          Manage voting eligibility
+        </button>
+      </div>
+    </div>
     <p>
       Executive office is separate from membership and voting. Pairing a wallet does not appoint an
       executive.
@@ -388,7 +512,8 @@ function refresh() {
         This runtime needs a reviewed ownership-policy upgrade before native ownership transactions
         can be prepared.
       </p>
-      <div v-if="native?.ownership" class="ownership-review">
+      <details v-if="native?.ownership" class="ownership-review">
+        <summary>Advanced: native contract ownership</summary>
         <h3>
           {{ native.handed_over ? 'Native ownership policy' : 'Proposed native ownership policy' }}
         </h3>
@@ -421,7 +546,7 @@ function refresh() {
           A download includes current authority snapshots and the proposed owner/active tree for
           review.
         </p>
-      </div>
+      </details>
       <p v-if="state.executivePolicy">
         Inactivity timeout:
         {{
@@ -433,12 +558,12 @@ function refresh() {
       </p>
       <ul>
         <li v-for="office in state.executives" :key="office.member_id">
-          Member {{ office.member_id }} ·
+          {{ memberName(office.member_id) }} ·
           {{
             state.executiveMembers.find((m) => m.id === office.member_id)?.native_account ||
             'Telos Zero account not paired'
           }}
-          · last activity {{ new Date(office.last_active * 1000).toISOString() }}
+          · last activity {{ new Date(office.last_active * 1000).toLocaleString() }}
         </li>
       </ul>
       <p v-if="native?.handed_over">
@@ -457,7 +582,7 @@ function refresh() {
       </p>
       <p v-if="state.executiveHandover">
         Election {{ state.executiveHandover.election_id }} handover starts
-        {{ new Date(state.executiveHandover.starts * 1000).toISOString() }}. The outgoing roster
+        {{ new Date(state.executiveHandover.starts * 1000).toLocaleString() }}. The outgoing roster
         retains control until a valid successor activates.
       </p>
       <p v-if="view.lastPaired" class="notice">
@@ -480,54 +605,97 @@ function refresh() {
       >
         Refresh executive authority
       </button>
-      <form
-        v-if="member?.admin || (native?.handed_over && view.office && member?.nativeAccount)"
-        @submit.prevent="appoint"
+      <WorkspaceDialog
+        v-if="canManage"
+        v-model:open="popup"
+        :title="mode === 'executives' ? 'Manage executives' : 'Manage voting eligibility'"
+        :busy="busy"
       >
-        <h3>Appoint executives</h3>
-        <label for="executive-members">Member IDs, separated by commas</label
-        ><input id="executive-members" v-model="members" required />
-        <label for="executive-days">Inactivity timeout in days; 0 disables expiry</label
-        ><input
-          id="executive-days"
-          v-model.number="days"
-          type="number"
-          min="0"
-          max="365"
-          step="any"
-          required
-        />
-        <label for="executive-quorum">Native quorum percentage</label
-        ><input
-          id="executive-quorum"
-          v-model.number="percent"
-          type="number"
-          min="1"
-          max="100"
-          required
-        />
-        <button :disabled="busy || (native ? !ownershipSupported : !canSign)">
-          {{ native ? 'Prepare native appointment transaction' : 'Sign executive appointment' }}
-        </button>
-        <p v-if="native" class="field-help">
-          {{
-            native.handed_over
-              ? 'Requires the current native executive quorum.'
-              : 'Requires the DAO’s current deployment authority.'
-          }}
+        <p v-if="error" class="alert" role="alert">{{ error }}</p>
+        <p v-if="directoryError" class="field-help">
+          Some member names could not be loaded. Available records are still shown.
+          <button type="button" class="secondary" @click="loadDirectory">
+            Retry member directory
+          </button>
         </p>
-      </form>
-      <form v-if="member?.admin" @submit.prevent="setVoter">
-        <h3>Voting eligibility</h3>
-        <label for="voter-member">Member ID</label
-        ><input id="voter-member" v-model="voter" required /><label class="checkbox"
-          ><input v-model="allowed" type="checkbox" />Allow this member to vote</label
-        ><button :disabled="!canSign">Sign voting eligibility change</button>
-        <p>
-          Active ballots block eligibility changes. Membership and private-content access remain
-          separate.
-        </p>
-      </form>
+        <form v-if="mode === 'executives'" @submit.prevent="appoint">
+          <h3>Appoint executives</h3>
+          <p>Select up to eight active members. This replaces the current executive roster.</p>
+          <label for="executive-search">Find a member</label
+          ><input
+            id="executive-search"
+            v-model="search"
+            type="search"
+            placeholder="Name or linked wallet"
+          />
+          <fieldset class="member-choices">
+            <legend>Choose executives</legend>
+            <label v-for="person in visibleChoices" :key="person.id" class="checkbox"
+              ><input
+                v-model="members"
+                type="checkbox"
+                :value="person.id"
+                :disabled="busy || (!members.includes(person.id) && members.length >= 8)"
+              />{{ person.label }}</label
+            >
+            <p v-if="!visibleChoices.length" class="field-help">No active members match.</p>
+          </fieldset>
+          <p class="field-help">
+            {{ members.length }} of 8 selected:
+            {{ members.map(memberName).join(', ') || 'Choose at least one member' }}
+          </p>
+          <label for="executive-days">Inactivity timeout in days; 0 disables expiry</label
+          ><input
+            id="executive-days"
+            v-model.number="days"
+            type="number"
+            min="0"
+            max="365"
+            step="any"
+            required
+          />
+          <label for="executive-quorum">Native quorum percentage</label
+          ><input
+            id="executive-quorum"
+            v-model.number="percent"
+            type="number"
+            min="1"
+            max="100"
+            step="0.01"
+            required
+          />
+          <button :disabled="busy || !members.length || (native ? !ownershipSupported : !canSign)">
+            {{ native ? 'Prepare native appointment transaction' : 'Sign executive appointment' }}
+          </button>
+          <p v-if="native" class="field-help">
+            {{
+              native.handed_over
+                ? 'Requires the current native executive quorum.'
+                : 'Requires the DAO’s current deployment authority.'
+            }}
+          </p>
+        </form>
+        <form v-if="mode === 'voting' && member?.active && member.admin" @submit.prevent="setVoter">
+          <h3>Voting eligibility</h3>
+          <label for="voter-member">Member</label
+          ><select id="voter-member" v-model="voter" required>
+            <option value="" disabled>Choose a member</option>
+            <option
+              v-for="person in choices.filter((m) => m.active)"
+              :key="person.id"
+              :value="person.id"
+            >
+              {{ person.label }}
+            </option></select
+          ><label class="checkbox"
+            ><input v-model="allowed" type="checkbox" />Allow this member to vote</label
+          ><button :disabled="!canSign">Sign voting eligibility change</button>
+          <p>
+            Active ballots block eligibility changes. Membership and private-content access remain
+            separate.
+          </p>
+        </form>
+      </WorkspaceDialog>
       <details v-if="state.nativeSetupEligible && !native">
         <summary>Deployment owner: prepare native ownership setup</summary>
         <p>
@@ -561,8 +729,34 @@ function refresh() {
         Prepare atomic owner handover
       </button>
     </template>
-    <p v-if="error" class="alert" role="alert">{{ error }}</p>
+    <p v-if="error && !popup" class="alert" role="alert">{{ error }}</p>
     <p v-if="notice" class="notice" role="status">{{ notice }}</p>
     <RouterLink to="/docs/executives">Executive authority and wallet recovery ↗</RouterLink>
   </section>
 </template>
+
+<style scoped>
+.settings-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}
+.settings-edit svg {
+  width: 18px;
+  height: 18px;
+}
+.member-choices {
+  max-height: 18rem;
+  overflow: auto;
+  margin: 16px 0;
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+}
+.member-choices label {
+  padding: 8px;
+}
+.ownership-review {
+  margin: 20px 0;
+}
+</style>

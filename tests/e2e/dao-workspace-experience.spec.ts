@@ -210,22 +210,28 @@ test('settings has clear Identity, Governance and Services destinations with URL
 }) => {
   await fixture(page, { member: UserMembershipSchema.parse({ ...member, admin: true }) });
   await page.goto('/dao/1/settings?keep=1#configuration');
-  await expect(main(page).getByRole('button', { name: 'Identity', exact: true })).toBeVisible();
-  await main(page).getByRole('button', { name: 'Governance', exact: true }).click();
+  await expect(main(page).getByRole('tab', { name: 'Identity', exact: true })).toBeVisible();
+  await main(page).getByRole('tab', { name: 'Governance', exact: true }).click();
   await expect(
-    main(page).getByRole('heading', { name: 'Governance and participants', exact: true }),
+    main(page).getByRole('heading', { name: 'Voting rules', exact: true }),
   ).toBeVisible();
   await expect(page).toHaveURL(/keep=1.*settings=governance.*#configuration$/);
-  await main(page).getByRole('button', { name: 'Services', exact: true }).click();
+  await main(page).getByRole('tab', { name: 'Services', exact: true }).click();
   await expect(
     main(page).getByRole('link', { name: 'Manage member capacity', exact: true }),
   ).toBeVisible();
-  await expect(main(page).getByLabel('New DAO name', { exact: true })).toHaveCount(0);
-  await main(page).getByRole('button', { name: 'Identity', exact: true }).click();
+  await expect(main(page).getByLabel('New DAO name', { exact: true })).not.toBeVisible();
+  await main(page).getByRole('tab', { name: 'Identity', exact: true }).click();
+  await main(page).getByRole('button', { name: 'Edit DAO name', exact: true }).click();
   await expect(main(page).getByLabel('New DAO name', { exact: true })).toHaveValue(dao.title);
   await expect(
     main(page).getByRole('button', { name: 'Sign and update name', exact: true }),
   ).toBeDisabled();
+  await main(page)
+    .getByRole('dialog', { name: 'Edit DAO name', exact: true })
+    .getByRole('button', { name: 'Cancel', exact: true })
+    .click();
+  await main(page).getByRole('button', { name: 'Edit directory card', exact: true }).click();
   const consent = await main(page)
     .getByRole('checkbox', { name: /I understand this image is public/ })
     .boundingBox();
@@ -277,7 +283,16 @@ test('offers available tools while preserving paused work and disabled unsigned 
   await main(page)
     .getByRole('link', { name: /Open Decide/ })
     .click();
-  await expect(main(page).getByRole('button', { name: 'Open ballot', exact: true })).toBeDisabled();
+  await main(page).getByRole('button', { name: 'Open a ballot', exact: true }).click();
+  await expect(
+    page
+      .getByRole('dialog', { name: 'Open a ballot', exact: true })
+      .getByRole('button', { name: 'Open ballot', exact: true }),
+  ).toBeDisabled();
+  await page
+    .getByRole('dialog', { name: 'Open a ballot', exact: true })
+    .getByRole('button', { name: 'Cancel', exact: true })
+    .click();
   await main(page)
     .getByRole('navigation', { name: 'DAO sections' })
     .getByRole('link', { name: 'Works', exact: true })
@@ -375,9 +390,12 @@ test('guest sign-in preserves the complete destination and visitor configuration
   );
   await expect(main(page).getByLabel('New DAO name', { exact: true })).toHaveCount(0);
   await expect(
-    main(page).getByText('Administrator permission is required to update this DAO.', {
-      exact: true,
-    }),
+    main(page).getByText(
+      'You can review these settings. An administrator must approve changes to the DAO’s identity and voting rules.',
+      {
+        exact: true,
+      },
+    ),
   ).toBeVisible();
   await accessible(page);
 });
@@ -415,7 +433,7 @@ test('inactive members keep Treasury exits and cannot configure the DAO', async 
     main(page).getByRole('link', { name: 'Your funds in Treasury', exact: true }),
   ).toHaveAttribute('href', '/dao/1/treasury');
   await expect(main(page).getByLabel('New DAO name', { exact: true })).toHaveCount(0);
-  await main(page).getByRole('button', { name: 'Services', exact: true }).click();
+  await main(page).getByRole('tab', { name: 'Services', exact: true }).click();
   await expect(
     main(page).getByRole('link', { name: 'Manage member capacity', exact: true }),
   ).toHaveCount(0);
@@ -440,16 +458,16 @@ test('unknown sections recover and direct configuration links select the correct
     main(page).getByRole('region', { name: 'Workspace overview', exact: true }),
   ).toBeVisible();
   await page.goto('/dao/1/settings?settings=services');
-  await expect(main(page).getByRole('button', { name: 'Services', exact: true })).toHaveAttribute(
-    'aria-pressed',
+  await expect(main(page).getByRole('tab', { name: 'Services', exact: true })).toHaveAttribute(
+    'aria-selected',
     'true',
   );
   await expect(
-    main(page).getByRole('heading', { name: 'Hosting and payments', exact: true }),
+    main(page).getByRole('heading', { name: 'Storage and resources', exact: true }),
   ).toBeVisible();
   await page.goto('/dao/1/settings?settings=invalid');
-  await expect(main(page).getByRole('button', { name: 'Identity', exact: true })).toHaveAttribute(
-    'aria-pressed',
+  await expect(main(page).getByRole('tab', { name: 'Identity', exact: true })).toHaveAttribute(
+    'aria-selected',
     'true',
   );
 });
@@ -495,7 +513,7 @@ test('signed rename preserves branding and setup, rejects empty names and preven
     loginMessage = JSON.stringify(
       LoginMessageSchema.parse({
         domain: 'daclify.login.v3',
-        origin,
+        origin: new URL(page.url()).origin,
         audience: origin,
         challenge: id,
         expires,
@@ -567,6 +585,7 @@ test('signed rename preserves branding and setup, rejects empty names and preven
   await page.getByLabel('Vault password', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Unlock and sign in', exact: true }).click();
   await expect(page).toHaveURL(/\/dao\/1\/settings$/);
+  await main(page).getByRole('button', { name: 'Edit DAO name', exact: true }).click();
   await main(page).getByLabel('New DAO name', { exact: true }).fill('   ');
   await expect(
     main(page).getByRole('button', { name: 'Sign and update name', exact: true }),
@@ -578,7 +597,7 @@ test('signed rename preserves branding and setup, rejects empty names and preven
   await main(page).getByLabel('New DAO name', { exact: true }).fill('Ocean Collective');
   await main(page).getByRole('button', { name: 'Sign and update name', exact: true }).click();
   await expect.poll(() => submissions).toBe(1);
-  await expect(main(page).getByRole('button', { name: 'Services', exact: true })).toBeDisabled();
+  await expect(main(page).locator('#settings-tab-services')).toBeDisabled();
   await expect(main(page).getByLabel('New DAO name', { exact: true })).toBeDisabled();
   complete();
   await expect(main(page).getByText('DAO name updated.', { exact: true })).toBeVisible();
@@ -634,7 +653,9 @@ test('workspace and configuration remain usable at phone, tablet, landscape and 
   }
   await page.setViewportSize({ width: 1440, height: 1100 });
   await page.goto('/dao/1/settings');
-  await expect(main(page).getByLabel('New DAO name', { exact: true })).toBeVisible();
+  await expect(
+    main(page).getByRole('button', { name: 'Edit DAO name', exact: true }),
+  ).toBeVisible();
   await page.evaluate(() => {
     document.documentElement.style.fontSize = '200%';
   });
@@ -684,7 +705,7 @@ test('unlocks the original account inside Join and shares only its public identi
     message = JSON.stringify(
       LoginMessageSchema.parse({
         domain: 'daclify.login.v3',
-        origin,
+        origin: new URL(page.url()).origin,
         audience: origin,
         challenge: id,
         expires,

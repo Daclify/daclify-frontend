@@ -2490,3 +2490,26 @@ nav a,
   border-color: var(--accent-amber);
   color: var(--accent-amber);
 }
+
+.settings-values {
+  display: grid;
+  grid-template-columns: minmax(9rem, 1fr) minmax(0, 2fr);
+  gap: 12px 24px;
+  margin: 20px 0 0;
+}
+.settings-values dt {
+  color: var(--text-secondary);
+}
+.settings-values dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 600px) {
+  .settings-values {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  .settings-values dd {
+    margin-bottom: 12px;
+  }
+}
