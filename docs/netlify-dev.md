@@ -49,6 +49,14 @@ npm run verify
 npm run build -- --mode testnet
 ```
 
+Clean release checkouts do not contain the ignored `.env.testnet`. Supply both public settings explicitly when building those checkouts:
+
+```sh
+VITE_NETWORK=testnet VITE_API_TESTNET=https://testnet.api.daclify.com npm run build -- --mode testnet
+```
+
+Before publishing, verify the compiled app connects to the API, displays the Testnet badge and loads DAO data. A successful static build or an HTTP 200 for the page does not establish a working connection. After publishing, `npm run test:testnet-public` checks the hosted portal's network lock and public journeys.
+
 The build embeds the locked network and its API origin; no `dist/networks.json` edit is needed. The lock takes precedence over direct development overrides, saved selections and the existing network file. Invalid lock values, missing selected origins and URLs containing HTTP, credentials, paths, queries or fragments are rejected. Leave tracked `public/networks.json` in local mode for development and older deployments.
 
 For the separate mainnet project, use frontend `.env.production` with `VITE_NETWORK=production` and `VITE_API_PRODUCTION=https://api.daclify.com`, then run `npm run build`. Production expects the API to report `mainnet`. Restart a development server or rebuild/redeploy static files after env changes. Editing Netlify's environment settings after a local build does not modify the uploaded bundle. Never upload backend environment files or place provider secrets in `VITE_*` settings. Existing `dist/_redirects` provides the Vue route fallback. [Vite environment files and build modes](https://vite.dev/guide/env-and-mode).
