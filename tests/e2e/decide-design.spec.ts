@@ -335,6 +335,10 @@ for (const action of ['open', 'newelect'] as const) {
       exact: true,
     });
     await title.fill('Retry decision');
+    if (action === 'open')
+      await dialog
+        .getByLabel('Public explanation')
+        .fill('A decision explanation preserved across the failed signature.');
     if (action === 'newelect') {
       await dialog.getByLabel('Election rules', { exact: true }).selectOption('12');
       const original = await dialog.getByLabel('Term starts', { exact: true }).inputValue();

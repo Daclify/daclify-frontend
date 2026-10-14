@@ -1,6 +1,14 @@
 {
   "requirements": [
     {
+      "id": "BALLOT-CONTENT-PINNED-DOCUMENTS-AND-ACTUAL-CHOICES",
+      "tests": [
+        "tests/e2e/ballot-content.spec.ts",
+        "tests/e2e/decide-design.spec.ts",
+        "tests/unit/access-components.test.ts"
+      ]
+    },
+    {
       "id": "MINI-APPS-BROWSE-CONTEXTUAL-MAINTENANCE-AND-DEEP-LINKS",
       "tests": [
         "tests/e2e/mini-apps-design.spec.ts",

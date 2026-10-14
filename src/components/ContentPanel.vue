@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import type { BallotContent } from '@daclify/modules';
 import {
   FileMetadataSchema,
   IdSchema,
@@ -41,8 +42,10 @@ const props = defineProps<{
   dao: DaoSummary;
   member: UserMembership | undefined;
   section: string;
+  documentReference?: BallotContent['document'];
 }>();
 const signerReady = computed(() => canSignMember(props.member));
+const linkedDocument = computed(() => props.documentReference);
 const decrypted = ref(new Map<string, string>());
 const epochChoice = ref(props.dao.keyEpoch);
 const state = useWorkspace();
@@ -74,11 +77,18 @@ const documentPopupTitle = computed(() =>
   documentTarget.value ? 'Add document version' : 'Add document',
 );
 const filteredDocuments = computed(() =>
-  latest.value.filter(
-    (row) =>
-      documentLabel(row).toLowerCase().includes(search.value.trim().toLowerCase()) &&
-      (!documentType.value || (documentType.value === 'file' ? !!row.cid : !row.cid)),
-  ),
+  linkedDocument.value
+    ? (content.value?.documents ?? []).filter(
+        (row) =>
+          row.document_id === linkedDocument.value?.documentId &&
+          row.version === linkedDocument.value.version &&
+          row.commitment === linkedDocument.value.commitment,
+      )
+    : latest.value.filter(
+        (row) =>
+          documentLabel(row).toLowerCase().includes(search.value.trim().toLowerCase()) &&
+          (!documentType.value || (documentType.value === 'file' ? !!row.cid : !row.cid)),
+      ),
 );
 function memberName(id: string) {
   return (
@@ -914,6 +924,15 @@ async function openManagedVersion(
           Rotate future document key
         </button>
       </details>
+      <p v-if="linkedDocument && content && !filteredDocuments.length" class="alert">
+        The linked document version or commitment is unavailable. Its latest version has not been
+        substituted.
+      </p>
+      <p v-if="linkedDocument">
+        <router-link :to="`/dao/${dao.reference.daoId}/documents`"
+          >Show latest document versions</router-link
+        >
+      </p>
       <div class="dao-grid">
         <article v-for="document in filteredDocuments" :key="document.id" class="panel">
           <div class="panel-heading">

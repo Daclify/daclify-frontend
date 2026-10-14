@@ -18,7 +18,7 @@ export const toolGuides: Record<
     icon: Vote,
     example: 'A neighborhood DAO chooses which community event to organize next.',
     steps: [
-      'An administrator opens a ballot with options, a closing time and agreed thresholds.',
+      'An authorized member writes the title and explanation, optionally links an exact DAO document version, and opens a proposal or a poll using the saved voting rules.',
       'Each eligible member casts one vote. The eligible membership is frozen for the ballot.',
       'After closing, finalize the result. Funding and execution require their own approved flow.',
     ],
@@ -55,12 +55,13 @@ export const toolGuides: Record<
     icon: MessageCircle,
     example: 'Ask your members whether a new module would be useful before committing money.',
     steps: [
-      'Pick member, credit or deposited-stake voting and publish a clear question.',
+      'Publish a public title and explanation. Choose Reject/Approve or a single-choice poll with 3–16 options, using the DAO’s saved voting rules.',
       'Let eligible members vote during the agreed period.',
       'Finalize and discuss the outcome before making a separate authorized commitment.',
     ],
     requirements: 'Decide and a voting policy matching the DAO.',
-    limits: 'An advisory poll does not reserve Treasury funds or create a payable obligation.',
+    limits:
+      'An advisory poll does not reserve Treasury funds or create a payable obligation. Its unique leading choice must reach the DAO’s approval threshold; neutral two-option polls and abstention are not supported.',
   },
   'milestone-work': {
     icon: Flag,

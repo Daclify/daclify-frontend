@@ -3,7 +3,7 @@ import { computed, ref, watch, onBeforeUnmount } from 'vue';
 import { useRoute } from 'vue-router';
 import { ArrowLeft, ArrowUpRight, KeyRound, ShieldCheck } from '@lucide/vue';
 import { DaoPresets, daoPaymentKey, type DaoRef } from '@daclify/core-protocol';
-import type { ModuleState } from '@daclify/modules';
+import { BallotContentSchema, type ModuleState } from '@daclify/modules';
 import { api, friendlyError } from '../api/client';
 import { canSignMember } from '../auth/action-signer';
 import { approvalSetupLocation } from '../auth/destination';
@@ -18,6 +18,25 @@ import ConnectedApps from './ConnectedApps.vue';
 import PlatformDao from './PlatformDao.vue';
 const route = useRoute(),
   state = useWorkspace();
+const linkedDocument = computed(() => {
+  if (
+    typeof route.query.document !== 'string' ||
+    typeof route.query.version !== 'string' ||
+    typeof route.query.commitment !== 'string'
+  )
+    return;
+  const parsed = BallotContentSchema.shape.document.unwrap().safeParse({
+    documentId: route.query.document,
+    version: Number(route.query.version),
+    commitment: route.query.commitment,
+  });
+  return parsed.success ? parsed.data : undefined;
+});
+const invalidDocumentLink = computed(
+  () =>
+    ['document', 'version', 'commitment'].some((key) => route.query[key] !== undefined) &&
+    !linkedDocument.value,
+);
 const dao = computed(() =>
   state.daos.find(
     (d) =>
@@ -288,7 +307,14 @@ const setupTabs = computed<ReadonlyArray<readonly [string, string]>>(() => [
     />
     <ConnectedApps v-else-if="section === 'apps'" :key="panelKey" :dao="dao" :member="membership" />
     <PlatformDao v-else-if="section === 'platform' && isPlatform" :key="panelKey" />
+    <p v-else-if="section === 'documents' && invalidDocumentLink" class="alert" role="alert">
+      The linked document reference is invalid.
+      <router-link :to="`/dao/${dao.reference.daoId}/documents`"
+        >Open the document library</router-link
+      >
+    </p>
     <ContentPanel
+      :document-reference="section === 'documents' ? linkedDocument : undefined"
       v-else-if="['documents', 'members'].includes(section)"
       :key="panelKey"
       :dao="dao"

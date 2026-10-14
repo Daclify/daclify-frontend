@@ -78,6 +78,9 @@ test('walletless account and real DAO creation flow', async ({ page }) => {
   await page.getByRole('link', { name: 'Decide', exact: true }).click();
   await page.getByRole('button', { name: 'Open a ballot', exact: true }).click();
   await page.getByLabel('Public ballot title').fill('Browser governance ballot');
+  await page
+    .getByLabel('Public explanation')
+    .fill('Review this synthetic decision before approving it.');
   await page.getByRole('button', { name: 'Open ballot', exact: true }).click();
   await expect(
     page.getByRole('heading', { name: 'Browser governance ballot', exact: true }),

@@ -1911,6 +1911,8 @@ export function friendlyError(error: unknown): string {
         'Review and allow Daclify’s spare-key access before enabling assisted recovery.',
       WALLET_CONTEXT_CHANGED:
         'The account, wallet, network or page changed. Review the current action and sign again.',
+      BALLOT_METADATA_SIZE:
+        'The ballot text and choices exceed the on-chain size limit. Shorten them or put the details in a supporting document.',
       NATIVE_UNLINKED: 'Authorize this native wallet for the DAO member before signing.',
       NATIVE_WALLET_MISSING: 'Connect your Telos Zero wallet before signing.',
       EVM_WALLET_MISSING: 'Connect your Telos EVM wallet before signing.',

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.15.0-alpha.34
+
+- Add public explanations, exact supporting-document links and 3–16-option polls to DAO ballots. Render actual choices, votes, tallies and outcomes; prevent voting on inconsistent definitions. Preserve old binary ballots and saved governance rules.
+- Publish a capability/gap review of the first-party modules and related adapters.
+
 ## 0.15.0-alpha.33 development
 
 Expose the producer-owned Start here guide in Getting started. Correct handbook/task routes, recovery and version references, and consume the matching core22/modules30 guide archives. Existing application permissions and workflows are unchanged.

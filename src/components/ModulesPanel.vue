@@ -22,8 +22,19 @@ import {
   type GovernanceState,
 } from '@daclify/core-protocol';
 import { encodeAction, makeInstruction } from '@daclify/core-protocol/sdk';
-import { DecideConfigSchema, ModulePermissions, type ModuleState } from '@daclify/modules';
-import { encodeDecide, encodeWorks, encodePayroll } from '@daclify/modules/sdk';
+import {
+  DecideConfigSchema,
+  ModulePermissions,
+  type BallotContent,
+  type ModuleState,
+} from '@daclify/modules';
+import {
+  encodeBallotMetadata,
+  readBallotMetadata,
+  encodeDecide,
+  encodeWorks,
+  encodePayroll,
+} from '@daclify/modules/sdk';
 import { api, friendlyError } from '../api/client';
 import { relayInstruction } from '../auth/session';
 import { canSignMember } from '../auth/action-signer';
@@ -57,6 +68,10 @@ watch(busy, (value) => emit('busy', value), { flush: 'sync' });
 const error = ref('');
 const success = ref('');
 const title = ref('');
+const description = ref('');
+const ballotType = ref<'proposal' | 'poll'>('proposal');
+const ballotChoices = ref(['', '', '']);
+const ballotDocument = ref('');
 const weight = ref<'member' | 'credit' | 'native-stake'>('member');
 const duration = ref(300);
 const quorum = ref(5000);
@@ -73,9 +88,12 @@ const creationLabel = computed(() =>
 );
 const visibleBallots = computed(
   () =>
-    data.value?.ballots.filter(
-      (ballot) => !data.value?.elections.some((election) => election.id === ballot.id),
-    ) ?? [],
+    data.value?.ballots
+      .filter((ballot) => !data.value?.elections.some((election) => election.id === ballot.id))
+      .map((ballot) => ({
+        ...ballot,
+        definition: readBallotMetadata(ballot.metadata, ballot.choices),
+      })) ?? [],
 );
 function navigateDecideTabs(event: KeyboardEvent) {
   const current = decideTabs.findIndex((tab) => tab.id === decideTab.value);
@@ -210,7 +228,8 @@ async function load(more = false) {
   const request = ++generation;
   const domain = context.value;
   loading.value = true;
-  if (['works', 'payroll', 'grants-rounds'].includes(props.section)) void loadMemberChoices();
+  if (['decide', 'works', 'payroll', 'grants-rounds'].includes(props.section))
+    void loadMemberChoices();
   try {
     const [modules, records, policy] = await Promise.all([
       api.moduleState(props.dao.reference.daoId, {
@@ -330,6 +349,10 @@ watch(
     governance.value = undefined;
     content.value = undefined;
     title.value = '';
+    description.value = '';
+    ballotType.value = 'proposal';
+    ballotChoices.value = ['', '', ''];
+    ballotDocument.value = '';
     contributor.value = '';
     workDocument.value = '';
     submissionDoc.value = '';
@@ -430,6 +453,23 @@ async function open() {
   if (!current.value || !allowed('open')) return;
   const domain = context.value;
   try {
+    const document = content.value?.documents.find((row) => row.id === ballotDocument.value);
+    if (ballotDocument.value && !document) throw new Error('DOCUMENT_UNKNOWN');
+    const metadata = encodeBallotMetadata({
+      schemaVersion: 2,
+      title: title.value,
+      description: description.value,
+      options: ballotType.value === 'proposal' ? ['Reject', 'Approve'] : ballotChoices.value,
+      ...(document
+        ? {
+            document: {
+              documentId: document.document_id,
+              version: document.version,
+              commitment: document.commitment,
+            },
+          }
+        : {}),
+    });
     const config = DecideConfigSchema.parse({
       configVersion: 1,
       weight: weight.value,
@@ -444,23 +484,28 @@ async function open() {
         ...actor(),
         ballot_id: newId(),
         kind: config.weight === 'member' ? 0 : config.weight === 'credit' ? 1 : 2,
-        choices: 2,
+        choices: ballotType.value === 'proposal' ? 2 : ballotChoices.value.length,
         duration: config.duration,
         quorum: config.quorumBasisPoints,
         approval: config.approvalBasisPoints,
-        metadata: title.value
-          ? JSON.stringify({ schemaVersion: 1, title: title.value, options: ['Reject', 'Approve'] })
-          : '{}',
+        metadata,
       }),
       'Ballot opened',
     );
     if (!disposed && domain === context.value && success.value === 'Ballot opened') {
       title.value = '';
+      description.value = '';
+      ballotChoices.value = ['', '', ''];
+      ballotDocument.value = '';
       decideTab.value = 'ballots';
       ballotDialog.value?.close();
     }
   } catch (cause) {
-    if (!disposed && domain === context.value) error.value = friendlyError(cause);
+    if (!disposed && domain === context.value)
+      error.value =
+        cause instanceof z.ZodError
+          ? (cause.issues[0]?.message ?? 'Check the ballot content.')
+          : friendlyError(cause);
   }
 }
 async function vote(id: string, choice: number) {
@@ -472,13 +517,16 @@ async function vote(id: string, choice: number) {
       'Vote recorded',
     );
 }
-function ballotTitle(ballot: ModuleState['ballots'][number]): string {
-  try {
-    const metadata = z.object({ title: z.string().max(160) }).parse(JSON.parse(ballot.metadata));
-    return metadata.title;
-  } catch {
-    return `Ballot ${ballot.id}`;
-  }
+function supportingLabel(reference: NonNullable<BallotContent['document']>) {
+  const document = content.value?.documents.find(
+    (row) =>
+      row.document_id === reference.documentId &&
+      row.version === reference.version &&
+      row.commitment === reference.commitment,
+  );
+  return document
+    ? documentLabel(document)
+    : `Supporting document #${reference.documentId} · version ${reference.version}`;
 }
 function ownVote(id: string) {
   return data.value?.votes.find((v) => v.ballot === id && v.member === props.member?.memberId);
@@ -506,7 +554,10 @@ async function loadMemberChoices() {
     } while (after);
     return rows;
   }
-  const [documents, names] = await Promise.allSettled([api.content(reference.daoId), people()]);
+  const [documents, names] = await Promise.allSettled([
+    api.content(reference.daoId),
+    section === 'decide' ? Promise.resolve([]) : people(),
+  ]);
   if (
     disposed ||
     request !== choicesRequest ||
@@ -1273,9 +1324,80 @@ const selectedProject = computed(() =>
         <form @submit.prevent="open">
           <fieldset :disabled="busy">
             <label for="ballot-title">Public ballot title</label
-            ><input id="ballot-title" v-model="title" maxlength="160" autofocus />
+            ><input id="ballot-title" v-model="title" maxlength="160" required autofocus />
+            <label for="ballot-description">Public explanation</label>
+            <textarea
+              id="ballot-description"
+              v-model="description"
+              maxlength="2000"
+              rows="4"
+              required
+              placeholder="Explain the decision, why it matters and what each choice means."
+            />
             <p class="field-help">
-              This label is public on chain. Leave it blank to avoid publishing a title.
+              The title, explanation and choices are public on chain. Keep confidential details in
+              an encrypted supporting document.
+            </p>
+            <label for="ballot-type">Ballot type</label>
+            <select id="ballot-type" v-model="ballotType">
+              <option value="proposal">Approve or reject a proposal</option>
+              <option value="poll">Choose one option (3–16 choices)</option>
+            </select>
+            <p v-if="ballotType === 'proposal'" class="field-help">Choices: Reject · Approve</p>
+            <template v-else>
+              <div v-for="(_, index) in ballotChoices" :key="index" class="ballot-choice">
+                <label :for="`ballot-choice-${index}`">Choice {{ index + 1 }}</label>
+                <div class="button-row">
+                  <input
+                    :id="`ballot-choice-${index}`"
+                    v-model="ballotChoices[index]"
+                    maxlength="80"
+                    required
+                  />
+                  <button
+                    type="button"
+                    class="secondary"
+                    :aria-label="`Remove choice ${index + 1}`"
+                    :disabled="ballotChoices.length <= 3"
+                    @click="ballotChoices.splice(index, 1)"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+              <button
+                type="button"
+                class="secondary"
+                :disabled="ballotChoices.length >= 16"
+                @click="ballotChoices.push('')"
+              >
+                Add choice
+              </button>
+              <p class="field-help">
+                One vote per member. A unique leading option must reach your DAO’s approval
+                threshold; a simple plurality can fail.
+              </p>
+            </template>
+            <label for="ballot-document">Supporting document (optional)</label>
+            <select id="ballot-document" v-model="ballotDocument" :disabled="choicesLoading">
+              <option value="">No supporting document</option>
+              <option
+                v-for="document in content?.documents ?? []"
+                :key="document.id"
+                :value="document.id"
+              >
+                {{ documentLabel(document) }}
+              </option>
+            </select>
+            <p v-if="choicesError" class="field-help">
+              Supporting documents could not load.
+              <button type="button" class="secondary" @click="loadMemberChoices">
+                Retry documents
+              </button>
+            </p>
+            <p class="field-help">
+              The selected version is recorded with the ballot. Longer proposals can be published in
+              <router-link :to="`/dao/${dao.reference.daoId}/documents`">Documents</router-link>.
             </p>
             <div class="three-column">
               <div>
@@ -1315,6 +1437,10 @@ const selectedProject = computed(() =>
             <p class="field-help">
               Weight is frozen at opening. New members cannot vote in an existing ballot.
             </p>
+            <p class="field-help">
+              This ballot is advisory. Passing it does not automatically move funds or change DAO
+              policy.
+            </p>
             <div class="button-row">
               <button :disabled="!allowed('open')">Open ballot</button>
               <button
@@ -1340,9 +1466,9 @@ const selectedProject = computed(() =>
           <h2>No ballots yet</h2>
           <p>Open a decision with an explicit weight, quorum, and closing time.</p>
         </div>
-        <article v-for="ballot in visibleBallots" :key="ballot.id" class="panel">
+        <article v-for="ballot in visibleBallots" :key="ballot.id" class="panel ballot-card">
           <div class="panel-heading">
-            <h2>{{ ballotTitle(ballot) }}</h2>
+            <h2>{{ ballot.definition?.title || `Ballot ${ballot.id}` }}</h2>
             <span class="pill">{{
               ballot.status === 0
                 ? ballot.closes <= now
@@ -1353,6 +1479,24 @@ const selectedProject = computed(() =>
                   : 'Not passed'
             }}</span>
           </div>
+          <p v-if="ballot.definition?.description" class="ballot-explanation">
+            {{ ballot.definition.description }}
+          </p>
+          <router-link
+            v-if="ballot.definition?.document"
+            :to="{
+              path: `/dao/${dao.reference.daoId}/documents`,
+              query: {
+                document: ballot.definition.document.documentId,
+                version: ballot.definition.document.version,
+                commitment: ballot.definition.document.commitment,
+              },
+            }"
+            >{{ supportingLabel(ballot.definition.document) }}</router-link
+          >
+          <p v-if="!ballot.definition" class="alert">
+            The ballot’s choice definitions are unavailable or inconsistent.
+          </p>
           <p>
             {{ ballot.cast }} / {{ ballot.denominator }} eligible weight cast. Closes
             {{ new Date(ballot.closes * 1000).toLocaleString() }}.
@@ -1362,15 +1506,27 @@ const selectedProject = computed(() =>
             {{ percentageText(ballot.approval) }}%
           </p>
           <p v-if="ownVote(ballot.id)">
-            Your vote: {{ ownVote(ballot.id)?.choice === 1 ? 'Approve' : 'Reject' }}
+            Your vote:
+            {{
+              ballot.definition?.options[ownVote(ballot.id)?.choice ?? -1] ??
+              'Recorded choice unavailable'
+            }}
           </p>
           <div
-            v-else-if="ballot.status === 0 && ballot.closes > now && current?.enabled"
+            v-else-if="
+              ballot.definition && ballot.status === 0 && ballot.closes > now && current?.enabled
+            "
             class="button-row"
           >
-            <button class="secondary" :disabled="!allowed('vote')" @click="vote(ballot.id, 0)">
-              Vote Reject</button
-            ><button :disabled="!allowed('vote')" @click="vote(ballot.id, 1)">Vote Approve</button>
+            <button
+              v-for="(option, index) in ballot.definition.options"
+              :key="index"
+              :class="index === 0 ? 'secondary' : undefined"
+              :disabled="!allowed('vote')"
+              @click="vote(ballot.id, index)"
+            >
+              Vote {{ option }}
+            </button>
           </div>
           <button
             v-if="ballot.status === 0 && ballot.closes <= now"
@@ -1379,8 +1535,13 @@ const selectedProject = computed(() =>
           >
             Finalize ballot {{ ballot.id }}
           </button>
-          <p class="field-help">
-            Reject {{ ballot.tallies[0] ?? '0' }} · Approve {{ ballot.tallies[1] ?? '0' }}
+          <ul v-if="ballot.definition" class="ballot-tallies">
+            <li v-for="(option, index) in ballot.definition.options" :key="index">
+              {{ option }} · {{ ballot.tallies[index] ?? '0' }}
+            </li>
+          </ul>
+          <p v-if="ballot.status === 1 && ballot.choices > 2">
+            Selected option: {{ ballot.definition?.options[ballot.winner] ?? 'Unavailable' }}
           </p>
           <template
             v-for="execution in [...(data?.executions ?? []), ...(data?.grantPlans ?? [])].filter(
@@ -2209,6 +2370,28 @@ const selectedProject = computed(() =>
   </button>
 </template>
 <style scoped>
+.ballot-card {
+  overflow-wrap: anywhere;
+}
+.ballot-card .button-row button {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.ballot-explanation {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ballot-choice .button-row input {
+  flex: 1;
+  min-width: 0;
+}
+.ballot-tallies {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+  padding-left: 1.25rem;
+}
 .milestone-editor {
   margin-bottom: 16px;
   padding: 16px;
