@@ -24,6 +24,7 @@ const props = defineProps<{
   mode: 'manage' | 'enter';
   returnTo?: string;
   unlockMethods?: RecoveryMethod['kind'][] | undefined;
+  initialMethod?: 'telegram' | 'email' | 'passkey' | undefined;
 }>();
 const route = useRoute(),
   router = useRouter();
@@ -46,7 +47,7 @@ const choices = [
   { id: 'native', name: 'Telos Zero', wordmark: telosZeroWordmark },
   { id: 'evm', name: 'Telos EVM', wordmark: telosEvmWordmark },
 ] as const;
-const selected = ref<(typeof choices)[number]['id']>();
+const selected = ref<(typeof choices)[number]['id'] | undefined>(props.initialMethod);
 const availableChoices = computed(() =>
   props.mode === 'enter' && props.unlockMethods
     ? choices.filter((choice) => props.unlockMethods?.includes(choice.id))

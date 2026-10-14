@@ -9,11 +9,14 @@ import { useWorkspace } from '../state/workspace';
 import { relayInstruction } from '../auth/session';
 import { canSignMember } from '../auth/action-signer';
 import ActionSigner from '../components/ActionSigner.vue';
+import { appSignInMethod, appJoinDestination } from '../auth/app-entry';
 const route = useRoute(),
   state = useWorkspace(),
   consent = ref<z.infer<typeof ApiRoutes.appConsent.response>>(),
   error = ref(''),
   busy = ref(false),
+  joinRequired = ref(false),
+  reload = ref(0),
   approvedSession = ref<string>();
 const requestId = computed(() =>
     typeof route.query.request === 'string' ? route.query.request : '',
@@ -29,10 +32,14 @@ const requestId = computed(() =>
   ready = computed(
     () => !!member.value?.active && (!consent.value?.signingKey || canSignMember(member.value)),
   );
+const preferredMethod = computed(() =>
+  appSignInMethod(new URLSearchParams(route.hash.slice(1)).get('daclify_method')),
+);
 let generation = 0;
 const context = computed(() =>
   JSON.stringify([
     requestId.value,
+    reload.value,
     state.account?.id,
     state.network?.chainId,
     state.network?.runtime,
@@ -46,6 +53,7 @@ watch(
     approvedSession.value = undefined;
     error.value = '';
     busy.value = false;
+    joinRequired.value = false;
     if (!state.account || !requestId.value) return;
     try {
       const value = await api.appConsent(requestId.value);
@@ -60,7 +68,10 @@ watch(
         throw new Error('APP_REVISED');
       consent.value = value;
     } catch (cause) {
-      if (started === generation) error.value = friendlyError(cause);
+      if (started === generation) {
+        error.value = friendlyError(cause);
+        joinRequired.value = cause instanceof ApiFailure && cause.code === 'MEMBERSHIP_REQUIRED';
+      }
     }
   },
   { immediate: true },
@@ -139,7 +150,9 @@ async function decide(approve: boolean) {
     <h1>App access</h1>
     <template v-if="!state.account"
       ><p>Sign in with your Daclify account to check your DAO membership.</p>
-      <RouterLink class="button" :to="{ path: '/account', query: { returnTo: route.fullPath } }"
+      <RouterLink
+        class="button"
+        :to="{ path: '/account', query: { returnTo: route.fullPath, method: preferredMethod } }"
         >Sign in</RouterLink
       ></template
     >
@@ -184,6 +197,21 @@ async function decide(approve: boolean) {
     </template>
     <p v-else-if="!error" role="status">Checking membership…</p>
     <p v-if="error" role="alert">{{ error }}</p>
+    <template v-if="joinRequired && appJoinDestination(route.hash, state.network)">
+      <p>
+        Complete this community's membership steps before opening the app. Its admission rules still
+        apply.
+      </p>
+      <RouterLink
+        class="button"
+        :to="{
+          path: appJoinDestination(route.hash, state.network),
+          query: { returnTo: route.fullPath },
+        }"
+        >Join this community</RouterLink
+      >
+      <button class="secondary" @click="reload++">Check membership again</button>
+    </template>
     <RouterLink to="/docs/connected-apps">How app access works</RouterLink>
   </section>
 </template>

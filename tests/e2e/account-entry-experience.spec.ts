@@ -54,6 +54,19 @@ async function fixture(page: Page, options = configured) {
   });
 }
 const main = (page: Page) => page.locator('#main');
+test('connected app keeps the requested method and its safe return destination',async({page})=>{
+  await fixture(page);
+  const hints=`&daclify_chain=${network.chainId}&daclify_runtime=${network.runtime}&daclify_dao=7`;
+  for(const [method,label] of [['email','E-Mail'],['telegram','Telegram'],['passkey','Passkey']]){
+    const destination=`/apps/consent?request=6d23835b-c99f-4c78-aad1-3a215b5ab50c#daclify_method=${method}${hints}`;
+    await page.goto(destination);
+    await main(page).getByRole('link',{name:'Sign in',exact:true}).click();
+    await expect(main(page).getByRole('heading',{name:'Welcome back',exact:true})).toBeVisible();
+    await expect(main(page).getByRole('button',{name:label,exact:true})).toHaveAttribute('aria-pressed','true');
+    expect(new URL(page.url()).searchParams.get('returnTo')).toBe(destination);
+    if(method==='email')await expect(main(page).getByLabel('Sign-in email',{exact:true})).toBeVisible();
+  }
+});
 test('starts with three compact account choices and returns focus from each journey', async ({
   page,
 }) => {

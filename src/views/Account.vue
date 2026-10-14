@@ -36,6 +36,7 @@ import { JoinIdentitySchema, type Account, type RecoveryMethods } from '@daclify
 import { accountDestination } from '../auth/destination';
 import ProfilePanel from '../components/ProfilePanel.vue';
 import SignInMethods from '../components/SignInMethods.vue';
+import { appSignInMethod } from '../auth/app-entry';
 import FastSignInMethods from '../components/FastSignInMethods.vue';
 import DeviceApproval from '../components/DeviceApproval.vue';
 import QuickSignup from '../components/QuickSignup.vue';
@@ -219,7 +220,11 @@ watch(
 );
 const saved = ref(savedVault());
 const entry = ref<'choices' | 'login' | 'new'>(
-    typeof route.query.signup === 'string' ? 'new' : 'choices',
+    typeof route.query.signup === 'string'
+      ? 'new'
+      : appSignInMethod(route.query.method)
+        ? 'login'
+        : 'choices',
   ),
   ownKeys = ref(false),
   quickBusy = ref(false);
@@ -1017,6 +1022,7 @@ function backup() {
         </div>
         <SignInMethods
           mode="enter"
+          :initial-method="appSignInMethod(route.query.method)"
           @authenticated="onSignedIn"
           @busy="providerBusy = $event"
           @create-account="openEntry('new')"
@@ -1046,6 +1052,7 @@ function backup() {
         </div>
         <QuickSignup
           :disabled="busy || providerBusy"
+          :initial-method="appSignInMethod(route.query.method)"
           :pending-id="typeof route.query.signup === 'string' ? route.query.signup : undefined"
           @authenticated="onSignedIn"
           @busy="quickBusy = $event"

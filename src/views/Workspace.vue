@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { accountDestination } from '../auth/destination';
 import { computed, ref, watch, onBeforeUnmount } from 'vue';
 import { useRoute } from 'vue-router';
 import { ArrowLeft, ArrowUpRight, KeyRound, ShieldCheck } from '@lucide/vue';
@@ -274,6 +275,14 @@ const setupTabs = computed<ReadonlyArray<readonly [string, string]>>(() => [
         >Your funds in Treasury</RouterLink
       >
     </aside>
+    <RouterLink
+      v-if="
+        membership?.active && accountDestination(route.query.returnTo)?.startsWith('/apps/consent?')
+      "
+      class="button"
+      :to="accountDestination(route.query.returnTo) ?? '/'"
+      >Continue to app sign-in</RouterLink
+    >
     <details v-if="membership" class="workspace-signing" :open="membership.active && !signerReady">
       <summary>
         <KeyRound aria-hidden="true" /><span>Approval method</span

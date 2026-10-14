@@ -12,7 +12,11 @@ import { accountDestination } from '../auth/destination';
 import { Mail, Send, Wallet, KeyRound } from '@lucide/vue';
 import NativeWalletPanel from './NativeWalletPanel.vue';
 
-const props = defineProps<{ disabled?: boolean; pendingId?: string | undefined }>();
+const props = defineProps<{
+  disabled?: boolean;
+  pendingId?: string | undefined;
+  initialMethod?: 'telegram' | 'email' | 'passkey' | undefined;
+}>();
 const emit = defineEmits<{
   authenticated: [account: Account];
   busy: [active: boolean];
@@ -26,7 +30,9 @@ const options = ref<Awaited<ReturnType<typeof api.signupOptions>>>(),
   nativeBusy = ref(false),
   error = ref(''),
   loading = ref(true),
-  selected = ref<'email' | 'telegram' | 'native' | 'keys'>(),
+  selected = ref<'email' | 'telegram' | 'native' | 'keys' | undefined>(
+    props.initialMethod === 'passkey' ? undefined : props.initialMethod,
+  ),
   email = ref(''),
   code = ref(''),
   awaitingCode = ref(false),
@@ -96,6 +102,8 @@ async function loadOptions() {
     const result = await api.signupOptions();
     check();
     options.value = result;
+    if (selected.value === 'email' && result.email.delivery !== 'mail') selected.value = undefined;
+    if (selected.value === 'telegram' && !telegramUsable.value) selected.value = undefined;
     if (props.pendingId && !ticket.value) {
       const result = await api.signupPending(props.pendingId);
       check();
