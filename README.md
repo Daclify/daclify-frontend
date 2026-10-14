@@ -6,7 +6,7 @@ The screen consumes the packed protocol from [daclify-backend-core](https://gith
 
 Development uses **`dev`**, with matching core/modules checkouts on `dev`. Feature branches start from `dev` and return there; `main` is updated only on an explicit release request. Follow the [Netlify dev deployment guide](docs/netlify-dev.md) for local builds, the testnet custom domain and backend settings.
 
-Current development version: **0.15.0-alpha.31**, consuming core protocol **0.15.0-alpha.20** and module SDK/help **0.10.0-alpha.28**. The coordinated [audit fixes](../daclify-backend-core/docs/operations/project-audit-remediation.md) change runtime/Names code and API inventory responses; source versions do not imply a live deployment. Shared creation is free for 10 active-member slots, with administrator-approved graduated monthly capacity above that. Independent contract/server and own-portal choices say Contact for pricing. Optional DAO Connect merchant payments and hosting are separate. Review [upgrade 0.8](../daclify-backend-core/docs/operations/upgrade-0.8.md) and [payment operations](../daclify-backend-core/docs/operations/connected-payments.md). Development checks do not establish live provider/client qualification.
+Source versions and exact SDK/help archives are pinned in `package.json`, `package-lock.json` and `vendor/`. See [current availability](../daclify-backend-core/docs/current-status.md) and the connected API for the dated live checkpoint. The coordinated [audit fixes](../daclify-backend-core/docs/operations/project-audit-remediation.md) change runtime/Names code and API inventory responses; source versions do not imply a live deployment. Shared creation is free for 10 active-member slots, with administrator-approved graduated monthly capacity above that. Independent contract/server and own-portal choices say Contact for pricing. Optional DAO Connect merchant payments and hosting are separate. Review [upgrade 0.8](../daclify-backend-core/docs/operations/upgrade-0.8.md) and [payment operations](../daclify-backend-core/docs/operations/connected-payments.md). Development checks do not establish live provider/client qualification.
 
 Current `dev` includes exact native/card RAM consent, separate prepaid storage, whole-file retention priorities, verified Archive backups/approvals/manual batches, merged anchored history, public logo/cover upload and hosted-reference recovery after SQL loss. Uploading an image and signing its public card update are distinct. Recovery verifies ownership and bytes and restores no Stripe or social-login records. Recorded RAM allocations are visible; enforcement is in native qualification; Resources reports physical obligation and legacy-claim completion holds. Destructive retention and production pruning are disabled until migration, full restoration and provider/release qualification pass. Run `npm run test:e2e:resources` only against its owned local fixture.
 
@@ -30,6 +30,10 @@ The earlier user-approved [2026-10-11 testnet rollout](../daclify-backend-core/d
 | `/marketplace`                     | Redirect to Modules; name-payment returns redirect to Names                |
 | `/dao/:id` and `/dao/:id/:section` | Members, ballots, works, grants, payroll, treasury, settings and documents |
 | `/account`                         | Sign-in methods, wallet bindings, encrypted vault/kit and payment receipts |
+| `/mini-apps`                       | Discover community apps, register/connect an app, or set up community MCP |
+| `/telos`                           | Telos governance and producer information |
+| `/claim-dao`                       | Claim a reviewed shared-DAO setup link |
+| `/account/exit`                    | Optional account-exit journey when the operator enables it |
 | `/users` and `/users/me`          | Public user directory and your profile/account controls                      |
 | `/docs` and `/docs/:topic`         | Versioned core/module product guides and references                        |
 | `/status`                          | Safe configuration, capabilities and technical platform details            |
@@ -67,7 +71,7 @@ signed-in users get a shortcut to My DAO. Old root Hub bookmarks containing
 preserved. The introductory page remains readable when the API is unavailable;
 fixed-network workspace checks still block an unverified or mismatched API.
 
-Documentation opens a compact index with six task-based groups, expandable guide
+Documentation opens a compact index with task-based groups, expandable guide
 lists and a collapsible contents menu. Getting started opens by default in the menu; a direct guide opens its own
 group, and search expands matching groups. Full guide text appears only after
 selecting a guide. Search still covers guide contents, collection filters remain
@@ -173,7 +177,7 @@ Run `npx playwright test --config playwright.presets.config.ts` for the DAO purp
 
 The browser holds user-controlled signing and decryption keys. It does not receive Pinata credentials, the relay key, or the Stripe secret. Private documents are encrypted before upload. The guides inside the app come from the packed protocol bundles, so a guide edited in core appears here after that package is rebuilt and this repository reinstalls it. Live Google and Telegram redirects, a native-wallet journey, and discovery across more than one runtime are not qualified in this application.
 
-The handbook has six expandable collections, full-text result previews and URL-backed search/collection filters. Reading uses a title-first article, breadcrumb, group-based previous/next navigation and folded mobile contents/search. DAO-scoped verification retains version/code warnings and offers retry. Sources, the contract diagram and lazy generated references stay available. See [handbook evidence](docs/evidence/2026-10-10-handbook-experience.md) for the self-contained browser checks and limits.
+The handbook has seven task collections, full-text result previews and URL-backed search/collection filters. Reading uses a title-first article, breadcrumb, group-based previous/next navigation and folded mobile contents/search. DAO-scoped verification retains version/code warnings and offers retry. Sources, the contract diagram and lazy generated references stay available. See [handbook evidence](docs/evidence/2026-10-10-handbook-experience.md) for the self-contained browser checks and limits.
 
 ## Accounts, recovery and module flows
 
@@ -234,7 +238,7 @@ DAO governance settings show executive offices, paired native accounts, inactivi
 
 `/docs/contract-permissions` contains the bundled, offline contract diagram and searchable shared/independent deployment examples. The full-size SVG is published by core and pinned in the frontend vendor package; no external diagram service is used. `tests/e2e/contract-permissions.spec.ts` checks diagram loading, search, responsive layout and accessibility on desktop and mobile.
 
-The sidebar contains My DAO, Hub, Create, Modules, Users, Documentation, Status, Daclify DAO, Telos DAO, Names and Help, in that order. My DAO opens the Hub's My communities filter; Hub shows all communities. Telos DAO opens `/telos` for network ballots and retained contract history; the Hub has no Telos governance shortcut. The desktop fold control is icon-only with an accessible label and sits directly above the network status at the bottom; mobile keeps its Menu control. Section headings are omitted.
+The sidebar contains My DAO, Hub, Create, Modules, Users, Mini apps, Documentation, Status, Daclify DAO, Telos DAO, Names and Help, in that order. My DAO opens the Hub's My communities filter; Hub shows all communities. Telos DAO opens `/telos` for network ballots and retained contract history; the Hub has no Telos governance shortcut. The desktop fold control is icon-only with an accessible label and sits directly above the network status at the bottom; mobile keeps its Menu control. Section headings are omitted.
 
 Telos DAO separates Ballots, Elections and Block Producers. Foundation elections identify the `tf` publisher and include retained leaderboard records. Cards show status, publisher and participation; details compare recorded candidate totals without inventing elected winners. Search and Open/History filters apply to loaded records, and further loading appends records. Producer standings distinguish registration from the active schedule and preserve contract vote weights. The connected network is visible throughout. Foundation leaderboard and producer voting remain read-only pending qualification. See [the redesign evidence](../daclify-backend-core/docs/evidence/2026-10-11-telos-dao-redesign.md).
 

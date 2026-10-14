@@ -354,7 +354,7 @@ test('core guides do not show unrelated module lookup failures', async ({ page }
   });
   await page.goto('/docs/accounts?dao=1');
   await expect(
-    main(page).getByRole('heading', { name: 'Two clearly labelled account modes', level: 1 }),
+    main(page).getByRole('heading', { name: 'Quick signup or your own encrypted vault', level: 1 }),
   ).toBeVisible();
   await expect(
     main(page).getByText(/Guide version matches the service’s reported version/),
@@ -378,4 +378,33 @@ test('a different DAO interface cannot supply matching documentation', async ({ 
       exact: true,
     }),
   ).toHaveCount(0);
+});
+
+test('members and app builders can discover and read the task-first starting guide', async ({
+  page,
+}) => {
+  await fixture(page);
+  await page.goto('/docs');
+  const collection = main(page)
+    .locator('.guide-collection')
+    .filter({ has: page.getByRole('heading', { name: 'Getting started', exact: true }) });
+  await collection.locator('summary').click();
+  await collection
+    .getByRole('link', {
+      name: 'Start here: members, administrators and app builders',
+      exact: true,
+    })
+    .click();
+  await expect(page).toHaveURL(/\/docs\/start-here$/);
+  await expect(
+    main(page).getByRole('heading', {
+      name: 'Start here: members, administrators and app builders',
+      level: 1,
+    }),
+  ).toBeVisible();
+  await expect(
+    main(page).getByText(/Never send a private key, vault password or recovery kit/),
+  ).toBeVisible();
+  await expect(main(page).getByText(/Mini Apps → Connect an app/)).toBeVisible();
+  await accessible(page);
 });

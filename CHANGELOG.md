@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.15.0-alpha.33 development
+
+Expose the producer-owned Start here guide in Getting started. Correct handbook/task routes, recovery and version references, and consume the matching core22/modules30 guide archives. Existing application permissions and workflows are unchanged.
+
 ## 0.15.0-alpha.32 development
 
 Make Mini Apps registration show its next setup action: enable/review Community Activity, configure approvals, register, then get connection settings. Show loading and retry states, open registration for an empty app list and reuse the existing signer. Preserve app/grant actions and refresh exact core21/modules29 artifacts and formatting checks.

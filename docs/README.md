@@ -1,6 +1,6 @@
 # Frontend documentation
 
-Current development application: **0.15.0-alpha.30**, consuming core **0.15.0-alpha.20** and modules **0.10.0-alpha.28** SDK/help packages. Development uses `dev`. See the [repository README](../README.md) for routes, local development, account recovery and test phases, and the [Netlify dev guide](netlify-dev.md) for the separate testnet site.
+Start with the [member/admin handbook](https://testnet.app.daclify.com/docs/start-here), [mini-app connection guide](../../daclify-backend-core/docs/connected-community-apps.md) and [current availability](../../daclify-backend-core/docs/current-status.md). Source versions and consumed SDKs are recorded in `package.json` and the vendor lock. Development uses `dev`; the [repository README](../README.md) covers routes/builds and the [Netlify guide](netlify-dev.md) covers an optional separate hosting setup.
 
 ## Help inside the application
 
@@ -16,9 +16,9 @@ The [DAO workspace experience](evidence/2026-10-10-dao-workspace-experience.md) 
 
 Platform controls now group administration into **Pricing**, **Catalogue** and **Policies**. Pricing shows module fees in compact rows alongside membership, RAM and storage settings. Catalogue search and Edit fill the selected module's registration and description fields. Switching sections preserves drafts; administrator authority and an authorized signer are still required to submit changes. Create → Pricing navigates in the current tab. The [verification report](evidence/2026-10-11-platform-controls.md) and [execution ledger](superpowers/plans/2026-10-11-platform-controls.md) record actual checks and testnet delivery.
 
-`/docs` is a guide index with six expandable collections: Getting started,
+`/docs` is a guide index with seven task collections: Getting started,
 Members & governance, Modules & treasury, Costs & storage, Privacy & recovery,
-and Operators & reference. The overview uses collection cards without a duplicate
+Mini apps & builders, and Operators & reference. The overview uses collection cards without a duplicate
 sidebar. Future unassigned topics remain visible under More guides. Grouping is a
 frontend presentation choice; content/types remain producer-owned.
 
@@ -31,7 +31,7 @@ search; selecting a guide focuses its title. Failed deployment checks offer retr
 and different-DAO/interface or late responses cannot supply a matching result.
 Version warnings remain before instructions; generated references load on demand.
 
-`/docs/:topic` renders producer-owned core/module bundles, searchable by topic and content. The intended hosted handbook is [app.daclify.com/docs](https://app.daclify.com/docs); the host must be deployed and configured separately. Contextual DAO links retain their DAO reference, and the handbook checks connected service/interface/module versions and code status. An unconnected guide or a displayed API package version is not deployed-contract verification.
+`/docs/:topic` renders producer-owned core/module bundles, searchable by topic and content. The current shared testnet handbook is [testnet.app.daclify.com/docs](https://testnet.app.daclify.com/docs); a mainnet handbook deployment is separate. Contextual DAO links retain their DAO reference, and the handbook checks connected service/interface/module versions and code status. An unconnected guide or a displayed API package version is not deployed-contract verification.
 
 The recovery explanation is `/docs/recovery`; accounts, providers, documents, treasury, deployments and platform administration each have their own topic. Module guides live in Documentation, rather than a duplicate Resources entry. `/status` shows safe capability/configuration indicators and expandable technical details; `/daclify` provides the platform DAO controls with actual authorization checks.
 

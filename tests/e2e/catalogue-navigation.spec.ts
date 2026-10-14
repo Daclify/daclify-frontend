@@ -97,6 +97,7 @@ test('sidebar order and icon fold control match the workspace navigation', async
     'Create',
     'Modules',
     'Users',
+    'Mini apps',
     'Documentation',
     'Status',
     'Daclify DAO',

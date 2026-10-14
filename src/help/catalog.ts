@@ -7,6 +7,7 @@ const guideGroups = [
     title: 'Getting started',
     description: 'Find a community, set up your account and choose how to run your DAO.',
     topicIds: [
+      'start-here',
       'dao-fundamentals',
       'telos',
       'telos-networks',
