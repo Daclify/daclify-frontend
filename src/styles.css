@@ -608,10 +608,6 @@ button.offer-title:hover {
   margin: 12px 0 16px;
   padding-left: 18px;
 }
-.account-link {
-  font-size: 13px;
-  font-weight: 600;
-}
 .pill {
   display: inline-flex;
   align-items: center;
@@ -1319,9 +1315,6 @@ dd {
     gap: 12px;
     flex-wrap: wrap;
     justify-content: flex-end;
-  }
-  .account-link {
-    font-size: 12px;
   }
   .topbar-account .pill {
     display: inline-flex;

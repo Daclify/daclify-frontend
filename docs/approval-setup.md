@@ -1,6 +1,6 @@
 # Use one wallet across your DAOs
 
-Open **Your account > Access & recovery > Approval setup**. Choose Telos Zero or Telos EVM, connect your paired wallet, and select the DAOs in which you want to use it. The screen shows existing authorizations and wallet replacements before you approve. **Approve selected DAOs** saves the default and enables the selected memberships; your roles and voting power stay the same. Select at most 20 at a time.
+Open **Your account > Edit profile & account > Access & recovery > Approval setup**. Choose Telos Zero or Telos EVM, connect your paired wallet, and select the DAOs in which you want to use it. The screen shows existing authorizations and wallet replacements before you approve. **Approve selected DAOs** saves the default and enables the selected memberships; your roles and voting power stay the same. Select at most 20 at a time.
 
 If this wallet is not paired yet, pair it on the same screen. When the selected DAOs need your existing account keys, the primary button becomes **Unlock account to continue**. It opens **Account keys and recovery** inside the setup card. Unlock the saved kit, use a paired sign-in with full access enabled, approve this device from an unlocked device, or restore your original encrypted kit. Cancelling or completing kit recovery keeps the DAO selections. After unlocking, choose **Approve selected DAOs** to finish; recovery itself never enables a wallet. Then use **Return to your DAO or setup**.
 

@@ -84,6 +84,8 @@ test('keyboard navigation and forms remain usable on desktop and mobile', async 
   await expect(page.getByRole('link', { name: 'Skip to content' })).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page.locator('#main')).toBeFocused();
+  const menu = page.getByRole('button', { name: 'Menu', exact: true });
+  if (await menu.isVisible()) await menu.click();
   await page.getByRole('link', { name: 'Sign in', exact: true }).click();
   await page.getByRole('button', { name: 'New Account', exact: true }).click();
   await page.getByRole('button', { name: 'Own Keys', exact: true }).click();

@@ -92,6 +92,7 @@ test('sidebar order and icon fold control match the workspace navigation', async
     .getByRole('complementary', { name: 'Primary navigation' })
     .getByRole('navigation');
   await expect(navigation.locator(':scope > a, :scope > button')).toHaveText([
+    'Sign in',
     'My DAO',
     'Hub',
     'Create',
@@ -105,6 +106,13 @@ test('sidebar order and icon fold control match the workspace navigation', async
     'Names',
     'Help',
   ]);
+  await expect(
+    page.locator('.topbar').getByRole('link', { name: 'Sign in', exact: true }),
+  ).toHaveCount(0);
+  await expect(navigation.getByRole('link', { name: 'Sign in', exact: true })).toHaveAttribute(
+    'href',
+    '/account?returnTo=/hub',
+  );
   await expect(navigation.getByText('RESOURCES', { exact: true })).toHaveCount(0);
   await expect(navigation.getByText('WORKSPACE', { exact: true })).toHaveCount(0);
   await expect(page.locator('.nav-fold + .sidebar-footer')).toHaveCount(1);

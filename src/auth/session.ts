@@ -161,6 +161,13 @@ export function lockVault(): void {
   if (timer) clearTimeout(timer);
   timer = undefined;
 }
+export async function logoutAccount(): Promise<void> {
+  await api.logout();
+  lockVault();
+  const state = useWorkspace();
+  state.account = undefined;
+  state.memberships = [];
+}
 function touch() {
   if (timer) clearTimeout(timer);
   timer = setTimeout(lockVault, 10 * 60_000);

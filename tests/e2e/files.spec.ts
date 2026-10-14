@@ -237,6 +237,7 @@ test('uploads a public card image for a private DAO, retries the same request an
     panel.getByRole('button', { name: 'Sign and update card', exact: true }),
   ).toBeDisabled();
   await panel.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await openMenu(page);
   await page.getByRole('link', { name: 'Your account', exact: true }).click();
   await page.getByLabel('Vault password', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Unlock and sign in', exact: true }).click();

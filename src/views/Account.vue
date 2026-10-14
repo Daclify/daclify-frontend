@@ -27,6 +27,7 @@ import {
   saveRestoredVault,
   unlockAndLogin,
   lockVault,
+  logoutAccount,
   downloadBackup,
   vaultUnlocked,
   acceptProviderSession,
@@ -469,10 +470,7 @@ async function onSignedIn(account: Account) {
 async function logout() {
   busy.value = true;
   try {
-    await api.logout();
-    lockVault();
-    state.account = undefined;
-    state.memberships = [];
+    await logoutAccount();
     entry.value = 'choices';
   } catch (cause) {
     error.value = friendlyError(cause);
@@ -684,7 +682,7 @@ function backup() {
                 ? 'You hold the keys'
                 : 'Managed account'
       }}</span>
-      <button class="text-button danger" :disabled="busy" @click="logout">Sign out</button>
+      <button class="secondary danger" :disabled="busy" @click="logout">Sign out</button>
     </div>
     <p v-if="recoveryInfo?.assistedEver" class="notice" role="status">
       This vault previously authorized Daclify-assisted recovery. Recovery status below shows
@@ -1132,6 +1130,7 @@ function backup() {
 }
 .account-session-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;

@@ -12,6 +12,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
+  UserRound,
   Users,
   Bot,
   Vote,
@@ -124,6 +125,17 @@ onMounted(() => {
         Menu
       </button>
       <nav id="primary-links" :class="{ 'mobile-open': mobileOpen }">
+        <RouterLink
+          :to="{
+            path: state.account ? '/users/me' : '/account',
+            query: route.path === '/account' ? {} : { returnTo: accountReturn },
+          }"
+          :aria-label="state.account ? 'Your account' : 'Sign in'"
+          @click="mobileOpen = false"
+          ><UserRound class="nav-icon" aria-hidden="true" /><span class="nav-text">{{
+            state.account ? 'Your account' : 'Sign in'
+          }}</span></RouterLink
+        >
         <RouterLink
           :to="{ path: '/hub', query: { mine: '1' } }"
           aria-label="My DAO"
@@ -282,15 +294,8 @@ onMounted(() => {
           }}</span
           ><button v-if="vaultUnlocked" class="text-button" @click="lockVault">Lock keys</button
           ><button v-if="operator" class="secondary" @click="leaveOperator()">
-            Return to Daclify Hub</button
-          ><RouterLink
-            class="account-link"
-            :to="{
-              path: state.account ? '/users/me' : '/account',
-              query: route.path === '/account' ? {} : { returnTo: accountReturn },
-            }"
-            >{{ state.account ? 'Your account' : 'Sign in' }}</RouterLink
-          >
+            Return to Daclify Hub
+          </button>
         </div>
       </header>
       <main id="main" tabindex="-1">

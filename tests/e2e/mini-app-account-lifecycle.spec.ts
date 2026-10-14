@@ -81,6 +81,8 @@ test('connects an AI delegate, publishes an encrypted profile, then deletes the 
   );
   expect(redeemed.status(), await redeemed.text()).toBe(200);
   const grant = ApiRoutes.mcpRedeem.response.parse(await redeemed.json());
+  const menu = page.getByRole('button', { name: 'Menu', exact: true });
+  if (await menu.isVisible()) await menu.click();
   await page.getByRole('link', { name: 'Your account', exact: true }).click();
   await page.getByRole('button', { name: 'Edit profile & account', exact: true }).click();
   await page.getByRole('tab', { name: 'Profile', exact: true }).click();

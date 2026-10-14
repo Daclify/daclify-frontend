@@ -201,6 +201,53 @@ test.beforeEach(async ({ page }) => {
     });
   });
 });
+test('opens your account from the top of the menu and signs out without opening settings', async ({
+  page,
+}) => {
+  let signedIn = true;
+  let attempts = 0;
+  await page.route('**/v1/sign-in/session', (route) =>
+    route.fulfill(signedIn ? { json: { account } } : { status: 204 }),
+  );
+  await page.route(`**${ApiRoutes.logout.path}`, (route) => {
+    attempts++;
+    if (attempts === 1)
+      return route.fulfill({
+        status: 503,
+        json: { code: 'SERVICE_UNAVAILABLE', message: 'Unavailable' },
+      });
+    signedIn = false;
+    return route.fulfill({ json: null });
+  });
+  await page.goto('/hub?mine=1');
+  await menu(page);
+  const navigation = page
+    .getByRole('complementary', { name: 'Primary navigation' })
+    .getByRole('navigation');
+  await expect(navigation.locator(':scope > a').first()).toHaveText('Your account');
+  await expect(
+    page.locator('.topbar').getByRole('link', { name: 'Your account', exact: true }),
+  ).toHaveCount(0);
+  await navigation.getByRole('link', { name: 'Your account', exact: true }).click();
+  await expect(page).toHaveURL(/\/users\/me\?returnTo=/);
+  await expect(
+    page.getByRole('button', { name: 'Edit profile & account', exact: true }),
+  ).toBeVisible();
+  const signOut = page.getByRole('button', { name: 'Sign out', exact: true });
+  await expect(signOut).toBeVisible();
+  await signOut.click();
+  await expect(page.getByRole('alert')).toContainText('service');
+  await expect(signOut).toBeEnabled();
+  await signOut.click();
+  await expect(
+    page.getByRole('heading', { name: 'Your Daclify account', exact: true }),
+  ).toBeVisible();
+  await expect(signOut).toHaveCount(0);
+  await menu(page);
+  await expect(navigation.locator(':scope > a').first()).toHaveText('Sign in');
+  expect(attempts).toBe(2);
+});
+
 test('directory search can clear a no-match result and filters the own card too', async ({
   page,
 }) => {

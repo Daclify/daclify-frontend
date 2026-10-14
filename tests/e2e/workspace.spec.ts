@@ -87,6 +87,7 @@ test('walletless account and real DAO creation flow', async ({ page }) => {
   ).toBeVisible();
   await page.getByRole('button', { name: 'Vote Approve', exact: true }).click();
   await expect(page.getByText('Your vote: Approve', { exact: true })).toBeVisible();
+  await openMenu(page);
   await page.getByRole('link', { name: 'Your account', exact: true }).click();
   await page.getByRole('button', { name: 'Edit profile & account', exact: true }).click();
   await page.getByRole('tab', { name: 'Access & recovery', exact: true }).click();

@@ -13,7 +13,7 @@ import { useWorkspace } from '../state/workspace';
 import Account from './Account.vue';
 import { usePublicDirectory, profileContacts } from '../state/public-people';
 import LastDaoActivity from '../components/LastDaoActivity.vue';
-import { vaultUnlocked } from '../auth/session';
+import { vaultUnlocked, logoutAccount } from '../auth/session';
 import { readProfileForAudience } from '../auth/profile';
 import { decodeRawNativeProfile } from '@daclify/core-protocol/profiles';
 const route = useRoute(),
@@ -28,6 +28,19 @@ const route = useRoute(),
   profileRevision = ref(0),
   publicMember = ref<PublicMember>();
 const privateNotice = ref('');
+const signingOut = ref(false),
+  signOutError = ref('');
+async function logout() {
+  signingOut.value = true;
+  signOutError.value = '';
+  try {
+    await logoutAccount();
+  } catch (cause) {
+    signOutError.value = friendlyError(cause);
+  } finally {
+    signingOut.value = false;
+  }
+}
 const directory = usePublicDirectory();
 const user = computed(() =>
   unifyPublicMembers([
@@ -187,7 +200,19 @@ function saved() {
 }
 </script>
 <template>
-  <RouterLink class="help-link" to="/users"><ArrowLeft aria-hidden="true" />All users</RouterLink>
+  <div class="button-row">
+    <RouterLink class="help-link" to="/users"><ArrowLeft aria-hidden="true" />All users</RouterLink>
+    <button
+      v-if="selfRoute && state.account && !editing"
+      type="button"
+      class="secondary danger"
+      :disabled="signingOut"
+      @click="logout"
+    >
+      {{ signingOut ? 'Signing out…' : 'Sign out' }}
+    </button>
+  </div>
+  <p v-if="signOutError" class="alert" role="alert">{{ signOutError }}</p>
   <div v-if="error" class="alert" role="alert">
     <h1>Profile temporarily unavailable</h1>
     <p>Could not read this profile. {{ error }}</p>
