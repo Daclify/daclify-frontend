@@ -2,7 +2,6 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import type { BallotContent } from '@daclify/modules';
 import {
-  FileMetadataSchema,
   IdSchema,
   type DaoContent,
   type DaoSummary,
@@ -16,23 +15,22 @@ import {
   preparePrivateEpoch,
   encryptDaoJson,
   decryptDaoJson,
-  decryptDaoFile,
   grantPrivateEpoch,
   relayInstruction,
   vaultUnlocked,
   verifyPrivateEpochs,
 } from '../auth/session';
-import { decodeStoredBytes, verifyStoredFile, downloadFile } from '../content/files';
+import { downloadFile } from '../content/files';
 import FilePanel from './FilePanel.vue';
 import WorkspaceDialog from './WorkspaceDialog.vue';
 import WorkspaceActions from './WorkspaceActions.vue';
 import WorkspaceTabs from './WorkspaceTabs.vue';
+import { readDocumentForReview } from '../content/document-review';
 import { documentLabel } from '../content/document-labels';
 import { newDocumentId } from '../content/document-identity';
 import AdmissionPanel from './AdmissionPanel.vue';
 import MemberDirectory from './MemberDirectory.vue';
 import GoverningDocumentsPanel from './GoverningDocumentsPanel.vue';
-import { sha256Hex } from '../auth/vault';
 import { useWorkspace } from '../state/workspace';
 import { canSignMember } from '../auth/action-signer';
 import { validatePrivateHandover } from '../auth/private-handover';
@@ -43,6 +41,7 @@ const props = defineProps<{
   member: UserMembership | undefined;
   section: string;
   documentReference?: BallotContent['document'];
+  returnTo?: string | undefined;
 }>();
 const signerReady = computed(() => canSignMember(props.member));
 const linkedDocument = computed(() => props.documentReference);
@@ -705,37 +704,20 @@ async function retrieve(document: DaoContent['documents'][number]) {
   busy.value = true;
   error.value = '';
   try {
-    const stored = decodeStoredBytes(
-      (await api.documentBytes(props.dao.reference.daoId, document.document_id, document.version))
-        .content,
+    if (!content.value) throw new Error('DOCUMENT_UNKNOWN');
+    const opened = await readDocumentForReview(
+      props.dao.reference,
+      props.member?.active ? props.member.memberId : undefined,
+      document,
+      content.value,
     );
-    await verifyStoredFile(document, stored);
-    if (document.envelope_version === 1) {
-      if (!props.member || !content.value) throw new Error('EPOCH_UNAVAILABLE');
-      const opened = await decryptDaoFile(
-        props.dao.reference,
-        props.member.memberId,
-        document,
-        content.value,
-        stored,
-      );
-      if (current() && vaultUnlocked.value && props.member?.active) {
-        downloadFile(opened.bytes, opened.metadata);
-        return true;
-      }
-    } else {
-      const metadata =
-        document.metadata === '{}'
-          ? {
-              version: 1,
-              filename: `document-${document.document_id}-v${document.version}.bin`,
-              mediaType: 'application/octet-stream',
-            }
-          : JSON.parse(document.metadata);
-      if (current()) {
-        downloadFile(stored, FileMetadataSchema.parse(metadata));
-        return true;
-      }
+    if (
+      current() &&
+      opened.file &&
+      (document.envelope_version === 0 || (vaultUnlocked.value && props.member?.active))
+    ) {
+      downloadFile(opened.file.bytes, opened.file.metadata);
+      return true;
     }
   } catch (cause) {
     error.value = friendlyError(cause);
@@ -755,9 +737,15 @@ async function openManagedVersion(
     await decrypt(document);
     return decrypted.value.get(document.id);
   }
-  if ((await sha256Hex(new TextEncoder().encode(document.metadata))) !== document.commitment)
-    throw new Error('DOCUMENT_INTEGRITY');
-  return document.metadata;
+  if (!content.value) throw new Error('DOCUMENT_UNKNOWN');
+  return (
+    await readDocumentForReview(
+      props.dao.reference,
+      props.member?.memberId,
+      document,
+      content.value,
+    )
+  ).text;
 }
 </script>
 <template>
@@ -929,6 +917,7 @@ async function openManagedVersion(
         substituted.
       </p>
       <p v-if="linkedDocument">
+        <RouterLink v-if="returnTo" :to="returnTo">Back to the previous section</RouterLink>
         <router-link :to="`/dao/${dao.reference.daoId}/documents`"
           >Show latest document versions</router-link
         >

@@ -1,8 +1,12 @@
 <script setup lang="ts">
 import { documentLabel } from '../content/document-labels';
+import DocumentReview from './DocumentReview.vue';
+import BallotExportButton from './BallotExportButton.vue';
+import DocumentReferenceLink from './DocumentReferenceLink.vue';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { X } from '@lucide/vue';
 import { readableDuration } from '../content/governance-inputs';
+import { prepareBallotVote } from '@daclify/modules/sdk';
 import type {
   DaoContent,
   DaoSummary,
@@ -34,6 +38,7 @@ const title = ref('Community council'),
   error = ref(''),
   choice = ref<Record<string, number>>({}),
   reviewed = ref<Record<string, boolean>>({}),
+  reviewedRules = ref<Record<string, boolean>>({}),
   recallDocuments = ref<Record<string, string>>({});
 const dialog = ref<HTMLDialogElement>();
 const documents = ref<DaoContent>();
@@ -219,6 +224,52 @@ function ballot(id: string) {
 function voted(id: string) {
   return props.data.votes.some((v) => v.ballot === id && v.member === props.member?.memberId);
 }
+function voteReviewError(id: string): string {
+  const poll = ballot(id),
+    election = props.data.elections.find((row) => row.id === id);
+  if (!poll || !election || !module.value) return 'The election ballot is unavailable.';
+  try {
+    prepareBallotVote({
+      dao: props.dao.reference,
+      decide: module.value.deployment.account,
+      memberId: props.member?.memberId ?? poll.creator,
+      ballot: poll,
+      definitions: props.data.ballotDefinitions,
+      choice: 0,
+      election,
+    });
+    return '';
+  } catch (cause) {
+    return friendlyError(cause);
+  }
+}
+async function voteElection(id: string) {
+  const poll = ballot(id),
+    election = props.data.elections.find((row) => row.id === id);
+  if (
+    !module.value ||
+    !props.member ||
+    !poll ||
+    !election ||
+    !reviewed.value[id] ||
+    !reviewedRules.value[id]
+  )
+    return;
+  try {
+    const prepared = prepareBallotVote({
+      dao: props.dao.reference,
+      decide: module.value.deployment.account,
+      memberId: props.member.memberId,
+      ballot: poll,
+      definitions: props.data.ballotDefinitions,
+      choice: choice.value[id] ?? 0,
+      election,
+    });
+    await sign(prepared.action, prepared.fields, 'Election vote recorded once.');
+  } catch (cause) {
+    error.value = friendlyError(cause);
+  }
+}
 function nominated(id: string) {
   return props.data.nominations.some(
     (n) => n.election_id === id && n.member_id === props.member?.memberId,
@@ -397,6 +448,16 @@ function termStatus(term: ModuleState['terms'][number]) {
         {{ date(election.term_start) }} — {{ date(election.term_end) }}
       </p>
       <p>
+        <DocumentReferenceLink
+          :dao-id="dao.reference.daoId"
+          :document-id="election.document_id"
+          :version="election.document_version"
+          :commitment="election.document_commitment"
+          :return-to="`/dao/${dao.reference.daoId}/decide`"
+          label="Review election rules"
+        />
+      </p>
+      <p>
         Quorum follows the frozen DAO policy. Abstention counts for quorum. A tied group must fit
         entirely within the remaining seats; otherwise those seats stay vacant. Ineligible winners
         leave vacancies. Approved liabilities and permanent roles are separate.
@@ -443,6 +504,19 @@ function termStatus(term: ModuleState['terms'][number]) {
           {{ ballot(election.id)?.denominator }} · closes
           {{ date(ballot(election.id)?.closes ?? 0) }}
         </p>
+        <DocumentReview
+          :dao="dao.reference"
+          :member="member"
+          :content="documents"
+          :document-id="election.document_id"
+          :version="election.document_version"
+          :commitment="election.document_commitment"
+          @reviewed="(ready) => (reviewedRules[election.id] = ready)"
+        />
+        <p v-if="voteReviewError(election.id)" class="alert" role="alert">
+          {{ voteReviewError(election.id) }}
+        </p>
+        <BallotExportButton :dao-id="dao.reference.daoId" :ballot-id="election.id" />
         <ul>
           <li>Abstain · {{ ballot(election.id)?.tallies[0] ?? '0' }}</li>
           <li v-for="(candidate, index) in election.candidates" :key="candidate">
@@ -456,13 +530,7 @@ function termStatus(term: ModuleState['terms'][number]) {
             member?.active &&
             !voted(election.id)
           "
-          @submit.prevent="
-            sign(
-              'vote',
-              { ...actor(), ballot_id: election.id, choice: choice[election.id] ?? 0 },
-              'Election vote recorded once.',
-            )
-          "
+          @submit.prevent="voteElection(election.id)"
         >
           <label :for="`election-choice-${election.id}`">Your choice</label
           ><select :id="`election-choice-${election.id}`" v-model.number="choice[election.id]">
@@ -477,7 +545,18 @@ function termStatus(term: ModuleState['terms'][number]) {
           ><label class="checkbox"
             ><input v-model="reviewed[election.id]" type="checkbox" />I reviewed the frozen
             candidates, term and election rules</label
-          ><button :disabled="!allowed('vote') || !reviewed[election.id]">
+          ><button
+            :disabled="
+              !allowed(
+                data.ballotDefinitions.some((row) => row.ballot_id === election.id)
+                  ? 'votecommit'
+                  : 'vote',
+              ) ||
+              !reviewed[election.id] ||
+              !reviewedRules[election.id] ||
+              !!voteReviewError(election.id)
+            "
+          >
             Sign election vote
           </button>
         </form>

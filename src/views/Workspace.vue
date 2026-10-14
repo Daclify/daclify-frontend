@@ -38,6 +38,7 @@ const invalidDocumentLink = computed(
     ['document', 'version', 'commitment'].some((key) => route.query[key] !== undefined) &&
     !linkedDocument.value,
 );
+const documentReturnTo = computed(()=>typeof route.query.returnTo==='string' && route.query.returnTo.startsWith(`/dao/${route.params.id}/`) && /^\/dao\/[0-9]+\/[a-z-]+$/.test(route.query.returnTo) ? route.query.returnTo : undefined);
 const dao = computed(() =>
   state.daos.find(
     (d) =>
@@ -324,6 +325,7 @@ const setupTabs = computed<ReadonlyArray<readonly [string, string]>>(() => [
     </p>
     <ContentPanel
       :document-reference="section === 'documents' ? linkedDocument : undefined"
+      :return-to="section === 'documents' ? documentReturnTo : undefined"
       v-else-if="['documents', 'members'].includes(section)"
       :key="panelKey"
       :dao="dao"

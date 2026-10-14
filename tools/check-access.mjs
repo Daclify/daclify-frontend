@@ -321,7 +321,7 @@ const moduleData = ModuleStateSchema.parse({
 });
 api.people = async () => ({ profiles: [], next: null });
 api.moduleState = async () => moduleData;
-api.treasury = async (id) => ({ dao: reference(id), obligations: [] });
+api.treasury = async (id) => TreasurySchema.parse({ dao: reference(id), obligations: [], evidence: [] });
 const modules = mount(
   ModulesPanel,
   reactive({ dao: dao('1'), member: member('1'), section: 'works' }),

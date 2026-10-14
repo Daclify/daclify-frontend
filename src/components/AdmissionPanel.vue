@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DocumentReferenceLink from './DocumentReferenceLink.vue';
 import WorkspaceDialog from './WorkspaceDialog.vue';
 import { documentLabel } from '../content/document-labels';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
@@ -534,6 +535,7 @@ function eligibleAction(action: string) {
       </p>
       <details>
         <summary>Review complete public identity and document commitment</summary>
+        <p><DocumentReferenceLink :dao-id="dao.reference.daoId" :document-id="app.document_id" :version="app.document_version" :commitment="app.document_commitment" :return-to="`/dao/${dao.reference.daoId}/members`" label="Review application evidence" /></p>
         <p class="mono wrap">{{ app.signing_key }}</p>
         <p class="mono wrap">{{ app.encryption_key }}</p>
         <p>

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ABI, PublicKey, Serializer, Signature } from '@wharfkit/antelope';
+import { ABI, Checksum256, PublicKey, Serializer, Signature } from '@wharfkit/antelope';
 import {
   ApiRoutes,
   LoginMessageSchema,
@@ -7,7 +7,7 @@ import {
   Uint64Schema,
 } from '@daclify/core-protocol';
 import { instructionDigest } from '@daclify/core-protocol/sdk';
-import { DecideActionSchemas, decideAbi } from '@daclify/modules/sdk';
+import { DecideActionSchemas, decideAbi, ballotCommitment } from '@daclify/modules/sdk';
 import { createVault } from '../../src/auth/vault';
 import { expect, test } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
@@ -116,6 +116,8 @@ test('signs a poll with its explanation and exact document, then records the sel
 }) => {
   test.setTimeout(60000);
   const state = await moduleFixture(page);
+  const document=state.content.documents[0];if(!document)throw Error('Fixture document');
+  document.commitment=Checksum256.hash(new TextEncoder().encode(document.metadata)).toString();
   const password = 'disposable ballot content fixture';
   const vault = await createVault(password);
   state.account.signingKey = vault.signingPublicKey;
@@ -175,17 +177,18 @@ test('signs a poll with its explanation and exact document, then records the sel
       type: body.request.action,
       data: body.request.data,
     });
-    if (body.request.action === 'open') {
-      const input = DecideActionSchemas.open.extend(nativeIds).parse(Serializer.objectify(decoded));
+    if (body.request.action === 'openpoll') {
+      const input = DecideActionSchemas.openpoll.extend(nativeIds).parse(Serializer.objectify(decoded));
       expect(input.choices).toBe(3);
       expect(input.quorum).toBe(state.governance.policy?.config.quorum);
       expect(input.approval).toBe(state.governance.policy?.config.approval);
       expect(JSON.parse(input.metadata)).toEqual({
-        schemaVersion: 2,
+        schemaVersion: 3,
+        semantics: 'poll',
         title: 'Repair day',
         description,
         options,
-        document: { documentId: '42', version: 1, commitment: 'aa'.repeat(32) },
+        document: { documentId: '42', version: 1, commitment: document.commitment },
       });
       opened = input.ballot_id;
       state.modules.ballots.push({
@@ -205,9 +208,14 @@ test('signs a poll with its explanation and exact document, then records the sel
         winner: -1,
         metadata: input.metadata,
       });
+      const poll=state.modules.ballots.find(row=>row.id===opened);
+      if(!poll)throw Error('Fixture opened ballot');
+      const definition={ballot_id:opened,dao_id:'1',version:1,purpose:1,policy_revision:'0',policy_hash:'00'.repeat(32),commitment:'00'.repeat(32)};
+      definition.commitment=ballotCommitment({chainId:state.modules.dao.chainId,runtime:state.modules.dao.contract,decide:'decide',ballot:poll,definition});
+      state.modules.ballotDefinitions.push(definition);
     } else {
-      expect(body.request.action).toBe('vote');
-      const input = DecideActionSchemas.vote.extend(nativeIds).parse(Serializer.objectify(decoded));
+      expect(body.request.action).toBe('votecommit');
+      const input = DecideActionSchemas.votecommit.extend(nativeIds).parse(Serializer.objectify(decoded));
       expect(input.ballot_id).toBe(opened);
       expect(input.choice).toBe(1);
       state.modules.votes.push({ id: '21', ballot: opened, member: '1', weight: '1', choice: 1 });
@@ -238,6 +246,9 @@ test('signs a poll with its explanation and exact document, then records the sel
   await form.getByLabel('Supporting document (optional)').selectOption('11');
   await form.getByRole('button', { name: 'Open ballot', exact: true }).click();
   await expect(page.getByText('Ballot opened', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Vote Saturday', exact: true })).toBeDisabled();
+  await page.getByRole('button',{name:'Open verified supporting document',exact:true}).click();
+  await page.getByLabel('I reviewed this document version',{exact:true}).check();
   await page.getByRole('button', { name: 'Vote Saturday', exact: true }).click();
   await expect(page.getByText('Your vote: Saturday', { exact: true })).toBeVisible();
   expect(writes).toBe(2);

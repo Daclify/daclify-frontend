@@ -55,13 +55,13 @@ export const toolGuides: Record<
     icon: MessageCircle,
     example: 'Ask your members whether a new module would be useful before committing money.',
     steps: [
-      'Publish a public title and explanation. Choose Reject/Approve or a single-choice poll with 3–16 options, using the DAO’s saved voting rules.',
+      'Publish a public title and explanation. Choose Reject/Approve or a single-choice poll with 2–16 options, using the DAO’s saved voting rules.',
       'Let eligible members vote during the agreed period.',
       'Finalize and discuss the outcome before making a separate authorized commitment.',
     ],
     requirements: 'Decide and a voting policy matching the DAO.',
     limits:
-      'An advisory poll does not reserve Treasury funds or create a payable obligation. Its unique leading choice must reach the DAO’s approval threshold; neutral two-option polls and abstention are not supported.',
+      'An advisory poll does not reserve Treasury funds or create a payable obligation. Its unique leading choice must reach the DAO’s approval threshold; either option can win a neutral two-option poll. Abstention is not supported.',
   },
   'milestone-work': {
     icon: Flag,
@@ -74,7 +74,7 @@ export const toolGuides: Record<
     ],
     requirements: 'Works, a funded DAO treasury, a contributor and an independent reviewer.',
     limits:
-      'Contributors cannot approve their own work. Cancelling work preserves approved liabilities. No dispute arbitration is implemented.',
+      'Contributors cannot approve their own work. Cancelling work preserves approved liabilities. Protected agreements use eligible-member votes excluding contributors and all reviewers, then a named backup. Unresolved funds remain reserved until matching settlement consent.',
   },
   'grant-round': {
     icon: Sprout,
@@ -107,7 +107,7 @@ export const toolGuides: Record<
     icon: CalendarDays,
     example: 'Approve six monthly installments for a community coordinator.',
     steps: [
-      'Choose a contributor, native-token amount, future UTC start date and interval.',
+      'Choose a contributor, agreed name, exact terms document, native-token amount, future UTC start date and interval.',
       'Fund and commit a fixed term of up to twelve installments.',
       'Settle due installments; future installments wait for their due times.',
     ],

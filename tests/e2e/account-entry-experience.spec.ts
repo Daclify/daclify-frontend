@@ -100,7 +100,7 @@ test('connected app keeps the requested method and its safe return destination',
     ['email', 'E-Mail'],
     ['telegram', 'Telegram'],
     ['passkey', 'Passkey'],
-  ]) {
+  ] as const) {
     const destination = `/apps/consent?request=6d23835b-c99f-4c78-aad1-3a215b5ab50c#daclify_method=${method}${hints}`;
     await page.goto(destination);
     await main(page).getByRole('link', { name: 'Sign in', exact: true }).click();

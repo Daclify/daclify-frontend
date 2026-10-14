@@ -1123,6 +1123,19 @@ export const api = {
       undefined,
       30000,
     ),
+  arbitration: (input: z.infer<typeof ModuleApiRoutes.arbitration.input>) =>
+    request(
+      ModuleApiRoutes.arbitration.path,
+      ModuleApiRoutes.arbitration.response,
+      ModuleApiRoutes.arbitration.input.parse(input),
+    ),
+  ballotExport: (daoId: string, ballotId: string) =>
+    request(
+      ModuleApiRoutes.ballotExport.path
+        .replace(':id', IdSchema.parse(daoId))
+        .replace(':ballotId', IdSchema.parse(ballotId)),
+      ModuleApiRoutes.ballotExport.response,
+    ),
   moduleState: (daoId: string, query: z.infer<typeof ModuleApiRoutes.state.query> = {}) =>
     request(
       ModuleApiRoutes.state.path.replace(':id', IdSchema.parse(daoId)) +
@@ -1913,6 +1926,16 @@ export function friendlyError(error: unknown): string {
         'The account, wallet, network or page changed. Review the current action and sign again.',
       BALLOT_METADATA_SIZE:
         'The ballot text and choices exceed the on-chain size limit. Shorten them or put the details in a supporting document.',
+      BALLOT_COMMITMENT_REQUIRED:
+        'This ballot needs the updated approval flow. Reload the portal and review it again.',
+      BALLOT_DEFINITION_REQUIRED:
+        'The verified ballot definition is missing. Refresh the records before voting.',
+      BALLOT_DEFINITION_CHANGED:
+        'The ballot text, rules or target do not match its on-chain definition. Refresh and review it again.',
+      BALLOT_DEFINITION_DOMAIN:
+        'This ballot definition belongs to a different community or deployment.',
+      SERVICE_SKILLS_DUPLICATE: 'List each skill once.',
+      SERVICE_OFFER_SIZE: 'The stored offer is too long. Shorten its summary or skills.',
       NATIVE_UNLINKED: 'Authorize this native wallet for the DAO member before signing.',
       NATIVE_WALLET_MISSING: 'Connect your Telos Zero wallet before signing.',
       EVM_WALLET_MISSING: 'Connect your Telos EVM wallet before signing.',
@@ -1923,6 +1946,8 @@ export function friendlyError(error: unknown): string {
       EPOCH_UNAVAILABLE: 'Ask a DAO administrator for a key grant for this epoch.',
       EPOCH_KEY_MISMATCH:
         'The key grant does not match the DAO epoch. Ask an administrator to resolve it.',
+      ARBITRATION_PREPARATION_PENDING:
+        'The voter snapshot is still being prepared. Continue preparing voters to resume it.',
       DOCUMENT_INTEGRITY: 'The document failed its integrity check and was not opened.',
       DOCUMENT_CONTENT_UNAVAILABLE:
         'This version could not be opened. Unlock your account and check permitted document access before accepting.',

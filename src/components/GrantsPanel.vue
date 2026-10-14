@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import ProtectionTermsForm from './ProtectionTermsForm.vue';
+import type { WorksActions } from '@daclify/modules/sdk';
+import DocumentReferenceLink from './DocumentReferenceLink.vue';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { Plus, CircleHelp, X, Trash2 } from '@lucide/vue';
 import {
@@ -30,6 +33,7 @@ const props = defineProps<{
   refreshChoices: () => Promise<void>;
   canSign: boolean;
   busy: boolean;
+  protectionRequired: boolean;
   actionError: string;
   actionSuccess: string;
   now: number;
@@ -111,6 +115,21 @@ onBeforeUnmount(() => {
 const selectedApp = computed(() =>
   props.data.applications.find((app) => app.id === selectedAppId.value),
 );
+const selectedProtection = computed(() =>
+  props.data.protectedGrantTerms.find((row) => row.id === selectedApp.value?.id),
+);
+async function offerProtection(
+  rules: Omit<WorksActions['offerprot'], 'runtime' | 'dao_id' | 'member_id' | 'project_id'>,
+) {
+  const app = selectedApp.value;
+  if (!app || !allowed('offerprot')) return;
+  confirmed.value = false;
+  await sign(
+    'offerprot',
+    { ...actor(), application_id: app.id, ...rules },
+    'Protected application terms offered. Confirm the exact commitment before submitting.',
+  );
+}
 const selectedRound = computed(() =>
   props.data.rounds.find((round) => round.id === draft.value.roundId),
 );
@@ -613,11 +632,19 @@ async function submit() {
           !accepts(props.data.rounds.find((r) => r.id === app.round_id))
         )
           return;
-        success = await sign(
-          'submitapp',
-          { ...actor(), application_id: app.id },
-          'Application submitted with explicit consent to the frozen terms.',
-        );
+        const protection = selectedProtection.value;
+        if (props.protectionRequired && !protection) return;
+        success = protection
+          ? await sign(
+              'submitprot',
+              { ...actor(), application_id: app.id, expected: protection.commitment },
+              'Protected application submitted with exact consent.',
+            )
+          : await sign(
+              'submitapp',
+              { ...actor(), application_id: app.id },
+              'Application submitted with explicit consent to the frozen terms.',
+            );
       } else if (mode.value === 'award') {
         const p = props.policy?.policy?.config,
           d = decide.value;
@@ -762,6 +789,14 @@ function navigateTabs(event: KeyboardEvent) {
     <article v-for="round in visibleRounds" :key="round.id" class="panel grant-record">
       <header class="record-heading">
         <h2>{{ roundTitle(round) }}</h2>
+        <DocumentReferenceLink
+          :dao-id="dao.reference.daoId"
+          :document-id="round.document_id"
+          :version="round.document_version"
+          :commitment="published(round.document_id, round.document_version)?.commitment"
+          :return-to="`/dao/${dao.reference.daoId}/grants`"
+          label="Review round rules"
+        />
         <span class="status-pill">{{ roundPhase(round) }}</span>
       </header>
       <div class="two-column">
@@ -853,6 +888,14 @@ function navigateTabs(event: KeyboardEvent) {
     <article v-for="app in visibleApps" :key="app.id" class="panel grant-record">
       <header class="record-heading">
         <h2>{{ appTitle(app) }}</h2>
+        <DocumentReferenceLink
+          :dao-id="dao.reference.daoId"
+          :document-id="app.document_id"
+          :version="app.document_version"
+          :commitment="published(app.document_id, app.document_version)?.commitment"
+          :return-to="`/dao/${dao.reference.daoId}/grants`"
+          label="Review application"
+        />
         <span class="status-pill">{{ appStatus(app) }}</span>
       </header>
       <p>{{ memberName(app.contributor) }}</p>
@@ -873,6 +916,14 @@ function navigateTabs(event: KeyboardEvent) {
         </ul>
         <p v-if="app.decision_doc !== '0'">
           Review record: {{ referenceLabel(app.decision_doc, app.decision_version) }}
+          <DocumentReferenceLink
+            :dao-id="dao.reference.daoId"
+            :document-id="app.decision_doc"
+            :version="app.decision_version"
+            :commitment="published(app.decision_doc, app.decision_version)?.commitment"
+            :return-to="`/dao/${dao.reference.daoId}/grants`"
+            label="Review eligibility decision"
+          />
         </p>
         <p class="field-help">Reference: application {{ app.id }} · revision {{ app.revision }}.</p>
       </details>
@@ -969,6 +1020,35 @@ function navigateTabs(event: KeyboardEvent) {
     <p v-else-if="!canSign" class="notice">
       Choose an authorized signer in Signing &amp; wallets before saving.
     </p>
+    <template v-if="mode === 'consent' && selectedApp"
+      ><p v-if="protectionRequired && !selectedProtection" class="notice">
+        This DAO requires protected terms and fresh consent before Grants funding.
+      </p>
+      <ProtectionTermsForm
+        v-if="!selectedProtection && selectedApp.status === 0"
+        :contributor="selectedApp.contributor"
+        :decide="decide?.deployment.account ?? ''"
+        :members="content?.members ?? []"
+        :labels="memberNames"
+        :allowed="allowed('offerprot')"
+        :busy="busy"
+        @offer="offerProtection"
+      />
+      <p v-if="selectedProtection">
+        Protected member vote · quorum {{ selectedProtection.rules.quorum / 100 }}% · approval
+        {{ selectedProtection.rules.approval / 100 }}%. DAO representative
+        {{
+          memberNames[selectedProtection.rules.representative] ||
+          selectedProtection.rules.representative
+        }}; backup
+        {{ memberNames[selectedProtection.rules.backup] || selectedProtection.rules.backup }}.
+        Review {{ selectedProtection.rules.review_seconds / 86400 }} days, challenge
+        {{ selectedProtection.rules.challenge_seconds / 86400 }} days, vote
+        {{ selectedProtection.rules.vote_seconds / 86400 }} days, backup
+        {{ selectedProtection.rules.backup_seconds / 86400 }} days. Unresolved funds remain
+        reserved. Commitment: <span class="mono wrap">{{ selectedProtection.commitment }}</span>
+      </p></template
+    >
     <form @submit.prevent="submit">
       <fieldset :disabled="busy">
         <template v-if="mode === 'round'">
@@ -1374,7 +1454,8 @@ function navigateTabs(event: KeyboardEvent) {
           <button
             v-else-if="mode === 'consent'"
             :disabled="
-              !allowed('submitapp') ||
+              !allowed(selectedProtection ? 'submitprot' : 'submitapp') ||
+              (protectionRequired && !selectedProtection) ||
               !selectedApp ||
               selectedApp.status !== 0 ||
               !confirmed ||

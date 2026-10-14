@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import WorkspaceDialog from './WorkspaceDialog.vue';
 import { documentLabel } from '../content/document-labels';
+import { prepareBallotVote } from '@daclify/modules/sdk';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import type { DaoContent, DaoSummary, UserMembership } from '@daclify/core-protocol';
 import {
@@ -114,6 +115,7 @@ async function load(more = false) {
         registrations: [...data.value.registrations, ...page.registrations],
         changes: [...data.value.changes, ...page.changes],
         ballots: [...data.value.ballots, ...page.ballots],
+        ballotDefinitions: [...data.value.ballotDefinitions, ...page.ballotDefinitions],
         votes: [...data.value.votes, ...page.votes],
         acceptedAdoptionIds: [...data.value.acceptedAdoptionIds, ...page.acceptedAdoptionIds],
       };
@@ -358,13 +360,49 @@ async function clear(row: Change) {
     if (!disposed && domain === context.value) busy.value = false;
   }
 }
+function voteReviewError(row: Change): string {
+  const poll = ballot(row),
+    module = data.value?.module;
+  if (!poll || !module || !data.value) return 'The document ballot is unavailable.';
+  try {
+    prepareBallotVote({
+      dao: props.dao.reference,
+      decide: module.deployment.account,
+      memberId: props.member?.memberId ?? poll.creator,
+      ballot: poll,
+      definitions: data.value.ballotDefinitions,
+      choice: 0,
+      documentChange: row,
+    });
+    return '';
+  } catch (cause) {
+    return friendlyError(cause);
+  }
+}
+function voteAction(row: Change) {
+  return data.value?.ballotDefinitions.some((item) => item.ballot_id === row.ballot_id)
+    ? 'votecommit'
+    : 'vote';
+}
 async function vote(row: Change, choice: number) {
   if (!opened.value.has(row.id)) return;
-  await run(
-    'vote',
-    { ...actor(), ballot_id: row.ballot_id, choice },
-    'Your vote on this document version is recorded.',
-  );
+  const poll = data.value?.ballots.find((value) => value.id === row.ballot_id),
+    module = data.value?.module;
+  if (!poll || !module || !data.value || !props.member) return;
+  try {
+    const prepared = prepareBallotVote({
+      dao: props.dao.reference,
+      decide: module.deployment.account,
+      memberId: props.member.memberId,
+      ballot: poll,
+      definitions: data.value.ballotDefinitions,
+      choice,
+      documentChange: row,
+    });
+    await run(prepared.action, prepared.fields, 'Your vote on this document version is recorded.');
+  } catch (cause) {
+    error.value = friendlyError(cause);
+  }
 }
 async function finalize(row: Change) {
   const domain = context.value;
@@ -582,13 +620,17 @@ async function details(kind: 'history' | 'acceptances', id: string, more = false
                 {{ (ballot(pending)?.quorum ?? 0) / 100 }}% · approval
                 {{ (ballot(pending)?.approval ?? 0) / 100 }}%
               </p>
+              <p v-if="voteReviewError(pending)" role="alert" class="alert">
+                {{ voteReviewError(pending) }}
+              </p>
               <div class="document-actions" v-if="ballot(pending)?.status === 0">
                 <template v-if="(ballot(pending)?.closes ?? 0) > now">
                   <button
                     :disabled="
                       busy ||
                       !opened.has(pending.id) ||
-                      !allowed('vote') ||
+                      !allowed(voteAction(pending)) ||
+                      !!voteReviewError(pending) ||
                       data.votes.some(
                         (row) =>
                           row.ballot === pending.ballot_id && row.member === member?.memberId,
@@ -603,7 +645,8 @@ async function details(kind: 'history' | 'acceptances', id: string, more = false
                     :disabled="
                       busy ||
                       !opened.has(pending.id) ||
-                      !allowed('vote') ||
+                      !allowed(voteAction(pending)) ||
+                      !!voteReviewError(pending) ||
                       data.votes.some(
                         (row) =>
                           row.ballot === pending.ballot_id && row.member === member?.memberId,

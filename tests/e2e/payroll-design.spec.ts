@@ -8,7 +8,7 @@ import {
   RecoveryKitSchema,
 } from '@daclify/core-protocol';
 import { instructionDigest } from '@daclify/core-protocol/sdk';
-import { Catalog, ModulePermissions } from '@daclify/modules';
+import { Catalog, ModulePermissions, ModuleStateSchema } from '@daclify/modules';
 import { ModuleCodeHashes, PayrollActionSchemas, payrollAbi } from '@daclify/modules/sdk';
 import { ABI, PrivateKey, PublicKey, Serializer, Signature } from '@wharfkit/antelope';
 import { z } from 'zod';
@@ -16,6 +16,51 @@ import { createVault } from '../../src/auth/vault';
 import { moduleFixture } from './fixtures/module-design';
 
 test.use({ timezoneId: 'UTC' });
+
+test('renewal prefills a separately funded successor and keeps the original schedule readable', async ({
+  page,
+}) => {
+  const state = await fixture(page),
+    schedule = state.modules.schedules.find((row) => row.id === '90'),
+    document = state.content.documents.find((row) => row.id === '11');
+  if (!schedule || !document) throw Error('Fixture payroll');
+  state.modules.payrollTerms.push({
+    schedule_id: '90',
+    dao_id: '1',
+    schema_version: 1,
+    label: 'Original agreement',
+    document_id: document.document_id,
+    document_version: document.version,
+    commitment: document.commitment,
+    successor_of: '0',
+    references_released: false,
+  });
+  ModuleStateSchema.parse(state.modules);
+  await page.goto('/dao/1');
+  await page.getByRole('link', { name: 'Payroll', exact: true }).click();
+  await page.getByRole('button', { name: 'Renew with fresh funding', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Add payroll', exact: true });
+  await expect(dialog).toContainText(
+    'This creates a separately funded schedule; earlier installments remain payable.',
+  );
+  await expect(dialog.getByLabel('Recipient', { exact: true })).toHaveValue('2');
+  await expect(dialog.getByLabel('Terms document', { exact: true })).toHaveValue('11');
+  await expect(dialog.getByLabel('Amount per installment (TLOS)', { exact: true })).toHaveValue(
+    '10',
+  );
+  await expect(dialog.getByLabel('Installments', { exact: true })).toHaveValue('2');
+  await expect(
+    dialog.getByLabel('I checked the recipient, installments and total', { exact: true }),
+  ).not.toBeChecked();
+  await expect(dialog.getByLabel('First installment due (UTC)', { exact: true })).toHaveValue(
+    new Date((schedule.starts + schedule.interval * schedule.periods) * 1000)
+      .toISOString()
+      .slice(0, 19),
+  );
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(page.getByText('Agreed name: Original agreement', { exact: true })).toBeVisible();
+  expect(state.modules.schedules).toHaveLength(1);
+});
 
 async function fixture(page: Page, visitor = false) {
   const state = await moduleFixture(page, true, visitor);
@@ -140,6 +185,8 @@ test('payroll uses an accessible Add payroll popup with readable members and an 
   await recipient.selectOption('2');
   await expect(recipient.locator('option[value="2"]')).toHaveText('Bob Builder · bob');
   await expect(recipient.locator('option[value="3"]')).toHaveCount(0);
+  await dialog.getByLabel('Payroll name', { exact: true }).fill('Garden care');
+  await dialog.getByLabel('Terms document', { exact: true }).selectOption('11');
   const amount = dialog.getByLabel('Amount per installment (TLOS)', { exact: true });
   await expect(amount).toHaveValue('');
   await amount.fill('10');
@@ -251,7 +298,7 @@ test('signed payroll checks the code pin, encodes exact installments and preserv
   });
   await page.route('**/v1/relay', async (route) => {
     const input = ApiRoutes.relay.input.parse(route.request().postDataJSON());
-    expect(input.request.action).toBe('commit');
+    expect(input.request.action).toBe('commitdoc');
     expect(input.request.target).toBe('payroll');
     expect(
       Signature.from(input.sig).verifyDigest(
@@ -263,16 +310,28 @@ test('signed payroll checks the code pin, encodes exact installments and preserv
       Serializer.objectify(
         Serializer.decode({
           abi: ABI.from(payrollAbi),
-          type: 'commit',
+          type: 'commitdoc',
           data: input.request.data,
         }),
       ),
     );
-    for (const key of ['dao_id', 'member_id', 'schedule_id', 'recipient'])
+    for (const key of [
+      'dao_id',
+      'member_id',
+      'schedule_id',
+      'recipient',
+      'document_id',
+      'successor_of',
+    ])
       if (typeof fields[key] === 'number') fields[key] = String(fields[key]);
-    const decoded = PayrollActionSchemas.commit.parse(fields);
+    const decoded = PayrollActionSchemas.commitdoc.parse(fields);
     expect(decoded).toMatchObject({
       recipient: '2',
+      label: 'Garden care',
+      document_id: '42',
+      document_version: 1,
+      expected: 'aa'.repeat(32),
+      successor_of: '0',
       quantity: '10.0000 TLOS',
       periods: 3,
       interval: 604800,
@@ -304,6 +363,8 @@ test('signed payroll checks the code pin, encodes exact installments and preserv
   await add.click();
   const dialog = page.getByRole('dialog', { name: 'Add payroll', exact: true });
   await dialog.getByLabel('Recipient', { exact: true }).selectOption('2');
+  await dialog.getByLabel('Payroll name', { exact: true }).fill('Garden care');
+  await dialog.getByLabel('Terms document', { exact: true }).selectOption('11');
   const amount = dialog.getByLabel('Amount per installment (TLOS)', { exact: true });
   await amount.fill('10');
   await dialog.getByLabel('Installments', { exact: true }).fill('3');
