@@ -27,29 +27,27 @@ it('keeps verified history readable while member actions are disabled', async ()
   if (!manifest) throw new Error('FIXTURE_MANIFEST');
   vi.stubGlobal(
     'fetch',
-    vi
-      .fn()
-      .mockResolvedValue(
-        Response.json({
-          ...empty,
-          available: true,
-          module: {
-            manifest,
-            deployment: {
-              id: 'decide',
-              account: 'decide',
-              version: CONTRACT_VERSION,
-              codeHash: ModuleCodeHashes.decide,
-            },
-            enabled: false,
-            installed: true,
-            compatible: true,
-            codeVerified: true,
-            actions: [],
-            grants: [],
+    vi.fn().mockResolvedValue(
+      Response.json({
+        ...empty,
+        available: true,
+        module: {
+          manifest,
+          deployment: {
+            id: 'decide',
+            account: 'decide',
+            version: CONTRACT_VERSION,
+            codeHash: ModuleCodeHashes.decide,
           },
-        }),
-      ),
+          enabled: false,
+          installed: true,
+          compatible: true,
+          codeVerified: true,
+          actions: [],
+          grants: [],
+        },
+      }),
+    ),
   );
   expect((await api.governingDocuments('7')).available).toBe(true);
 });

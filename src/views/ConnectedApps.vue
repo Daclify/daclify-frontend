@@ -24,11 +24,17 @@ import { readAppResponse } from '@daclify/core-protocol/connected-apps';
 import { downloadFile } from '../content/files';
 import { canSignMember } from '../auth/action-signer';
 import { useWorkspace } from '../state/workspace';
-const props = defineProps<{ dao: DaoSummary; member: UserMembership | undefined }>(),
+import ActionSigner from '../components/ActionSigner.vue';
+const props = defineProps<{
+    dao: DaoSummary;
+    member: UserMembership | undefined;
+    showSigner?: boolean;
+  }>(),
   state = useWorkspace();
 const emit = defineEmits<{ registrationChanged: [] }>();
 const apps = ref<z.infer<typeof ApiRoutes.connectedApps.response>>([]),
   modules = ref<ModuleState>(),
+  loading = ref(false),
   busy = ref(false),
   error = ref(''),
   notice = ref(''),
@@ -45,6 +51,9 @@ const apps = ref<z.infer<typeof ApiRoutes.connectedApps.response>>([]),
   grantRecipient = ref('');
 const admin = computed(() => !!props.member?.active && props.member.admin),
   ready = computed(() => !!props.member?.active && canSignMember(props.member)),
+  activityDeployment = computed(() =>
+    modules.value?.modules.find((module) => module.deployment.id === 'activity'),
+  ),
   activity = computed(() =>
     modules.value?.modules.find(
       (module) =>
@@ -69,6 +78,8 @@ const context = computed(() =>
 async function load() {
   const started = generation;
   if (!props.member?.active) return;
+  loading.value = true;
+  error.value = '';
   try {
     const [registered, activityState, credentials] = await Promise.all([
       api.connectedApps(props.dao.reference.daoId),
@@ -93,6 +104,8 @@ async function load() {
     scoped.value = credentials;
   } catch (cause) {
     if (started === generation) error.value = friendlyError(cause);
+  } finally {
+    if (started === generation) loading.value = false;
   }
 }
 watch(
@@ -106,6 +119,7 @@ watch(
     error.value = '';
     notice.value = '';
     busy.value = false;
+    loading.value = false;
     void load();
   },
   { immediate: true },
@@ -489,11 +503,69 @@ async function more() {
       <p>Use one DAO membership across your community’s apps. Each app keeps its own database.</p>
       <p v-if="error" role="alert">{{ error }}</p>
       <p v-if="notice" role="status">{{ notice }}</p>
-      <p v-if="!activity">
-        Enable Community Activity in
-        <RouterLink :to="`/dao/${dao.reference.daoId}/modules`">DAO modules</RouterLink> to register
-        apps and record selected activity.
-      </p>
+      <p v-if="loading" role="status">Checking app setup…</p>
+      <button v-else-if="error && !modules" class="secondary" @click="load">Retry app setup</button>
+      <div v-else-if="modules && !activity" class="notice">
+        <p v-if="activityDeployment?.enabled">
+          Community Activity needs a verified, compatible deployment before app registration is
+          available.
+        </p>
+        <p v-else>
+          Enable Community Activity before registering an app or recording selected activity.
+        </p>
+        <RouterLink class="button" :to="`/dao/${dao.reference.daoId}/modules`">
+          {{
+            activityDeployment?.enabled ? 'Review Community Activity' : 'Enable Community Activity'
+          }}
+        </RouterLink>
+      </div>
+      <template v-if="admin && activity">
+        <ActionSigner v-if="showSigner && !ready" :member="member" compact />
+        <details :open="!apps.length">
+          <summary>Register or update an app</summary>
+          <form @submit.prevent="register">
+            <label>App ID<input v-model="appId" inputmode="numeric" required /></label>
+            <label>App name<input v-model="name" maxlength="80" required /></label>
+            <label
+              >Approved HTTPS origins<textarea
+                v-model="origins"
+                placeholder="https://garden.example"
+                required
+              />
+            </label>
+            <label
+              >Exact HTTPS login callbacks<textarea
+                v-model="callbacks"
+                placeholder="https://garden.example/login/callback"
+                required
+              />
+            </label>
+            <label
+              >Source API base (optional)<input
+                v-model="sourceApi"
+                type="url"
+                placeholder="https://garden.example"
+            /></label>
+            <label
+              >Cleanup endpoint (optional)<input
+                v-model="cleanupUrl"
+                type="url"
+                maxlength="512"
+                placeholder="https://garden.example/v1/cleanup"
+            /></label>
+            <p>
+              Cleanup acknowledgment comes from the app operator. Required shared evidence may
+              remain.
+            </p>
+            <p>
+              Saving signs a new native configuration revision. Existing app sign-ins and recording
+              grants must be renewed.
+            </p>
+            <button :disabled="busy || !ready">Register app</button>
+          </form>
+        </details>
+        <slot name="connection" />
+      </template>
       <article v-for="app in apps" :key="app.clientId" class="app-card">
         <h3>{{ app.config.name }}</h3>
         <p>
@@ -524,47 +596,6 @@ async function more() {
           </button>
         </div>
       </article>
-      <details v-if="admin && activity">
-        <summary>Register or update an app</summary>
-        <form @submit.prevent="register">
-          <label>App ID<input v-model="appId" inputmode="numeric" required /></label
-          ><label>App name<input v-model="name" maxlength="80" required /></label
-          ><label
-            >Approved HTTPS origins<textarea
-              v-model="origins"
-              placeholder="https://garden.example"
-              required
-            /></label
-          ><label
-            >Exact HTTPS login callbacks<textarea
-              v-model="callbacks"
-              placeholder="https://garden.example/login/callback"
-              required
-            />
-          </label>
-          <label
-            >Source API base (optional)<input
-              v-model="sourceApi"
-              type="url"
-              placeholder="https://garden.example"
-          /></label>
-          <label
-            >Cleanup endpoint (optional)<input
-              v-model="cleanupUrl"
-              type="url"
-              maxlength="512"
-              placeholder="https://garden.example/v1/cleanup"
-          /></label>
-          <p>
-            Cleanup acknowledgment comes from the app operator. Required shared evidence may remain.
-          </p>
-          <p>
-            Saving signs a new native configuration revision. Existing app sign-ins and recording
-            grants must be renewed.
-          </p>
-          <button :disabled="busy || !ready">Register app</button>
-        </form>
-      </details>
       <details>
         <summary>Your app recording grants</summary>
         <p>Revoking a grant stops further recording with that browser key.</p>

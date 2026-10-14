@@ -13,6 +13,7 @@ import {
 } from '@daclify/core-protocol';
 import { Catalog, ModuleStateSchema, ModulePermissions } from '@daclify/modules';
 import { ModuleCodeHashes } from '@daclify/modules/sdk';
+import AxeBuilder from '@axe-core/playwright';
 const network = NetworkSchema.parse({
     chainId: 'ab'.repeat(32),
     rpcUrl: 'http://127.0.0.1:18888',
@@ -240,4 +241,147 @@ test('lets administrators specify an approved cleanup endpoint without signing o
     ),
   ).toBeVisible();
   expect(writes).toBe(0);
+});
+
+async function openAdminConnection(
+  page: import('@playwright/test').Page,
+  moduleState: unknown,
+  registered: unknown = [],
+) {
+  await page.route('**' + ApiRoutes.memberships.path, (route) =>
+    route.fulfill({ json: { memberships: [{ ...member, admin: true }] } }),
+  );
+  await page.route('**/v1/daos/1/apps', (route) => route.fulfill({ json: registered }));
+  await page.route('**/v1/daos/1/modules*', (route) => route.fulfill({ json: moduleState }));
+  await page.goto('/mini-apps#connect');
+  await page.getByLabel('Choose a DAO', { exact: true }).selectOption('1');
+}
+
+test('shows the required module action before an impossible first registration', async ({
+  page,
+}) => {
+  await openAdminConnection(
+    page,
+    ModuleStateSchema.parse({
+      ...activity,
+      modules: activity.modules.map((module) => ({ ...module, enabled: false, installed: false })),
+    }),
+  );
+  const connection = page.getByRole('region', { name: 'Connect a mini app' });
+  const enable = connection.getByRole('link', { name: 'Enable Community Activity', exact: true });
+  await expect(enable).toBeVisible();
+  await expect(enable).toHaveAttribute('href', '/dao/1/modules');
+  await expect(connection.getByLabel('Registered app', { exact: true })).toHaveCount(0);
+  await expect(
+    connection.getByRole('button', { name: 'Get connection configuration', exact: true }),
+  ).toHaveCount(0);
+  await expect(connection.getByLabel('App name', { exact: true })).toHaveCount(0);
+});
+
+test('reveals first registration with an actionable locked-signer setup', async ({ page }) => {
+  await openAdminConnection(page, activity);
+  const connection = page.getByRole('region', { name: 'Connect a mini app' });
+  await expect(connection.getByLabel('App name', { exact: true })).toBeVisible();
+  await expect(
+    connection.getByRole('button', { name: 'Register app', exact: true }),
+  ).toBeDisabled();
+  const setup = connection.getByRole('link', { name: 'Set up approvals', exact: true });
+  await expect(setup).toBeVisible();
+  const href = await setup.getAttribute('href');
+  const destination = new URL(href ?? '', 'http://127.0.0.1');
+  expect(destination.pathname).toBe('/account');
+  expect(destination.searchParams.get('setup')).toBe('approvals');
+  expect(destination.searchParams.get('dao')).toBe('1');
+  expect(destination.searchParams.get('returnTo')).toBe('/mini-apps#connect');
+  await expect(connection.getByLabel('Registered app', { exact: true })).toHaveCount(0);
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test('keeps existing app configuration after registration and preserves its app choices', async ({
+  page,
+}) => {
+  await openAdminConnection(page, activity, apps);
+  const connection = page.getByRole('region', { name: 'Connect a mini app' });
+  const registered = connection.getByLabel('Registered app', { exact: true });
+  await expect(registered).toBeVisible();
+  await expect(registered.locator('option')).toHaveText(['Choose an app', 'Garden', 'Equipment']);
+  await expect(
+    connection.getByRole('button', { name: 'Get connection configuration', exact: true }),
+  ).toBeEnabled();
+  const ordered = await connection.locator('summary, label').allTextContents();
+  expect(ordered.findIndex((text) => text.trim() === 'Register or update an app')).toBeLessThan(
+    ordered.findIndex((text) => text.trim() === 'Registered app'),
+  );
+});
+
+test('offers a retry for a failed setup read without claiming the module is disabled', async ({
+  page,
+}) => {
+  await openAdminConnection(page, activity);
+  await page.route('**/v1/daos/1/modules*', (route) =>
+    route.fulfill({
+      status: 503,
+      json: { code: 'CHAIN_UNAVAILABLE', message: 'CHAIN_UNAVAILABLE' },
+    }),
+  );
+  await page.reload();
+  await page.getByLabel('Choose a DAO', { exact: true }).selectOption('1');
+  const connection = page.getByRole('region', { name: 'Connect a mini app' });
+  await expect(
+    connection.getByRole('button', { name: 'Retry app setup', exact: true }),
+  ).toBeVisible();
+  await expect(
+    connection.getByRole('link', { name: 'Enable Community Activity', exact: true }),
+  ).toHaveCount(0);
+  await page.route('**/v1/daos/1/modules*', (route) => route.fulfill({ json: activity }));
+  await connection.getByRole('button', { name: 'Retry app setup', exact: true }).click();
+  await expect(connection.getByLabel('App name', { exact: true })).toBeVisible();
+});
+
+for (const flag of ['codeVerified', 'compatible'] as const) {
+  test(`guides admins to review enabled Activity when ${flag} is false`, async ({ page }) => {
+    await openAdminConnection(
+      page,
+      ModuleStateSchema.parse({
+        ...activity,
+        modules: activity.modules.map((module) => ({ ...module, [flag]: false })),
+      }),
+    );
+    const connection = page.getByRole('region', { name: 'Connect a mini app' });
+    await expect(
+      connection.getByRole('link', { name: 'Review Community Activity', exact: true }),
+    ).toHaveAttribute('href', '/dao/1/modules');
+    await expect(
+      connection.getByRole('link', { name: 'Enable Community Activity', exact: true }),
+    ).toHaveCount(0);
+    await expect(connection.getByLabel('App name', { exact: true })).toHaveCount(0);
+    await expect(connection.getByLabel('Registered app', { exact: true })).toHaveCount(0);
+  });
+}
+
+test('keeps setup loading distinct from a disabled module', async ({ page }) => {
+  await openAdminConnection(page, activity);
+  let finishRead = () => {};
+  const pending = new Promise<void>((resolve) => {
+    finishRead = resolve;
+  });
+  await page.route('**/v1/daos/1/modules*', async (route) => {
+    await pending;
+    await route.fulfill({ json: activity });
+  });
+  try {
+    await page.reload();
+    await page.getByLabel('Choose a DAO', { exact: true }).selectOption('1');
+    const connection = page.getByRole('region', { name: 'Connect a mini app' });
+    await expect(connection.getByText('Checking app setup…', { exact: true })).toBeVisible();
+    await expect(
+      connection.getByRole('link', { name: 'Enable Community Activity', exact: true }),
+    ).toHaveCount(0);
+    await expect(connection.getByLabel('App name', { exact: true })).toHaveCount(0);
+    finishRead();
+    await expect(connection.getByLabel('App name', { exact: true })).toBeVisible();
+  } finally {
+    finishRead();
+  }
 });

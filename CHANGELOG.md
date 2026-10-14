@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.15.0-alpha.32 development
+
+Make Mini Apps registration show its next setup action: enable/review Community Activity, configure approvals, register, then get connection settings. Show loading and retry states, open registration for an empty app list and reuse the existing signer. Preserve app/grant actions and refresh exact core21/modules29 artifacts and formatting checks.
+
 ## 0.15.0-alpha.31 development
 
 Guide locked wallet activation into account recovery inside the approval card. Offer configured full-access sign-ins, retain selected DAOs through kit recovery and cancellation, and return keyboard focus to explicit approval after unlocking. Already enabled wallets work while account keys are locked. Keep existing membership, native/EVM consent, private-key and recovery checks.

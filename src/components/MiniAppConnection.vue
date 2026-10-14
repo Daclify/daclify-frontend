@@ -144,53 +144,62 @@ const labels = {
       Your community administrator registers apps. Ask them to connect your app; then choose the
       permissions you want to grant when signing in.
     </p>
-    <template v-if="member?.admin">
-      <h3>Get your app connection</h3>
-      <p>
-        Register the app below first. Use its exact HTTPS callback, deploy the starter with
-        persistent storage, then check its server.
-      </p>
-      <label :for="`mini-app-${daoId}`">Registered app</label
-      ><select :id="`mini-app-${daoId}`" v-model="selectedApp" :disabled="busy">
-        <option value="">Choose an app</option>
-        <option v-for="app in apps" :key="app.clientId" :value="app.config.appId">
-          {{ app.config.name }}
-        </option>
-      </select>
-      <div class="actions">
-        <button :disabled="busy || !selectedApp" @click="load()">
-          Get connection configuration</button
-        ><button class="secondary" :disabled="busy || !selectedApp" @click="load(true)">
-          Check app server
-        </button>
-      </div>
-      <p v-if="error" role="alert">{{ error }}</p>
-      <p v-if="notice" role="status">{{ notice }}</p>
-      <template v-if="bundle">
-        <p class="wrap">Exact login callback: {{ bundle.callbackUrl }}</p>
-        <p>Starter core {{ bundle.coreVersion }} · modules {{ bundle.modulesVersion }}</p>
-        <div class="actions">
-          <button class="secondary" @click="copy">Copy configuration</button
-          ><button class="secondary" @click="download">Download configuration</button
-          ><a :href="bundle.starterUrl" target="_blank" rel="noopener noreferrer"
-            >Download versioned starter ↗</a
-          >
-        </div>
+    <ConnectedApps
+      :dao="dao"
+      :member="member"
+      :show-signer="true"
+      @registration-changed="refreshApps"
+    >
+      <template #connection>
+        <template v-if="member?.admin && apps.length">
+          <h3>Get your app connection</h3>
+          <p>
+            Use the registered app's exact HTTPS callback, deploy the starter with persistent
+            storage, then check its server.
+          </p>
+          <label :for="`mini-app-${daoId}`">Registered app</label
+          ><select :id="`mini-app-${daoId}`" v-model="selectedApp" :disabled="busy">
+            <option value="">Choose an app</option>
+            <option v-for="app in apps" :key="app.clientId" :value="app.config.appId">
+              {{ app.config.name }}
+            </option>
+          </select>
+          <div class="actions">
+            <button :disabled="busy || !selectedApp" @click="load()">
+              Get connection configuration</button
+            ><button class="secondary" :disabled="busy || !selectedApp" @click="load(true)">
+              Check app server
+            </button>
+          </div>
+          <p v-if="error" role="alert">{{ error }}</p>
+          <p v-if="notice" role="status">{{ notice }}</p>
+          <template v-if="bundle">
+            <p class="wrap">Exact login callback: {{ bundle.callbackUrl }}</p>
+            <p>Starter core {{ bundle.coreVersion }} · modules {{ bundle.modulesVersion }}</p>
+            <div class="actions">
+              <button class="secondary" @click="copy">Copy configuration</button
+              ><button class="secondary" @click="download">Download configuration</button
+              ><a :href="bundle.starterUrl" target="_blank" rel="noopener noreferrer"
+                >Download versioned starter ↗</a
+              >
+            </div>
+          </template>
+          <ul v-if="diagnostics" aria-label="Connection checks">
+            <li v-for="check in diagnostics.checks" :key="check.stage">
+              {{ labels[check.stage] }}:
+              {{ check.status === 'not-run' ? 'Not checked' : check.status
+              }}<span v-if="check.codes.length"> · {{ check.codes.join(', ') }}</span>
+            </li>
+          </ul>
+          <p>
+            Server readiness checks the database binding. To verify login, sign into the app as a
+            member and review its consent request. Complete a test item and confirm the matching
+            receipt below. These steps require separate confirmation.
+          </p>
+          <RouterLink to="/docs/mini-app-database">Database and deployment guide ↗</RouterLink>
+        </template>
       </template>
-      <ul v-if="diagnostics" aria-label="Connection checks">
-        <li v-for="check in diagnostics.checks" :key="check.stage">
-          {{ labels[check.stage] }}: {{ check.status === 'not-run' ? 'Not checked' : check.status
-          }}<span v-if="check.codes.length"> · {{ check.codes.join(', ') }}</span>
-        </li>
-      </ul>
-      <p>
-        Server readiness checks the database binding. To verify login, sign into the app as a member
-        and review its consent request. Complete a test item and confirm the matching receipt below.
-        These steps require separate confirmation.
-      </p>
-      <RouterLink to="/docs/mini-app-database">Database and deployment guide ↗</RouterLink>
-    </template>
-    <ConnectedApps :dao="dao" :member="member" @registration-changed="refreshApps" />
+    </ConnectedApps>
   </section>
   <p v-else role="status">
     This DAO is unavailable on the selected network. Refresh the connection or choose another DAO.

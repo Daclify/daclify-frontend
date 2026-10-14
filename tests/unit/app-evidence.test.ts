@@ -26,9 +26,15 @@ it('keeps app evidence confidential and binds grants to the app, member, key and
     publicKey = z
       .object({ kty: z.literal('EC'), crv: z.literal('P-256'), x: z.string(), y: z.string() })
       .parse(await crypto.subtle.exportKey('jwk', pair.publicKey)),
-    privateKey = z.object({kty:z.literal('EC'),crv:z.literal('P-256'),x:z.string(),y:z.string(),d:z.string()}).parse(
-      await crypto.subtle.exportKey('jwk', pair.privateKey),
-    ),
+    privateKey = z
+      .object({
+        kty: z.literal('EC'),
+        crv: z.literal('P-256'),
+        x: z.string(),
+        y: z.string(),
+        d: z.string(),
+      })
+      .parse(await crypto.subtle.exportKey('jwk', pair.privateKey)),
     key = crypto.getRandomValues(new Uint8Array(32)),
     commitment = await sha256Hex(key),
     domain = appKeyGrantDomain(dao, '1', '9', '3');
