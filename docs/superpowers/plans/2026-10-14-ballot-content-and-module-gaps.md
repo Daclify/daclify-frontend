@@ -53,4 +53,4 @@ Files: frontend `docs/module-capability-gaps.md`, ballot guide/help, evidence le
 
 - [x] Run focused and full affected suites, types, lint, docs consistency, desktop/mobile/accessibility checks and clean build.
 - [x] Review diff inline; record exact results and remaining limits.
-- [ ] Commit and push dev; deploy the tested frontend to testnet using the existing atomic delivery process and verify public assets/portal health.
+- [x] Commit and push dev; deploy the tested frontend to testnet using the existing atomic delivery process and verify public assets/portal health. See the [delivery evidence](../../evidence/2026-10-14-ballot-content-delivery.md).
