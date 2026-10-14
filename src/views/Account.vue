@@ -682,7 +682,9 @@ function backup() {
                 ? 'You hold the keys'
                 : 'Managed account'
       }}</span>
-      <button class="secondary danger" :disabled="busy" @click="logout">Sign out</button>
+      <button v-if="!embedded" class="secondary danger" :disabled="busy" @click="logout">
+        Sign out
+      </button>
     </div>
     <p v-if="recoveryInfo?.assistedEver" class="notice" role="status">
       This vault previously authorized Daclify-assisted recovery. Recovery status below shows

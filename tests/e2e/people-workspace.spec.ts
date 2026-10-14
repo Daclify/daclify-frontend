@@ -230,9 +230,32 @@ test('opens your account from the top of the menu and signs out without opening 
   ).toHaveCount(0);
   await navigation.getByRole('link', { name: 'Your account', exact: true }).click();
   await expect(page).toHaveURL(/\/users\/me\?returnTo=/);
-  await expect(
-    page.getByRole('button', { name: 'Edit profile & account', exact: true }),
-  ).toBeVisible();
+  const actions = page.locator('.profile-hero').getByRole('group', { name: 'Profile actions' });
+  await expect(actions).toBeVisible();
+  await expect(actions).toHaveText('');
+  for (const name of ['All users', 'Sign out', 'Edit profile & account']) {
+    const control = actions.getByRole(name === 'All users' ? 'link' : 'button', {
+      name,
+      exact: true,
+    });
+    await expect(control).toBeVisible();
+    await expect(control).toHaveAttribute('title', name);
+  }
+  const placement = await actions.evaluate((element) => {
+    const card = element.closest('.profile-hero');
+    if (!card) throw new Error('PROFILE_CARD_REQUIRED');
+    const cardBounds = card.getBoundingClientRect(),
+      bounds = element.getBoundingClientRect();
+    return { top: bounds.top - cardBounds.top, right: cardBounds.right - bounds.right };
+  });
+  expect(placement.top).toBeGreaterThanOrEqual(8);
+  expect(placement.top).toBeLessThanOrEqual(24);
+  expect(placement.right).toBeGreaterThanOrEqual(8);
+  expect(placement.right).toBeLessThanOrEqual(24);
+  await actions.getByRole('button', { name: 'Edit profile & account', exact: true }).focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toHaveCount(1);
+  await actions.getByRole('button', { name: 'Close account settings', exact: true }).click();
   const signOut = page.getByRole('button', { name: 'Sign out', exact: true });
   await expect(signOut).toBeVisible();
   await signOut.click();

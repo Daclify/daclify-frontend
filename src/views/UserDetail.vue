@@ -7,7 +7,7 @@ import {
   IdSchema,
   unifyPublicMembers,
 } from '@daclify/core-protocol';
-import { MapPin, Globe, AtSign, ArrowLeft, UserRoundPen } from '@lucide/vue';
+import { MapPin, Globe, AtSign, Users, LogOut, UserRoundPen } from '@lucide/vue';
 import { api, friendlyError } from '../api/client';
 import { useWorkspace } from '../state/workspace';
 import Account from './Account.vue';
@@ -200,18 +200,6 @@ function saved() {
 }
 </script>
 <template>
-  <div class="button-row">
-    <RouterLink class="help-link" to="/users"><ArrowLeft aria-hidden="true" />All users</RouterLink>
-    <button
-      v-if="selfRoute && state.account && !editing"
-      type="button"
-      class="secondary danger"
-      :disabled="signingOut"
-      @click="logout"
-    >
-      {{ signingOut ? 'Signing out…' : 'Sign out' }}
-    </button>
-  </div>
   <p v-if="signOutError" class="alert" role="alert">{{ signOutError }}</p>
   <div v-if="error" class="alert" role="alert">
     <h1>Profile temporarily unavailable</h1>
@@ -219,12 +207,45 @@ function saved() {
     <button type="button" class="secondary" @click="profileRevision++">Retry profile</button>
   </div>
   <p v-if="busy" role="status">Loading profile…</p>
-  <Account v-else-if="selfRoute && !state.account" />
-  <template v-else-if="!error && (exists || own)">
+  <Account v-if="selfRoute && !state.account" />
+  <template v-else-if="own || (!busy && !error && exists)">
     <section
       class="profile-hero"
       :class="{ 'profile-without-cover': !displayProfile?.background || failedImages.background }"
     >
+      <div class="profile-actions" role="group" aria-label="Profile actions">
+        <RouterLink
+          class="workspace-icon-button"
+          to="/users"
+          aria-label="All users"
+          title="All users"
+        >
+          <Users aria-hidden="true" />
+        </RouterLink>
+        <button
+          v-if="own"
+          type="button"
+          class="workspace-icon-button"
+          :aria-label="signingOut ? 'Signing out…' : 'Sign out'"
+          :title="signingOut ? 'Signing out…' : 'Sign out'"
+          :disabled="signingOut"
+          @click="logout"
+        >
+          <LogOut aria-hidden="true" />
+        </button>
+        <button
+          v-if="own"
+          type="button"
+          class="workspace-icon-button"
+          :aria-label="editing ? 'Close account settings' : 'Edit profile & account'"
+          :title="editing ? 'Close account settings' : 'Edit profile & account'"
+          :aria-expanded="editing"
+          aria-controls="profile-account-settings"
+          @click="editing = !editing"
+        >
+          <UserRoundPen aria-hidden="true" />
+        </button>
+      </div>
       <div v-if="displayProfile?.background && !failedImages.background" class="profile-cover">
         <img
           v-if="displayProfile?.background && !failedImages.background"
@@ -249,18 +270,6 @@ function saved() {
           <h1>{{ title }}</h1>
           <p v-if="displayProfile?.name" class="person-handle">@{{ displayProfile.name }}</p>
         </div>
-        <button
-          v-if="own"
-          type="button"
-          class="secondary"
-          :aria-expanded="editing"
-          aria-controls="profile-account-settings"
-          @click="editing = !editing"
-        >
-          <UserRoundPen aria-hidden="true" />{{
-            editing ? 'Close account settings' : 'Edit profile & account'
-          }}
-        </button>
       </div>
       <p v-if="displayProfile?.motto" class="lead">{{ displayProfile.motto }}</p>
       <p v-if="privateNotice" class="notice" role="status">{{ privateNotice }}</p>
@@ -369,19 +378,33 @@ function saved() {
       />
     </div>
   </template>
-  <section v-else-if="!error" class="empty-state">
+  <section v-else-if="!busy && !error" class="empty-state">
     <h1>User unavailable</h1>
     <p>Check this member's DAO or browse published profiles.</p>
     <RouterLink to="/users">Browse users</RouterLink>
   </section>
 </template>
 <style scoped>
+.profile-hero {
+  position: relative;
+}
+.profile-actions {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 1;
+  display: flex;
+  gap: 4px;
+  background: var(--surface-panel);
+  border-radius: var(--radius-md);
+}
 .profile-without-cover {
   padding-top: 1.5rem;
 }
 .profile-without-cover .profile-identity {
   margin-top: 0;
   align-items: center;
+  padding-right: 144px;
 }
 .profile-without-cover .eyebrow {
   margin-top: 0;
@@ -409,9 +432,11 @@ function saved() {
   overflow-wrap: anywhere;
 }
 @media (max-width: 40rem) {
-  .profile-identity button {
-    margin-left: 0;
-    width: 100%;
+  .profile-without-cover {
+    padding-top: 72px;
+  }
+  .profile-without-cover .profile-identity {
+    padding-right: 0;
   }
 }
 </style>

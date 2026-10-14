@@ -1737,8 +1737,7 @@ nav a,
   border-color: var(--accent-amber);
 }
 .view-switch svg,
-.profile-facts svg,
-.profile-identity button svg {
+.profile-facts svg {
   width: 18px;
   height: 18px;
 }
@@ -1905,9 +1904,6 @@ nav a,
 .profile-identity h1 {
   font-size: 32px;
   margin: 6px 0;
-}
-.profile-identity button {
-  margin-left: auto;
 }
 .profile-identity .eyebrow {
   margin: 40px 0 0;
@@ -2325,9 +2321,6 @@ nav a,
   }
   .help-window-title small {
     display: none;
-  }
-  .profile-identity button {
-    margin-left: 0;
   }
   .people-list .person-card {
     align-items: flex-start;

@@ -1,6 +1,6 @@
 # Use a paired account on another device
 
-Open **Your account** at the top of the side menu, above **My DAO**. On mobile, open **Menu** first. **Sign out** is available directly on your profile. Choose **Edit profile & account** to manage your settings, which also keeps **Sign out** visible in every section. Signing out locks your local keys and ends this browser's Daclify session.
+Open **Your account** at the top of the side menu, above **My DAO**. On mobile, open **Menu** first. **All users**, **Sign out** and **Edit profile & account** are icons in the top-right corner of your profile card, with tooltips naming each action. Account settings also keeps sign-out available in every section. Signing out locks your local keys and ends this browser's Daclify session.
 
 Account settings opens **Access & recovery**, where you can check this device’s key status, unlock or lock keys, download a matching backup, and approve another device. Public IDs and keys are inside **Public join identity**. **Sign-in methods** brings all five pairing options together; expand a method to manage it. **Profile** groups your public details and optional links/images. **Payment history** shows your Daclify service payment receipts and lets you refresh their status. Start checkout from the relevant purchase screen, where the item and price are shown. Sign out is available in every section.
 
