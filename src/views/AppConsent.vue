@@ -4,18 +4,20 @@ import { useRoute } from 'vue-router';
 import { z } from 'zod';
 import { daoPaymentKey, appConfigurationHash, ApiRoutes } from '@daclify/core-protocol';
 import { encodeAction, makeInstruction } from '@daclify/core-protocol/sdk';
+import { invitationCredential, makeAppJoinProof, signAppInvitation } from '@daclify/core-protocol/connected-apps';
 import { api, friendlyError, ApiFailure } from '../api/client';
 import { useWorkspace } from '../state/workspace';
 import { relayInstruction } from '../auth/session';
 import { canSignMember } from '../auth/action-signer';
 import ActionSigner from '../components/ActionSigner.vue';
-import { appSignInMethod, appJoinDestination } from '../auth/app-entry';
+import { appSignInMethod, appJoinDestination, appInvitation } from '../auth/app-entry';
 const route = useRoute(),
   state = useWorkspace(),
   consent = ref<z.infer<typeof ApiRoutes.appConsent.response>>(),
   error = ref(''),
   busy = ref(false),
   joinRequired = ref(false),
+  admission = ref<z.infer<typeof ApiRoutes.appJoinPreview.response>>(),
   reload = ref(0),
   approvedSession = ref<string>();
 const requestId = computed(() =>
@@ -39,6 +41,7 @@ let generation = 0;
 const context = computed(() =>
   JSON.stringify([
     requestId.value,
+    route.hash,
     reload.value,
     state.account?.id,
     state.network?.chainId,
@@ -50,12 +53,19 @@ watch(
   async () => {
     const started = ++generation;
     consent.value = undefined;
+    admission.value = undefined;
     approvedSession.value = undefined;
     error.value = '';
     busy.value = false;
     joinRequired.value = false;
     if (!state.account || !requestId.value) return;
     try {
+      const invite=appInvitation(route.hash);
+      const preview=await api.appJoinPreview(requestId.value,invite?{invitationId:invite.invitationId,tokenHash:invitationCredential(invite.token).tokenHash}:{});
+      if(started!==generation)return;
+      if(preview.app.config.dao.chainId!==state.network?.chainId||preview.app.config.dao.contract!==state.network.runtime)throw new Error('DAO_REFERENCE');
+      admission.value=preview;
+      if(invite||!preview.member){joinRequired.value=true;return;}
       const value = await api.appConsent(requestId.value);
       if (started !== generation) return;
       if (
@@ -77,6 +87,25 @@ watch(
   { immediate: true },
 );
 onBeforeUnmount(() => generation++);
+async function declineJoin(){try{window.location.assign((await api.rejectApp(requestId.value)).redirect);}catch(cause){error.value=friendlyError(cause);}}
+async function join() {
+ const started=generation, value=admission.value,account=state.account;
+ if(!value||!account||busy.value||!value.available)return;
+ busy.value=true;error.value='';
+ try {
+  const invite=appInvitation(route.hash);
+  if(invite){
+   if(!value.source)throw new Error('APP_JOIN_UNAVAILABLE');
+   const proof=makeAppJoinProof(value.app.config,account,value.source,invite.invitationId,invitationCredential(invite.token).tokenHash);
+   await api.joinApp(requestId.value,{invitationId:invite.invitationId,tokenHash:proof.token_hash,proofExpires:proof.expires,signature:signAppInvitation(invite.token,proof)});
+  } else await api.joinApp(requestId.value,{});
+  await state.refresh();
+  const next=await api.appConsent(requestId.value);
+  if(started!==generation)return;
+  consent.value=next;joinRequired.value=false;admission.value=undefined;
+ }catch(cause){if(started===generation)error.value=friendlyError(cause);}
+ finally{if(started===generation)busy.value=false;}
+}
 async function decide(approve: boolean) {
   const value = consent.value,
     started = generation;
@@ -195,9 +224,19 @@ async function decide(approve: boolean) {
         ><button class="secondary" :disabled="busy" @click="decide(false)">Decline</button>
       </div>
     </template>
+    <template v-else-if="admission && joinRequired">
+      <h2>{{ admission.app.config.name }}</h2>
+      <p v-if="admission.invitation?.role==='admin'">This invitation makes you a DAO administrator and executive, with voting eligibility. You can manage members and shared app settings.</p>
+      <p v-else-if="admission.member">Your existing DAO membership and permissions will be kept.</p>
+      <p v-else>You will join this DAO as a normal member without voting rights. You can use its shared app.</p>
+      <p>DAO {{ admission.app.config.dao.daoId }} · {{ admission.app.config.dao.contract }}</p>
+      <button v-if="admission.available && (admission.invitation || admission.policy?.public_join || admission.member)" :disabled="busy" @click="join">{{ busy?'Joining…':admission.invitation?.role==='admin'?'Accept administrator invitation':'Join and continue' }}</button>
+      <p v-else>App joining is not enabled. Ask this DAO’s administrator to enable it.</p>
+      <button class="secondary" :disabled="busy" @click="declineJoin">Decline</button>
+    </template>
     <p v-else-if="!error" role="status">Checking membership…</p>
     <p v-if="error" role="alert">{{ error }}</p>
-    <template v-if="joinRequired && appJoinDestination(route.hash, state.network)">
+    <template v-if="joinRequired && !admission?.available && appJoinDestination(route.hash, state.network)">
       <p>
         Complete this community's membership steps before opening the app. Its admission rules still
         apply.

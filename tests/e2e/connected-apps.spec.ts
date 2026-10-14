@@ -143,6 +143,7 @@ test.beforeEach(async ({ page }) => {
         '/v1/sign-in/session': { account },
         [ApiRoutes.memberships.path]: { memberships: [member] },
         '/v1/daos/1/apps': apps,
+        [ApiRoutes.appJoinPreview.path.replace(':id','11111111-1111-4111-8111-111111111111')]: {app:apps[0],available:false,source:null,gateway:null,policy:null,member:{memberId:member.memberId,admin:false,executive:false,canVote:true},invitation:null},
         '/v1/daos/1/modules': activity,
         '/v1/daos/1/governance': {
           dao,
@@ -384,4 +385,23 @@ test('keeps setup loading distinct from a disabled module', async ({ page }) => 
   } finally {
     finishRead();
   }
+});
+
+test('new app users see non-voting admission and accept before app consent',async({page})=>{
+ const id='11111111-1111-4111-8111-111111111111';let joined=false;
+ await page.route('**'+ApiRoutes.memberships.path,route=>route.fulfill({json:{memberships:joined?[member]:[]}}));
+ await page.route('**'+ApiRoutes.appJoinPreview.path.replace(':id',id),route=>route.fulfill({json:{app:apps[0],available:true,source:'appjoin',gateway:{account:'relay',permission:'active'},policy:{id:'1',dao_id:'1',app_id:'1',app_revision:'1',revision:'1',gateway:'relay',gateway_permission:'active',public_join:true,enabled:true},member:null,invitation:null}}));
+ await page.route('**'+ApiRoutes.joinApp.path.replace(':id',id),async route=>{expect(route.request().postDataJSON()).toEqual({});joined=true;await route.fulfill({json:{memberId:'3',admin:false,executive:false,canVote:false}});});
+ await page.goto('/apps/consent?request='+id);
+ await expect(page.getByText('You will join this DAO as a normal member without voting rights. You can use its shared app.')).toBeVisible();
+ await page.getByRole('button',{name:'Join and continue',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Approve sign-in and recording'})).toBeVisible();expect(joined).toBe(true);
+});
+test('existing members must explicitly accept an admin invitation and send a private-link signature',async({page})=>{
+ const id='11111111-1111-4111-8111-111111111111';let accepted=false;
+ await page.route('**'+ApiRoutes.appJoinPreview.path.replace(':id',id),route=>route.fulfill({json:{app:apps[0],available:true,source:'appjoin',gateway:{account:'relay',permission:'active'},policy:{id:'1',dao_id:'1',app_id:'1',app_revision:'1',revision:'1',gateway:'relay',gateway_permission:'active',public_join:true,enabled:true},member:{memberId:'3',admin:false,executive:false,canVote:false},invitation:{role:'admin',expires:Math.floor(Date.now()/1000)+600}}}));
+ await page.route('**'+ApiRoutes.joinApp.path.replace(':id',id),async route=>{const input=ApiRoutes.joinApp.input.parse(route.request().postDataJSON());expect('signature' in input&&input.signature?.startsWith('SIG_K1_')).toBe(true);expect('token' in input).toBe(false);accepted=true;await route.fulfill({json:{memberId:'3',admin:true,executive:true,canVote:true}});});
+ await page.goto('/apps/consent?request='+id+'#daclify_invitation=7&daclify_token='+'a'.repeat(43));
+ await expect(page.getByText(/This invitation makes you a DAO administrator and executive/)).toBeVisible();expect(accepted).toBe(false);
+ await page.getByRole('button',{name:'Accept administrator invitation'}).click();await expect(page.getByRole('button',{name:'Approve sign-in and recording'})).toBeVisible();expect(accepted).toBe(true);
 });

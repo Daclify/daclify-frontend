@@ -35,6 +35,7 @@ const router = createRouter({
     { path: '/account/exit', component: () => import('./views/AccountExit.vue') },
     { path: '/account', component: () => import('./views/Account.vue') },
     { path: '/apps/evidence', component: () => import('./views/AppEvidence.vue') },
+    { path: '/apps/invitation', component: () => import('./views/AppInvitation.vue') },
     { path: '/apps/consent', component: () => import('./views/AppConsent.vue') },
     { path: '/mcp/oauth/consent', component: () => import('./views/McpOAuthConsent.vue') },
     { path: '/mcp/consent', component: () => import('./views/McpConsent.vue') },

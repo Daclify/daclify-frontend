@@ -20,3 +20,11 @@ it('offers membership entry only in the matching full DAO namespace', () => {
     expect(appJoinDestination(hash, network)).toBeUndefined();
   expect(appJoinDestination(fragment, undefined)).toBeUndefined();
 });
+
+import { appInvitation } from '../../src/auth/app-entry';
+it('keeps private invitation material in the fragment and rejects duplicates or partial hints', () => {
+ const token='a'.repeat(43);
+ expect(appInvitation('#daclify_invitation=7&daclify_token='+token)).toEqual({invitationId:'7',token});
+ expect(appInvitation('#daclify_method=email')).toBeUndefined();
+ for(const fragment of ['#daclify_invitation=7','#daclify_invitation=0&daclify_token='+token,'#daclify_invitation=7&daclify_token='+token+'&daclify_token='+token]) expect(()=>appInvitation(fragment)).toThrow('APP_INVITE_DOMAIN');
+});

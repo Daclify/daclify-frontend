@@ -537,6 +537,10 @@ export const api = {
       ApiRoutes.appConsent.path.replace(':id', z.uuid().parse(id)),
       ApiRoutes.appConsent.response,
     ),
+  appJoinPreview: (id:string,input:z.infer<typeof ApiRoutes.appJoinPreview.input>) => request(ApiRoutes.appJoinPreview.path.replace(':id',z.uuid().parse(id)),ApiRoutes.appJoinPreview.response,ApiRoutes.appJoinPreview.input.parse(input)),
+  joinApp: (id:string,input:z.infer<typeof ApiRoutes.joinApp.input>) => request(ApiRoutes.joinApp.path.replace(':id',z.uuid().parse(id)),ApiRoutes.joinApp.response,ApiRoutes.joinApp.input.parse(input)),
+  appJoinConfiguration: (id:string) => request(ApiRoutes.appJoinConfiguration.path.replace(':id',z.uuid().parse(id)),ApiRoutes.appJoinConfiguration.response),
+  appInvitation: (id:string) => request(ApiRoutes.appInvitation.path.replace(':id',z.uuid().parse(id)),ApiRoutes.appInvitation.response),
   approveApp: (id: string, sessionId?: string) =>
     request(
       ApiRoutes.approveApp.path.replace(':id', z.uuid().parse(id)),

@@ -30,6 +30,7 @@ export default defineConfig(({ mode, command }) => {
     plugins: [vue()],
     server: {
       port: uiPort,
+      watch: { ignored: ['**/.artifacts/**'] },
       strictPort: true,
       ...(host ? { allowedHosts: [host] } : {}),
       ...(cert && key ? { https: { cert: readFileSync(cert), key: readFileSync(key) } } : {}),
