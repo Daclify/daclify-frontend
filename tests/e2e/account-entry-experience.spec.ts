@@ -54,17 +54,66 @@ async function fixture(page: Page, options = configured) {
   });
 }
 const main = (page: Page) => page.locator('#main');
-test('connected app keeps the requested method and its safe return destination',async({page})=>{
+test('an authenticated nonmember can open admission, retain app return, and recheck membership', async ({
+  page,
+}) => {
   await fixture(page);
-  const hints=`&daclify_chain=${network.chainId}&daclify_runtime=${network.runtime}&daclify_dao=7`;
-  for(const [method,label] of [['email','E-Mail'],['telegram','Telegram'],['passkey','Passkey']]){
-    const destination=`/apps/consent?request=6d23835b-c99f-4c78-aad1-3a215b5ab50c#daclify_method=${method}${hints}`;
+  const vault = await createVault('disposable app admission fixture');
+  const account = AccountSchema.parse({
+    id: crypto.randomUUID(),
+    custody: 'user-controlled',
+    signingKey: vault.signingPublicKey,
+    encryptionKey: vault.encryptionPublicKey,
+  });
+  await page.route('**/v1/sign-in/session', (route) => route.fulfill({ json: { account } }));
+  await page.route('**/v1/me/memberships', (route) => route.fulfill({ json: { memberships: [] } }));
+  let checks = 0;
+  await page.route('**' + ApiRoutes.appConsent.path.replace(':id', '*'), (route) => {
+    checks++;
+    return route.fulfill({
+      status: 403,
+      json: ErrorSchema.parse({
+        code: 'MEMBERSHIP_REQUIRED',
+        message: 'Join the community first.',
+      }),
+    });
+  });
+  const destination = `/apps/consent?request=6d23835b-c99f-4c78-aad1-3a215b5ab50c#daclify_chain=${network.chainId}&daclify_runtime=${network.runtime}&daclify_dao=7`;
+  await page.goto(destination);
+  const link = main(page).getByRole('link', { name: 'Join this community', exact: true });
+  await expect(link).toBeVisible();
+  const href = new URL((await link.getAttribute('href')) ?? '', page.url());
+  expect(href.pathname).toBe('/dao/7/members');
+  expect(href.searchParams.get('returnTo')).toBe(destination);
+  await main(page).getByRole('button', { name: 'Check membership again', exact: true }).click();
+  await expect.poll(() => checks).toBe(2);
+  await page.goto(destination.replace(network.chainId, 'cd'.repeat(32)));
+  await expect(main(page).getByRole('alert')).toContainText('active member of this community');
+  await expect(link).toHaveCount(0);
+});
+test('connected app keeps the requested method and its safe return destination', async ({
+  page,
+}) => {
+  await fixture(page);
+  const hints = `&daclify_chain=${network.chainId}&daclify_runtime=${network.runtime}&daclify_dao=7`;
+  for (const [method, label] of [
+    ['email', 'E-Mail'],
+    ['telegram', 'Telegram'],
+    ['passkey', 'Passkey'],
+  ]) {
+    const destination = `/apps/consent?request=6d23835b-c99f-4c78-aad1-3a215b5ab50c#daclify_method=${method}${hints}`;
     await page.goto(destination);
-    await main(page).getByRole('link',{name:'Sign in',exact:true}).click();
-    await expect(main(page).getByRole('heading',{name:'Welcome back',exact:true})).toBeVisible();
-    await expect(main(page).getByRole('button',{name:label,exact:true})).toHaveAttribute('aria-pressed','true');
+    await main(page).getByRole('link', { name: 'Sign in', exact: true }).click();
+    await expect(
+      main(page).getByRole('heading', { name: 'Welcome back', exact: true }),
+    ).toBeVisible();
+    await expect(main(page).getByRole('button', { name: label, exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
     expect(new URL(page.url()).searchParams.get('returnTo')).toBe(destination);
-    if(method==='email')await expect(main(page).getByLabel('Sign-in email',{exact:true})).toBeVisible();
+    if (method === 'email')
+      await expect(main(page).getByLabel('Sign-in email', { exact: true })).toBeVisible();
   }
 });
 test('starts with three compact account choices and returns focus from each journey', async ({
