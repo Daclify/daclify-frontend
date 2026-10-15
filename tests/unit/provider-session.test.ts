@@ -17,11 +17,25 @@ function memoryStorage(): Storage {
     },
   };
 }
+function deferred<T>() {
+  let resolve: (value: T) => void = () => {
+    throw new Error('Fixture not pending');
+  };
+  let reject: (error: unknown) => void = () => {
+    throw new Error('Fixture not pending');
+  };
+  const promise = new Promise<T>((complete, fail) => {
+    resolve = complete;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
 Object.assign(globalThis, { localStorage: memoryStorage(), sessionStorage: memoryStorage() });
 import { PrivateKey, PublicKey, Signature } from '@wharfkit/antelope';
 import { generateKeyPairSync, randomUUID } from 'node:crypto';
 import {
   AccountSchema,
+  ApiRoutes,
   ChallengeRequestSchema,
   LoginRequestSchema,
   LoginMessageSchema,
@@ -31,7 +45,8 @@ import {
   epochGrantDomain,
 } from '@daclify/core-protocol';
 import { configureNetworks } from '../../src/api/networks';
-import { api, ApiFailure } from '../../src/api/client';
+import { api, ApiFailure, takeRecoveryGrant } from '../../src/api/client';
+import { useWorkspace } from '../../src/state/workspace';
 import { createVault, createEpochGrant, sha256Hex } from '../../src/auth/vault';
 import {
   acceptProviderSession,
@@ -40,6 +55,9 @@ import {
   unlockAndLogin,
   vaultUnlocked,
   verifyPrivateEpochs,
+  logoutAccount,
+  canUseVaultKey,
+  withUnlockedVault,
 } from '../../src/auth/session';
 const password = 'long disposable fixture password';
 const csrf = 'a'.repeat(43);
@@ -63,6 +81,84 @@ afterEach(() => {
   configureNetworks(null);
   setActivePinia(undefined);
 });
+it.each(['success', 'service failure', 'network timeout'] as const)(
+  'locks keys immediately during sign-out despite %s',
+  async (outcome) => {
+    setActivePinia(createPinia());
+    vi.stubGlobal('window', { location: { origin: 'https://portal.example' } });
+    const created = await createVault(password);
+    saveVault(created);
+    const owned = {
+      ...account(created.signingPublicKey),
+      encryptionKey: created.encryptionPublicKey,
+    };
+    vi.spyOn(api, 'challenge').mockResolvedValue({
+      id: randomUUID(),
+      message: 'fixture-message',
+      expires: new Date(Date.now() + 60_000).toISOString(),
+    });
+    const logout = deferred<Response>();
+    vi.stubGlobal('fetch', (input: string | URL | Request) => {
+      if (String(input) === ApiRoutes.login.path)
+        return Promise.resolve(
+          Response.json(
+            { account: owned, csrfToken: csrf },
+            { headers: { 'x-daclify-recovery-grant': 'b'.repeat(43) } },
+          ),
+        );
+      if (String(input) === ApiRoutes.logout.path) return logout.promise;
+      throw new Error('Unexpected fixture request');
+    });
+    await unlockAndLogin(password);
+    const state = useWorkspace();
+    state.account = owned;
+    expect(canUseVaultKey(owned.signingKey)).toBe(true);
+    const workStarted = deferred<void>(),
+      finishWork = deferred<void>();
+    const privateWork = withUnlockedVault(owned, async () => {
+      workStarted.resolve();
+      await finishWork.promise;
+      return 'private result';
+    }).catch((error: unknown) => error);
+    await workStarted.promise;
+    const signingOut = logoutAccount().catch((error: unknown) => error);
+    const pendingState = {
+      unlocked: vaultUnlocked.value,
+      signingKeyUsable: canUseVaultKey(owned.signingKey),
+      recoveryGrant: takeRecoveryGrant(owned.id),
+    };
+    if (outcome === 'network timeout')
+      logout.reject(new DOMException('Request timed out', 'TimeoutError'));
+    else if (outcome === 'service failure')
+      logout.resolve(
+        Response.json({ code: 'SERVICE_UNAVAILABLE', message: 'Unavailable' }, { status: 503 }),
+      );
+    else logout.resolve(new Response(null, { status: 204 }));
+    const result: unknown = await signingOut;
+    finishWork.resolve();
+    const staleResult: unknown = await privateWork;
+    expect(pendingState).toEqual({
+      unlocked: false,
+      signingKeyUsable: false,
+      recoveryGrant: undefined,
+    });
+    expect(staleResult).toBeInstanceOf(Error);
+    expect(staleResult).toHaveProperty('message', 'WALLET_CONTEXT_CHANGED');
+    if (outcome === 'success') {
+      expect(result).toBeUndefined();
+      expect(state.account).toBeUndefined();
+      expect(state.memberships).toEqual([]);
+      expect(sessionStorage.getItem('daclify.csrf')).toBeNull();
+    } else {
+      expect(result).toHaveProperty(
+        outcome === 'service failure' ? 'code' : 'name',
+        outcome === 'service failure' ? 'SERVICE_UNAVAILABLE' : 'TimeoutError',
+      );
+      expect(state.account?.id).toBe(owned.id);
+      expect(sessionStorage.getItem('daclify.csrf')).toBe(csrf);
+    }
+  },
+);
 describe('provider sessions leave the user-controlled vault locked', () => {
   it.each(['removed', 'replaced'] as const)(
     'checks the actual unlocked key when its saved vault record was %s',

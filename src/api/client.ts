@@ -1653,9 +1653,9 @@ export const api = {
   docsAgent: () => request('/v1/docs/agent', DocsAgentStatusSchema),
   askDocs: (question: string) => request('/v1/docs/ask', DocsAnswerSchema, { question }, 20000),
   logout: async () => {
+    recoveryGrant = undefined;
     await request(ApiRoutes.logout.path, ApiRoutes.logout.response, {});
     sessionStorage.removeItem(csrfStorageKey());
-    recoveryGrant = undefined;
   },
 };
 export function friendlyError(error: unknown): string {

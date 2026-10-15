@@ -166,8 +166,8 @@ export function lockVault(): void {
   timer = undefined;
 }
 export async function logoutAccount(): Promise<void> {
-  await api.logout();
   lockVault();
+  await api.logout();
   const state = useWorkspace();
   state.account = undefined;
   state.memberships = [];
