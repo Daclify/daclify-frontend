@@ -15,7 +15,11 @@ function hash(parts: Uint8Array[]) {
   return Checksum256.hash(new Uint8Array(parts.flatMap((part) => [...part]))).toString();
 }
 const pack = (object: string, type: string) => Serializer.encode({ object, type }).array;
-export function quickBallotFixture(closed = false, selectedDaos: string[] = []) {
+export function quickBallotFixture(
+  closed = false,
+  selectedDaos: string[] = [],
+  readerKey = 'fixture-reader',
+) {
   const domain = { chainId: '11'.repeat(32), runtime: 'daclifycore1', source: 'quickvote' },
     id = '7';
   const definition = {
@@ -25,7 +29,7 @@ export function quickBallotFixture(closed = false, selectedDaos: string[] = []) 
     all_accounts: selectedDaos.length === 0,
     audience: selectedDaos,
     closes: 0,
-    readers: [{ member_id: '1', encryption_key: 'fixture-reader' }],
+    readers: [{ member_id: '1', encryption_key: readerKey }],
   };
   const definitionHash = quickBallotDefinitionHash({
       ...domain,

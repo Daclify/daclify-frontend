@@ -34,6 +34,7 @@ import {
 } from '../quick-ballots/approval';
 import { quickCrypto } from '../quick-ballots/worker';
 import { createBallotGrant } from '../quick-ballots/keys';
+import { archivedQuickGrants } from '../quick-ballots/archive';
 import {
   sealAccountReceipt,
   sealDeviceReceipt,
@@ -615,13 +616,10 @@ async function closeBallot() {
 async function tally() {
   await perform(async (check, signal) => {
     const value = detail.value;
-    if (!value?.ballot.prepared || !value.grants) throw Error('QUICK_ARCHIVE_REQUIRED');
+    if (!value?.ballot.prepared) throw Error('QUICK_SNAPSHOT');
     const reader = readerIndex.value;
-    const recipient = value.ballot.definition.readers[reader],
-      grant = value.grants.grants[reader];
-    if (!recipient || !grant) throw Error('QUICK_READER_REQUIRED');
-    const secret = await openQuickGrant({ ...base(), memberId: recipient.member_id }, grant);
-    check();
+    const recipient = value.ballot.definition.readers[reader];
+    if (!recipient) throw Error('QUICK_READER_REQUIRED');
     const responses: QuickBallotResponse[] = [];
     let cursor: string | undefined;
     do {
@@ -633,6 +631,23 @@ async function tally() {
       cursor = page.next ?? undefined;
       progress.value = `Loading encrypted responses: ${responses.length} of ${value.ballot.identities}`;
     } while (cursor);
+    let history: Awaited<ReturnType<typeof api.quickArchive>> = { archives: [], complete: false };
+    if (!value.grants || value.ballot.pruned || responses.length < value.ballot.identities) {
+      progress.value = 'Loading the verified encrypted archive…';
+      history = await api.quickArchive(value.ballot.id);
+      check();
+    }
+    const domain = {
+      chainId: value.chainId,
+      runtime: value.runtime,
+      source: value.source,
+      ballot: value.ballot,
+    };
+    const grants = value.grants ?? archivedQuickGrants(domain, history.archives),
+      grant = grants.grants[reader];
+    if (!grant) throw Error('QUICK_READER_REQUIRED');
+    const secret = await openQuickGrant({ ...base(), memberId: recipient.member_id }, grant);
+    check();
     const proof = await quickCrypto(
       {
         task: 'tally',
@@ -644,6 +659,8 @@ async function tally() {
           responses,
         },
         secret,
+        grants,
+        archives: history.archives,
       },
       signal,
       (update) => {
@@ -900,11 +917,7 @@ async function resume() {
             An original reader with the matching unlocked account keys can publish a public proof of
             the totals.
           </p>
-          <button
-            v-if="readerIndex >= 0"
-            :disabled="busy || !vaultUnlocked || !detail.grants"
-            @click="tally"
-          >
+          <button v-if="readerIndex >= 0" :disabled="busy || !vaultUnlocked" @click="tally">
             Verify and publish totals</button
           ><RouterLink v-if="!vaultUnlocked" class="text-button" :to="setup"
             >Unlock original account keys</RouterLink

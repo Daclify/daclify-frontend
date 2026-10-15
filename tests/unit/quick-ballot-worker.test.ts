@@ -1,6 +1,8 @@
 import { expect, it } from 'vitest';
 import { verifyBallotKey, verifyBallotChoice } from '@daclify/modules/quick-ballot-proof';
 import { runQuickCrypto } from '../../src/quick-ballots/crypto';
+import { quickBallotFixture } from '../helpers/quick-ballot';
+import { quickArchiveFixture } from '../helpers/quick-archive';
 it('generates real encryption and validity proofs in the worker implementation without returning plaintext choices', () => {
   const key = runQuickCrypto({ task: 'key', context: '11'.repeat(32) });
   if (key.task !== 'key') throw Error('FIXTURE_KEY');
@@ -19,6 +21,29 @@ it('generates real encryption and validity proofs in the worker implementation w
   expect(vote).not.toHaveProperty('secret');
   expect(() =>
     runQuickCrypto({ task: 'vote', context: '22'.repeat(32), key: key.publicKey, choice: 2 }),
+  ).toThrow();
+});
+it('recovers pruned encrypted rows and proves a late tally against the permanent native header', () => {
+  const f = quickBallotFixture(true),
+    archives = quickArchiveFixture(f);
+  const snapshot = {
+    chainId: f.chainId,
+    runtime: f.runtime,
+    source: f.source,
+    ballot: { ...f.ballot, pruned: true },
+    responses: [],
+  };
+  expect(
+    runQuickCrypto({ task: 'tally', snapshot, secret: f.secret, archives, grants: null }),
+  ).toMatchObject({ task: 'tally', up: 1, down: 1 });
+  expect(() =>
+    runQuickCrypto({
+      task: 'tally',
+      snapshot: { ...snapshot, ballot: { ...snapshot.ballot, response_root: 'ff'.repeat(32) } },
+      secret: f.secret,
+      archives,
+      grants: null,
+    }),
   ).toThrow();
 });
 

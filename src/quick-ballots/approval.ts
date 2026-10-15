@@ -20,7 +20,7 @@ import { api, ApiFailure } from '../api/client';
 import { resolveApiUrl } from '../api/networks';
 import { useWorkspace } from '../state/workspace';
 import { selectedSigner } from '../auth/action-signer';
-import { nativeWallet, nativeIdentity, transactNative } from '../auth/telos-zero';
+import { nativeWallet, transactNativeWithCosigners } from '../auth/telos-zero';
 import { evmWallet, signEvmQuick } from '../auth/telos-evm';
 import { signQuickApproval } from '../auth/session';
 const pendingSchema = z.strictObject({ id: z.uuid(), expiresAt: z.iso.datetime() });
@@ -166,24 +166,9 @@ export async function approveQuick(
   );
   let signedNative;
   if (required.length) {
-    const identity = nativeIdentity();
-    // shortcut: one connected native signer; add reviewed co-signing when two distinct native approvals are needed.
-    if (
-      identity.chainId !== context.chainId ||
-      required.some(
-        (permission) =>
-          permission.actor.toString() !== identity.account ||
-          permission.permission.toString() !== identity.permission,
-      )
-    )
-      throw Error('QUICK_ROOT_WALLET_REQUIRED');
-    const signed = await transactNative(
-      action,
-      false,
-      guard,
-      [{ account: context.authority, abi: ABI.from(quickAuthAbi) }],
-      60,
-    );
+    const signed = await transactNativeWithCosigners(action, required, guard, [
+      { account: context.authority, abi: ABI.from(quickAuthAbi) },
+    ]);
     signedNative = {
       packedTransaction: Serializer.encode({ object: signed.transaction }).hexString,
       signatures: signed.signatures.map((signature) => signature.toString()),

@@ -1,9 +1,15 @@
 import { z } from 'zod';
-import { QuickBallotSnapshotSchema, QuickBallotResultInputSchema } from '@daclify/modules';
+import {
+  QuickBallotSnapshotSchema,
+  QuickBallotResultInputSchema,
+  QuickBallotArchiveSchema,
+} from '@daclify/modules';
+import { recoverQuickBallotHistory } from '@daclify/modules/archive';
 import {
   quickTallyContext,
   verifyQuickBallotSnapshot,
   verifyQuickBallotResult,
+  QuickBallotTableSchemas,
 } from '@daclify/modules/quick-ballots';
 import {
   createBallotKey,
@@ -22,7 +28,13 @@ export const QuickCryptoInputSchema = z.discriminatedUnion('task', [
     key,
     choice: z.union([z.literal(0), z.literal(1)]),
   }),
-  z.strictObject({ task: z.literal('tally'), snapshot: QuickBallotSnapshotSchema, secret: hash }),
+  z.strictObject({
+    task: z.literal('tally'),
+    snapshot: QuickBallotSnapshotSchema,
+    secret: hash,
+    archives: z.array(QuickBallotArchiveSchema).max(2).default([]),
+    grants: QuickBallotTableSchemas.qgrants.nullable().default(null),
+  }),
 ]);
 export const QuickCryptoOutputSchema = z.discriminatedUnion('task', [
   z.strictObject({
@@ -77,7 +89,13 @@ export function runQuickCrypto(
       ...encryptBallotChoice(input.context, input.key, input.choice),
     });
   progress({ kind: 'progress', stage: 'verify', done: 0, total: input.snapshot.responses.length });
-  const snapshot = verifyQuickBallotSnapshot(input.snapshot),
+  const snapshot = input.archives.length
+      ? recoverQuickBallotHistory({
+          ...input.snapshot,
+          archives: input.archives,
+          grants: input.grants,
+        }).snapshot
+      : verifyQuickBallotSnapshot(input.snapshot),
     { ballot } = snapshot;
   let up = 0,
     read = 0;

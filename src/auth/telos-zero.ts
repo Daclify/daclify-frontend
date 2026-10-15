@@ -2,7 +2,13 @@ import { shallowRef } from 'vue';
 import { SessionKit, type Session, type TransactOptions } from '@wharfkit/session';
 import { WebRenderer } from '@wharfkit/web-renderer';
 import { WalletPluginAnchor } from '@wharfkit/wallet-plugin-anchor';
-import { Action, Serializer, SignedTransaction, Transaction } from '@wharfkit/antelope';
+import {
+  Action,
+  Serializer,
+  SignedTransaction,
+  Transaction,
+  type PermissionLevel,
+} from '@wharfkit/antelope';
 import {
   NativeIdentitySchema,
   NativeProofSchema,
@@ -169,6 +175,92 @@ export async function transactNative(
       throw new Error('NATIVE_EXECUTION_UNCONFIRMED');
   }
   return { transaction, signatures: result.signatures };
+}
+export async function transactNativeWithCosigners(
+  action: Action,
+  permissions: PermissionLevel[],
+  checkContext: () => void,
+  abis: NonNullable<TransactOptions['abis']>,
+) {
+  const selected = nativeWallet.value,
+    currentKit = kit,
+    network = useWorkspace().network;
+  if (!selected || !network) throw Error('NATIVE_WALLET_MISSING');
+  if (
+    !permissions.length ||
+    permissions.length > 2 ||
+    !permissions.some((permission) => permission.equals(selected.permissionLevel)) ||
+    permissions.some(
+      (permission) => !action.authorization.some((required) => required.equals(permission)),
+    )
+  )
+    throw Error('QUICK_ROOT_WALLET_REQUIRED');
+  const signed = await transactNative(action, false, checkContext, abis, 60),
+    bytes = Serializer.encode({ object: signed.transaction }).hexString;
+  const networkScope = JSON.stringify([network.chainId, network.runtime, network.rpcUrl]),
+    account = useWorkspace().account?.id,
+    location = globalThis.location?.href;
+  const check = () => {
+    checkContext();
+    const current = useWorkspace().network;
+    if (
+      nativeWallet.value !== selected ||
+      kit !== currentKit ||
+      account !== useWorkspace().account?.id ||
+      location !== globalThis.location?.href ||
+      networkScope !== JSON.stringify([current?.chainId, current?.runtime, current?.rpcUrl])
+    )
+      throw Error('WALLET_CONTEXT_CHANGED');
+    if (signed.transaction.expiration.toMilliseconds() <= Date.now())
+      throw Error('NATIVE_APPROVAL_EXPIRED');
+  };
+  check();
+  const others = permissions.filter((permission) => !permission.equals(selected.permissionLevel));
+  if (!others.length) return signed;
+  if (!currentKit) throw Error('NATIVE_WALLET_MISSING');
+  const restored = await currentKit.restoreAll();
+  check();
+  for (const permission of others) {
+    let signer = restored.find(
+      (session) =>
+        session.chain.id.toString() === network.chainId &&
+        session.permissionLevel.equals(permission),
+    );
+    if (!signer) {
+      signer = (
+        await currentKit.login({
+          chain: network.chainId,
+          permissionLevel: permission,
+          setAsDefault: false,
+        })
+      ).session;
+      check();
+    }
+    if (
+      signer.chain.id.toString() !== network.chainId ||
+      !signer.permissionLevel.equals(permission)
+    )
+      throw Error('NATIVE_AUTHORITY_UNSUPPORTED');
+    const result = await signer.transact(
+      { transaction: Transaction.from(signed.transaction) },
+      { broadcast: false, allowModify: false, expireSeconds: 60, abis },
+    );
+    check();
+    if (
+      !result.signer.equals(permission) ||
+      result.chain.id.toString() !== network.chainId ||
+      !result.resolved ||
+      Serializer.encode({ object: result.resolved.transaction }).hexString !== bytes ||
+      Serializer.encode({ object: signed.transaction }).hexString !== bytes
+    )
+      throw Error('WALLET_CONTEXT_CHANGED');
+    signed.signatures.push(...result.signatures);
+  }
+  signed.signatures = [
+    ...new Map(signed.signatures.map((signature) => [signature.toString(), signature])).values(),
+  ];
+  if (signed.signatures.length > 8) throw Error('NATIVE_PROOF_INVALID');
+  return signed;
 }
 export class ResourceBroadcastUnconfirmed extends Error {
   constructor(readonly transactionId: string) {

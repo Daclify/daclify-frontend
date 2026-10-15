@@ -1,12 +1,25 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
-import { LoginContext, Session, SessionKit, type LoginResult } from '@wharfkit/session';
+import {
+  LoginContext,
+  Session,
+  SessionKit,
+  SigningRequest,
+  TransactRevisions,
+  type LoginResult,
+} from '@wharfkit/session';
+import { ABI, Action, Transaction, PrivateKey, PermissionLevel } from '@wharfkit/antelope';
 import { WalletPluginAnchor } from '@wharfkit/wallet-plugin-anchor';
 import { AccountSchema, NetworkSchema } from '@daclify/core-protocol';
 import { api } from '../../src/api/client';
 import { configureNetworks } from '../../src/api/networks';
 import { useWorkspace } from '../../src/state/workspace';
-import { connectNative, disconnectNative, nativeWallet } from '../../src/auth/telos-zero';
+import {
+  connectNative,
+  disconnectNative,
+  nativeWallet,
+  transactNativeWithCosigners,
+} from '../../src/auth/telos-zero';
 
 // Wallet UI needs a real browser; retain real SessionKit/Session and replace only its renderer.
 vi.mock('@wharfkit/web-renderer', () => ({ WebRenderer: class {} }));
@@ -58,6 +71,88 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
+it.each([false, true])(
+  'collects two exact native approvals without changing the selected wallet; context change=%s',
+  async (change) => {
+    const approval = pending(),
+      connection = connectNative(),
+      kit = await approval.ready(),
+      alice = session('alice'),
+      bob = session('bob');
+    approval.approve(alice, kit);
+    await connection;
+    vi.spyOn(kit, 'restoreAll').mockResolvedValue([alice, bob]);
+    const abi = ABI.from({
+      version: 'eosio::abi/1.2',
+      structs: [{ name: 'approve', base: '', fields: [] }],
+      actions: [{ name: 'approve', type: 'approve', ricardian_contract: '' }],
+    });
+    const action = Action.from({
+      account: 'quickauth',
+      name: 'approve',
+      authorization: [PermissionLevel.from('alice@active'), PermissionLevel.from('bob@active')],
+      data: '',
+    });
+    const keys = { alice: PrivateKey.generate('K1'), bob: PrivateKey.generate('K1') };
+    async function signed(wallet: Session, transaction: Transaction, key: PrivateKey) {
+      const request = await SigningRequest.create(
+        { chainId: network.chainId, transaction },
+        { abiProvider: { getAbi: async () => abi } },
+      );
+      const resolved = request.resolve(new Map([['quickauth', abi]]), wallet.permissionLevel, {
+        chainId: network.chainId,
+      });
+      return {
+        chain: wallet.chain,
+        request,
+        resolved,
+        returns: [],
+        revisions: new TransactRevisions(request),
+        signatures: [key.signDigest(transaction.signingDigest(network.chainId))],
+        signer: wallet.permissionLevel,
+        transaction: resolved.resolvedTransaction,
+      };
+    }
+    const transaction = Transaction.from({
+      expiration: new Date(Date.now() + 60_000).toISOString().slice(0, 19),
+      ref_block_num: 1,
+      ref_block_prefix: 2,
+      actions: [action],
+    });
+    vi.spyOn(alice, 'transact').mockImplementation(async () =>
+      signed(alice, transaction, keys.alice),
+    );
+    const consent = vi.spyOn(bob, 'transact').mockImplementation(async (args) => {
+      if (!('transaction' in args) || !args.transaction) throw Error('EXACT_TRANSACTION_REQUIRED');
+      expect(Transaction.from(args.transaction).equals(transaction)).toBe(true);
+      if (change) useWorkspace().network = { ...network, runtime: 'different' };
+      return signed(bob, transaction, keys.bob);
+    });
+    const operation = transactNativeWithCosigners(
+      action,
+      [PermissionLevel.from('alice@active'), PermissionLevel.from('bob@active')],
+      () => {},
+      [{ account: 'quickauth', abi }],
+    );
+    if (change) await expect(operation).rejects.toThrow('WALLET_CONTEXT_CHANGED');
+    else {
+      const result = await operation;
+      expect(result.signatures).toHaveLength(2);
+      expect(
+        result.signatures.some((signature) =>
+          signature.verifyDigest(transaction.signingDigest(network.chainId), keys.alice.toPublic()),
+        ),
+      ).toBe(true);
+      expect(
+        result.signatures.some((signature) =>
+          signature.verifyDigest(transaction.signingDigest(network.chainId), keys.bob.toPublic()),
+        ),
+      ).toBe(true);
+      expect(nativeWallet.value).toBe(alice);
+    }
+    expect(consent).toHaveBeenCalledTimes(1);
+  },
+);
 function pending() {
   const approval = deferred<LoginResult>();
   const login = vi.spyOn(SessionKit.prototype, 'login').mockReturnValue(approval.promise);

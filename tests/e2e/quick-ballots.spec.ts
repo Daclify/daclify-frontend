@@ -2,6 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { ApiRoutes, NetworkSchema } from '@daclify/core-protocol';
 import { quickBallotFixture } from '../helpers/quick-ballot';
+import { quickArchiveFixture } from '../helpers/quick-archive';
 async function fixture(page: Page, corrupt = false, selectedDaos: string[] = []) {
   const f = quickBallotFixture(false, selectedDaos);
   const ballot = corrupt
@@ -358,11 +359,33 @@ test('offers selected-DAO participation only to its active members', async ({ pa
   const f = await fixture(page, false, ['1']),
     anchor = { kind: 'key', publicKey: PrivateKey.generate('K1').toPublic().toString() },
     identity = quickAccountIdentity(f.chainId, f.runtime, anchor);
-  let former=false;
-  const {encryptBallotChoice,addBallotCiphertexts}=await import('@daclify/modules/quick-ballot-proof');
-  const {quickResponseContext}=await import('@daclify/modules/quick-ballots');
-  const encrypted=encryptBallotChoice(quickResponseContext({chainId:f.chainId,runtime:f.runtime,ballotId:f.ballot.id,definitionHash:f.ballot.definition_hash,identity,revision:'1'}),f.ballot.key,1);
-  const previous={id:'3',dao_id:'1',ballot_id:'7',identity,revision:'1',active:true,...encrypted,receipt:'',updated_at:2};
+  let former = false;
+  const { encryptBallotChoice, addBallotCiphertexts } =
+    await import('@daclify/modules/quick-ballot-proof');
+  const { quickResponseContext } = await import('@daclify/modules/quick-ballots');
+  const encrypted = encryptBallotChoice(
+    quickResponseContext({
+      chainId: f.chainId,
+      runtime: f.runtime,
+      ballotId: f.ballot.id,
+      definitionHash: f.ballot.definition_hash,
+      identity,
+      revision: '1',
+    }),
+    f.ballot.key,
+    1,
+  );
+  const previous = {
+    id: '3',
+    dao_id: '1',
+    ballot_id: '7',
+    identity,
+    revision: '1',
+    active: true,
+    ...encrypted,
+    receipt: '',
+    updated_at: 2,
+  };
   const account = {
     id: '11111111-1111-4111-8111-111111111111',
     signingKey: anchor.publicKey,
@@ -400,7 +423,8 @@ test('offers selected-DAO participation only to its active members', async ({ pa
           },
         },
       });
-    if (path === '/v1/quick-ballots/7/response') return route.fulfill({ json: { response: former?previous:null } });
+    if (path === '/v1/quick-ballots/7/response')
+      return route.fulfill({ json: { response: former ? previous : null } });
     return route.fallback();
   });
   await page.goto('/quick-ballots/7');
@@ -408,8 +432,450 @@ test('offers selected-DAO participation only to its active members', async ({ pa
     page.getByText('Join one of the selected DAOs to respond.', { exact: true }),
   ).toBeVisible();
   await expect(page.getByRole('button', { name: 'Vote up', exact: true })).toHaveCount(0);
-  former=true;f.ballot.aggregate=addBallotCiphertexts(f.ballot.aggregate,previous.ciphertext);f.ballot.count++;f.ballot.identities++;
-  await page.getByRole('button',{name:'Refresh',exact:true}).click();
-  await expect(page.getByRole('button',{name:'Remove response',exact:true})).toBeEnabled();
-  await expect(page.getByRole('button',{name:'Vote up',exact:true})).toHaveCount(0);
+  former = true;
+  f.ballot.aggregate = addBallotCiphertexts(f.ballot.aggregate, previous.ciphertext);
+  f.ballot.count++;
+  f.ballot.identities++;
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Remove response', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Vote up', exact: true })).toHaveCount(0);
+});
+
+test('an original reader restores archived grants and votes and publishes a valid late proof', async ({
+  page,
+}) => {
+  const { randomUUID } = await import('node:crypto');
+  const { AccountSchema, RecoveryKitSchema } = await import('@daclify/core-protocol');
+  const { QuickBallotRoutes } = await import('@daclify/modules');
+  const { verifyQuickBallotResult } = await import('@daclify/modules/quick-ballots');
+  const { createVault } = await import('../../src/auth/vault');
+  const { createBallotGrant } = await import('../../src/quick-ballots/keys');
+  const password = 'owned-late-tally-password',
+    created = await createVault(password);
+  const account = AccountSchema.parse({
+    id: randomUUID(),
+    signingKey: created.signingPublicKey,
+    encryptionKey: created.encryptionPublicKey,
+    custody: 'user-controlled',
+  });
+  const f = quickBallotFixture(true, [], JSON.stringify(created.encryptionPublicKey));
+  f.ballot.pruned = true;
+  const grant = await createBallotGrant(
+    {
+      chainId: f.chainId,
+      runtime: f.runtime,
+      source: f.source,
+      ballotId: f.ballot.id,
+      definitionHash: f.ballot.definition_hash,
+      memberId: '1',
+    },
+    JSON.stringify(created.encryptionPublicKey),
+    f.secret,
+  );
+  const archives = quickArchiveFixture(f, [grant]);
+  await fixture(page);
+  let finalized = 0,
+    archiveReads = 0;
+  await page.route('**/v1/**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === '/v1/sign-in/session') return route.fulfill({ json: { account } });
+    if (path === ApiRoutes.memberships.path) return route.fulfill({ json: { memberships: [] } });
+    if (path === '/v1/me/quick-account')
+      return route.fulfill({ json: { available: false, context: null } });
+    if (path === ApiRoutes.challenge.path) {
+      const id = randomUUID(),
+        expires = new Date(Date.now() + 120000).toISOString(),
+        origin = new URL(route.request().url()).origin;
+      return route.fulfill({
+        json: {
+          id,
+          expires,
+          message: JSON.stringify({
+            domain: 'daclify.login.v3',
+            origin,
+            audience: origin,
+            challenge: id,
+            expires,
+            signingKey: account.signingKey,
+            encryptionKey: account.encryptionKey,
+          }),
+        },
+      });
+    }
+    if (path === ApiRoutes.login.path)
+      return route.fulfill({ json: { account, csrfToken: 'c'.repeat(43) } });
+    if (path === '/v1/quick-ballots/7')
+      return route.fulfill({
+        json: {
+          chainId: f.chainId,
+          runtime: f.runtime,
+          source: f.source,
+          ballot: f.ballot,
+          grants: null,
+        },
+      });
+    if (path === '/v1/quick-ballots/7/responses')
+      return route.fulfill({
+        json: { responses: [], next: null, root: f.ballot.response_root, pruned: true },
+      });
+    if (path === '/v1/quick-ballots/7/archive') {
+      archiveReads++;
+      return route.fulfill({ json: { archives, complete: true } });
+    }
+    if (path === '/v1/quick-ballots/7/finalize') {
+      const input = QuickBallotRoutes.quickFinalize.input.parse(route.request().postDataJSON());
+      expect(Object.keys(input).sort()).toEqual([
+        'expectedDefinitionHash',
+        'expectedRoot',
+        'proof',
+        'up',
+      ]);
+      expect(input.expectedDefinitionHash).toBe(f.ballot.definition_hash);
+      expect(input.expectedRoot).toBe(f.ballot.response_root);
+      expect(JSON.stringify(input)).not.toContain(f.secret);
+      const ballot = { ...f.ballot, up: input.up, final_proof: input.proof, verified: true };
+      expect(
+        verifyQuickBallotResult({
+          chainId: f.chainId,
+          runtime: f.runtime,
+          source: f.source,
+          ballot,
+        }),
+      ).toEqual({ up: 1, down: 1, count: 2 });
+      Object.assign(f.ballot, ballot);
+      finalized++;
+      return route.fulfill({ json: { transactionId: '44'.repeat(32), prepared: true } });
+    }
+    return route.fallback();
+  });
+  const kit = RecoveryKitSchema.parse({
+    version: 1,
+    localEnvelope: created.localEnvelope,
+    recoveryEnvelope: created.recoveryEnvelope,
+    signingPublicKey: created.signingPublicKey,
+    encryptionPublicKey: created.encryptionPublicKey,
+  });
+  await page.addInitScript(
+    (value) => localStorage.setItem('daclify.vault.v1', JSON.stringify(value)),
+    kit,
+  );
+  await page.goto('/quick-ballots/7');
+  const publish = page.getByRole('button', { name: 'Verify and publish totals', exact: true });
+  await expect(publish).toBeVisible();
+  await expect(publish).toBeDisabled();
+  await page.evaluate(
+    async ({ password, account }) => {
+      const path = '/src/auth/session.ts',
+        module: unknown = await import(path);
+      if (
+        typeof module !== 'object' ||
+        module === null ||
+        !('unlockAndLogin' in module) ||
+        typeof module.unlockAndLogin !== 'function'
+      )
+        throw Error('FIXTURE_UNLOCK');
+      await module.unlockAndLogin(password, account, 'recover');
+    },
+    { password, account },
+  );
+  await expect(publish).toBeEnabled();
+  await publish.click();
+  await expect(page.getByText('Totals proof verified', { exact: true })).toBeVisible();
+  await expect(page.getByText('Up: 1', { exact: true })).toBeVisible();
+  await expect(page.getByText('Down: 1', { exact: true })).toBeVisible();
+  expect(finalized).toBe(1);
+  expect(archiveReads).toBe(1);
+});
+test('an executive publishes a timed public question with actual key proofs and fixed encrypted reader grants', async ({
+  page,
+}) => {
+  const { randomUUID } = await import('node:crypto');
+  const { ABI, Serializer, Signature, PublicKey } = await import('@wharfkit/antelope');
+  const { z } = await import('zod');
+  const {
+    AccountSchema,
+    RecoveryKitSchema,
+    UserMembershipSchema,
+    DaoSummarySchema,
+    GovernanceStateSchema,
+  } = await import('@daclify/core-protocol');
+  const { instructionDigest, RuntimeActionSchemas } = await import('@daclify/core-protocol/sdk');
+  const { Catalog, ModulePermissions, ModuleStateSchema, QuickBallotRowSchema } =
+    await import('@daclify/modules');
+  const {
+    ModuleCodeHashes,
+    QuickBallotActionSchemas,
+    QuickBallotTableSchemas,
+    quickvoteAbi,
+    quickBallotDefinitionHash,
+    quickKeyContext,
+  } = await import('@daclify/modules/sdk');
+  const { verifyBallotKey } = await import('@daclify/modules/quick-ballot-proof');
+  const { createVault, unlockVault } = await import('../../src/auth/vault');
+  const { openBallotGrant } = await import('../../src/quick-ballots/keys');
+  const password = 'owned-executive-browser-password',
+    created = await createVault(password),
+    secrets = await unlockVault(created.localEnvelope, password),
+    f = await fixture(page);
+  const account = AccountSchema.parse({
+    id: randomUUID(),
+    signingKey: created.signingPublicKey,
+    encryptionKey: created.encryptionPublicKey,
+    custody: 'user-controlled',
+  });
+  const dao = { chainId: f.chainId, contract: f.runtime, daoId: '1', interfaceVersion: 1 };
+  const member = UserMembershipSchema.parse({
+    dao,
+    memberId: '1',
+    nonce: '0',
+    active: true,
+    admin: true,
+    reviewer: false,
+    credits: '0',
+    stake: '0',
+    claim: '0',
+    nativeAccount: '',
+    custody: 'user-controlled',
+    signingKey: created.signingPublicKey,
+  });
+  const summary = DaoSummarySchema.parse({
+    reference: dao,
+    title: 'Garden DAO',
+    description: 'Owned executive fixture',
+    privacy: 'public',
+    owner: 'alice',
+    token: { chainId: f.chainId, contract: 'eosio.token', symbol: 'TLOS', precision: 4 },
+    members: 1,
+    available: '0',
+    reserved: '0',
+    claims: '0',
+    keyEpoch: '1',
+    purpose: 'community',
+  });
+  const manifest = Catalog.find((row) => row.id === 'quick-ballots');
+  if (!manifest) throw Error('QUICK_MANIFEST');
+  const modules = ModuleStateSchema.parse({
+    dao,
+    modules: [
+      {
+        manifest,
+        deployment: {
+          id: 'quick-ballots',
+          account: f.source,
+          version: manifest.version,
+          codeHash: ModuleCodeHashes['quick-ballots'],
+        },
+        enabled: true,
+        installed: true,
+        compatible: true,
+        codeVerified: true,
+        actions: ModulePermissions['quick-ballots'].actions,
+        grants: ModulePermissions['quick-ballots'].grants,
+      },
+    ],
+    ballots: [],
+    votes: [],
+    projects: [],
+    milestones: [],
+    schedules: [],
+    entries: [],
+    controls: [],
+  });
+  const governance = GovernanceStateSchema.parse({
+    dao,
+    policy: null,
+    actors: [],
+    sessions: [],
+    guardian: null,
+    budget: null,
+    executivePolicy: {
+      dao_id: '1',
+      inactivity_seconds: 0,
+      quorum_bps: 10000,
+      revision: '1',
+      last_election_start: 0,
+    },
+    executives: [{ member_id: '1', last_active: 1, office_epoch: '1', election_id: '0' }],
+  });
+  let published: ReturnType<typeof QuickBallotRowSchema.parse> | undefined,
+    grants: string[] = [],
+    secret = '';
+  await page.route('**/v1/**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === '/v1/sign-in/session') return route.fulfill({ json: { account } });
+    if (path === ApiRoutes.daos.path) return route.fulfill({ json: { daos: [summary] } });
+    if (path === ApiRoutes.memberships.path)
+      return route.fulfill({ json: { memberships: [member] } });
+    if (path === '/v1/me/quick-account')
+      return route.fulfill({ json: { available: false, context: null } });
+    if (path === '/v1/daos/1/modules') return route.fulfill({ json: modules });
+    if (path === '/v1/daos/1/governance') return route.fulfill({ json: governance });
+    if (path === '/v1/daos/1/quick-ballots/readers')
+      return route.fulfill({
+        json: {
+          dao,
+          readers: [
+            { member_id: '1', encryption_key: JSON.stringify(created.encryptionPublicKey) },
+          ],
+        },
+      });
+    if (path === ApiRoutes.challenge.path) {
+      const id = randomUUID(),
+        expires = new Date(Date.now() + 120000).toISOString(),
+        origin = new URL(route.request().url()).origin;
+      return route.fulfill({
+        json: {
+          id,
+          expires,
+          message: JSON.stringify({
+            domain: 'daclify.login.v3',
+            origin,
+            audience: origin,
+            challenge: id,
+            expires,
+            signingKey: account.signingKey,
+            encryptionKey: account.encryptionKey,
+          }),
+        },
+      });
+    }
+    if (path === ApiRoutes.login.path)
+      return route.fulfill({ json: { account, csrfToken: 'c'.repeat(43) } });
+    if (path === ApiRoutes.relay.path) {
+      const input = RuntimeActionSchemas.submit.parse(route.request().postDataJSON());
+      expect(
+        Signature.from(input.sig).verifyDigest(
+          instructionDigest(input.request),
+          PublicKey.from(created.signingPublicKey),
+        ),
+      ).toBe(true);
+      expect(input.request.target).toBe(f.source);
+      expect(input.request.action).toBe('open');
+      const decoded: unknown = Serializer.objectify(
+        Serializer.decode({ abi: ABI.from(quickvoteAbi), type: 'open', data: input.request.data }),
+      );
+      const id = QuickBallotTableSchemas.qballots.shape.id,
+        reader = QuickBallotActionSchemas.open.shape.definition.shape.readers.element;
+      const args = QuickBallotActionSchemas.open
+        .extend({
+          dao_id: id,
+          member_id: id,
+          ballot_id: id,
+          definition: QuickBallotActionSchemas.open.shape.definition.extend({
+            audience: z.array(id),
+            readers: z.array(reader.extend({ member_id: id })),
+          }),
+        })
+        .parse(decoded);
+      expect(args.definition).toMatchObject({
+        question: 'Plant more trees?',
+        explanation: 'A community question',
+        all_accounts: true,
+        audience: [],
+      });
+      expect(args.definition.closes).toBeGreaterThan(Date.now() / 1000);
+      expect(args.definition.readers).toHaveLength(1);
+      const definitionHash = quickBallotDefinitionHash({
+        chainId: f.chainId,
+        runtime: f.runtime,
+        source: f.source,
+        ballotId: args.ballot_id,
+        daoId: '1',
+        creatorId: '1',
+        definition: args.definition,
+      });
+      expect(
+        verifyBallotKey(
+          quickKeyContext({
+            chainId: f.chainId,
+            runtime: f.runtime,
+            ballotId: args.ballot_id,
+            definitionHash,
+          }),
+          args.key,
+          args.possession,
+        ),
+      ).toBe(true);
+      secret = await openBallotGrant(
+        {
+          chainId: f.chainId,
+          runtime: f.runtime,
+          source: f.source,
+          ballotId: args.ballot_id,
+          definitionHash,
+          memberId: '1',
+        },
+        secrets.encryptionPrivateKey,
+        args.grants[0] ?? '',
+      );
+      expect(secret).toHaveLength(64);
+      expect(JSON.stringify(input)).not.toContain(secret);
+      published = QuickBallotRowSchema.parse({
+        ...f.ballot,
+        id: args.ballot_id,
+        definition: args.definition,
+        definition_hash: definitionHash,
+        key: args.key,
+        key_proof: args.possession,
+        aggregate: '00'.repeat(192),
+        count: 0,
+        identities: 0,
+      });
+      grants = args.grants;
+      return route.fulfill({ json: { transactionId: '44'.repeat(32) } });
+    }
+    if (published && path === '/v1/quick-ballots/' + published.id)
+      return route.fulfill({
+        json: {
+          chainId: f.chainId,
+          runtime: f.runtime,
+          source: f.source,
+          ballot: published,
+          grants: { id: published.id, dao_id: '1', grants },
+        },
+      });
+    return route.fallback();
+  });
+  const kit = RecoveryKitSchema.parse({
+    version: 1,
+    localEnvelope: created.localEnvelope,
+    recoveryEnvelope: created.recoveryEnvelope,
+    signingPublicKey: created.signingPublicKey,
+    encryptionPublicKey: created.encryptionPublicKey,
+  });
+  await page.addInitScript(
+    (value) => localStorage.setItem('daclify.vault.v1', JSON.stringify(value)),
+    kit,
+  );
+  await page.goto('/quick-ballots');
+  await expect(page.getByRole('button', { name: 'Ask a question', exact: true })).toBeVisible();
+  await page.evaluate(
+    async ({ password, account }) => {
+      const path = '/src/auth/session.ts',
+        module: unknown = await import(path);
+      if (
+        typeof module !== 'object' ||
+        module === null ||
+        !('unlockAndLogin' in module) ||
+        typeof module.unlockAndLogin !== 'function'
+      )
+        throw Error('FIXTURE_UNLOCK');
+      await module.unlockAndLogin(password, account, 'recover');
+    },
+    { password, account },
+  );
+  await page.getByRole('button', { name: 'Ask a question', exact: true }).click();
+  await page.getByLabel('Question', { exact: true }).fill('Plant more trees?');
+  await page.getByLabel('Details (optional)', { exact: true }).fill('A community question');
+  await page
+    .getByLabel('Who may respond?', { exact: true })
+    .selectOption({ label: 'All Daclify users' });
+  await page
+    .getByLabel('Closes at (optional)', { exact: true })
+    .fill(new Date(Date.now() + 86400000).toISOString().slice(0, 16));
+  await page.getByRole('button', { name: 'Publish question', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Plant more trees?', exact: true })).toBeVisible();
+  await expect(page.getByText('Ballot encryption verified', { exact: true })).toBeVisible();
+  expect(published?.definition.readers).toHaveLength(1);
+  expect(secret).toHaveLength(64);
 });
