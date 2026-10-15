@@ -46,6 +46,7 @@ const guideGroups = [
       'marketplace',
       'activity',
       'decide',
+      'quick-ballots',
       'works',
       'governed-funding',
       'grants-rounds',

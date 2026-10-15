@@ -171,6 +171,7 @@ onMounted(() => {
             >Users</span
           ></RouterLink
         >
+        <RouterLink v-if="state.network?.capabilities.includes('quick-ballots-v1')" to="/quick-ballots" aria-label="Quick ballots" @click="mobileOpen=false"><Vote class="nav-icon" aria-hidden="true"/><span class="nav-text">Quick ballots</span></RouterLink>
         <RouterLink to="/mini-apps" aria-label="Mini apps" @click="mobileOpen = false"
           ><Blocks class="nav-icon" aria-hidden="true" /><span class="nav-text"
             >Mini apps</span

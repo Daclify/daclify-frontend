@@ -541,3 +541,20 @@ it('signs native reconnection with the restored root even when an EVM signer is 
   expect(sessionStorage.getItem('daclify.csrf')).toBe(csrf);
   selectedSigner.value = 'vault';
 });
+
+it('signs only Quick ballot operations with the matching unlocked canonical account key',async()=>{
+ const {QuickAuthCodeHash,quickAccountIdentity,quickAccountRequest,quickAccountDigest}=await import('@daclify/core-protocol/sdk');
+ const {signQuickApproval}=await import('../../src/auth/session');
+ const {Serializer}=await import('@wharfkit/antelope');
+ const created=await createVault(password);saveVault(created);
+ const owned={...account(created.signingPublicKey),encryptionKey:created.encryptionPublicKey};
+ vi.spyOn(api,'challenge').mockResolvedValue({id:randomUUID(),message:'fixture-message',expires:new Date(Date.now()+60000).toISOString()});
+ vi.spyOn(api,'login').mockResolvedValue(owned);
+ await unlockAndLogin(password);
+ const anchor={kind:'key',publicKey:created.signingPublicKey},context={chainId:'11'.repeat(32),runtime:'daclifycore1',authority:'quickauth',authorityCodeHash:QuickAuthCodeHash,source:'quickvote',sourceCodeHash:'22'.repeat(32),gateway:{actor:'gateway',permission:'active'},anchor,identity:quickAccountIdentity('11'.repeat(32),'daclifycore1',anchor),frozen:true,record:null};
+ const expires=Math.floor(Date.now()/1000)+120,request=quickAccountRequest(context,{operation:'register'},expires),prepared={...request,id:randomUUID(),context,expiresAt:new Date(expires*1000).toISOString()};
+ const proof=signQuickApproval(prepared);
+ const signature=Serializer.decode({type:Signature,data:proof});
+ expect(signature.verifyDigest(quickAccountDigest(request.action,request.request),PublicKey.from(created.signingPublicKey))).toBe(true);
+ lockVault();expect(()=>signQuickApproval(prepared)).toThrow('VAULT_LOCKED');
+});

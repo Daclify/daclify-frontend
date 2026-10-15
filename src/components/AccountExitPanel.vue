@@ -16,6 +16,7 @@ import {
   type ExitIntent,
 } from '@daclify/core-protocol';
 import { encodeAction, makeInstruction } from '@daclify/core-protocol/sdk';
+import { deactivateQuickAccount } from '../quick-ballots/approval';
 import { api, friendlyError } from '../api/client';
 import { resolveApiUrl } from '../api/networks';
 import { useWorkspace } from '../state/workspace';
@@ -268,6 +269,7 @@ async function begin() {
         choices.value[exitMembershipKey(member)] = 'handover';
       }
     }
+    if (mode.value === 'delete-account') await deactivateQuickAccount(checkOperator);
     const intent = buildExitIntent(latest, { mode: mode.value, memberships: choices.value });
     reviewedIntent.value = intent;
     const capability = newExitCapability();

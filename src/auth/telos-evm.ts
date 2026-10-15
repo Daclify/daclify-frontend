@@ -6,6 +6,7 @@ import {
 } from '@daclify/core-protocol';
 import {
   canonicalEvmSignature,
+  quickAccountTypedData,
   bindingTypedData,
   governanceTypedData,
   exitGovernanceTypedData,
@@ -219,4 +220,9 @@ export function signEvmExit(
     'eth_signTypedData_v4',
     JSON.stringify(exitGovernanceTypedData(operation, stepDigest, request, binding)),
   );
+}
+
+export function signEvmQuick(domain:{chainId:string;runtime:string},chainId:40|41,digest:string) {
+ if(evmWallet.value?.chainId!==chainId)throw Error('WALLET_CONTEXT_CHANGED');
+ return signWallet('eth_signTypedData_v4',JSON.stringify(quickAccountTypedData(domain,chainId,digest)));
 }

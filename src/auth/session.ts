@@ -1,8 +1,12 @@
+import { QuickAccountPreparedSchema } from '@daclify/core-protocol';
+import { quickAccountDigest } from '@daclify/core-protocol/sdk';
+import { openBallotGrant } from '../quick-ballots/keys';
+import { openAccountReceipt } from '../quick-ballots/receipts';
 import { assertOperatorDao } from '../api/networks';
 import { ref } from 'vue';
 import { useWorkspace } from '../state/workspace';
 import { csrfStorageKey } from '../api/networks';
-import { PrivateKey } from '@wharfkit/antelope';
+import { PrivateKey, Serializer } from '@wharfkit/antelope';
 import {
   contentDomain,
   epochGrantDomain,
@@ -417,6 +421,21 @@ export function canUseVaultKey(signingKey: string | undefined): boolean {
     (!signingKey ||
       (!!secrets && PrivateKey.from(secrets.signingKey).toPublic().toString() === signingKey))
   );
+}
+export function signQuickApproval(value:unknown):string {
+  const prepared=QuickAccountPreparedSchema.parse(value);
+  if(!secrets)throw Error('VAULT_LOCKED');
+  const key=PrivateKey.from(secrets.signingKey);
+  if(prepared.context.anchor.kind!=='key' || prepared.context.anchor.publicKey!==key.toPublic().toString())throw Error('ACCOUNT_KEY_MISMATCH');
+  touch();return Serializer.encode({object:key.signDigest(quickAccountDigest(prepared.action,prepared.request))}).hexString;
+}
+export async function openQuickGrant(context:unknown,ciphertext:string):Promise<string> {
+  const started=generation;if(!secrets)throw Error('VAULT_LOCKED');touch();
+  const secret=await openBallotGrant(context,secrets.encryptionPrivateKey,ciphertext);guardEpochAccess(started);return secret;
+}
+export async function readQuickReceipt(context:unknown,receipt:string):Promise<0|1> {
+  const started=generation;if(!secrets)throw Error('VAULT_LOCKED');touch();
+  const choice=await openAccountReceipt(context,secrets.encryptionPrivateKey,receipt);guardEpochAccess(started);return choice;
 }
 export function signInstruction(request: instruction): string {
   assertOperatorDao({

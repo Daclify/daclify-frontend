@@ -14,6 +14,20 @@ export const toolGuides: Record<
   string,
   { icon: Component; example: string; steps: string[]; requirements: string; limits: string }
 > = {
+  'quick-ballot': {
+    icon: Vote,
+    example:
+      'Ask your DAO, selected communities or all Daclify users whether to organize a shared event.',
+    steps: [
+      'A current executive publishes a public question, chooses its audience and optionally sets a deadline. The originating executives receive the fixed reader grants.',
+      'Each Daclify account records one encrypted up or down response. It can change or remove that response while the ballot is open.',
+      'After closure, an original reader verifies the complete encrypted snapshot locally and publishes a public proof of the totals.',
+    ],
+    requirements:
+      'Quick ballots enabled in the originating DAO, current executive creation authority and the existing account approval setup.',
+    limits:
+      'Participation is public. Original readers retain their keys. Verified encrypted archives and an independent backup are required before vote rows can be removed thirty days after closure. This testnet proof system has not had an independent security audit.',
+  },
   'member-vote': {
     icon: Vote,
     example: 'A neighborhood DAO chooses which community event to organize next.',

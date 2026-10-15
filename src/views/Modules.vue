@@ -62,6 +62,14 @@ interface Offering {
 }
 
 const OFFERINGS: Record<string, readonly Offering[]> = {
+  'quick-ballots': [
+    {
+      id: 'quick-ballot',
+      title: 'Encrypted up/down question',
+      summary:
+        'Ask one or more DAOs or all Daclify users. Fixed readers can read choices; public proofs verify the totals.',
+    },
+  ],
   decide: [
     {
       id: 'member-vote',
@@ -128,6 +136,13 @@ const PRESENTATION: Record<
   string,
   { title: string; icon: Component; category: string; summary: string }
 > = {
+  'quick-ballots': {
+    title: 'Quick ballots',
+    icon: Vote,
+    category: 'Governance',
+    summary:
+      'Simple encrypted questions with one up or down response per Daclify account and publicly verified totals.',
+  },
   activity: {
     title: 'Community Activity',
     icon: Sprout,

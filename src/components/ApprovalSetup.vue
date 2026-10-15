@@ -3,6 +3,12 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import type { UserMembership } from '@daclify/core-protocol';
 import { useWorkspace } from '../state/workspace';
+import {
+  configureQuickDefault,
+  restoreQuickPending,
+  pendingQuick,
+  resumeQuickApproval,
+} from '../quick-ballots/approval';
 import { api, friendlyError } from '../api/client';
 import { resolveApiUrl } from '../api/networks';
 import { selectedSigner, activateMemberWallet } from '../auth/action-signer';
@@ -140,6 +146,7 @@ async function checkPairing() {
     stamp = context();
   paired.value = kind.value === 'vault';
   error.value = '';
+  if (state.account) restoreQuickPending();
   loading.value = true;
   try {
     if (kind.value === 'native' && nativeWallet.value) {
@@ -264,6 +271,24 @@ async function approve() {
   completed.value = [];
   try {
     saveDefault();
+    if (state.network?.capabilities.includes('quick-ballots-v1')) {
+      const method =
+        mode === 'native' && nativeWallet.value
+          ? {
+              kind: 'native' as const,
+              account: nativeWallet.value.actor.toString(),
+              permission: 'active' as const,
+            }
+          : mode === 'evm' && evmWallet.value
+            ? {
+                kind: 'evm' as const,
+                chainId: evmWallet.value.chainId,
+                address: evmWallet.value.address.toLowerCase(),
+              }
+            : null;
+      await configureQuickDefault(method, check);
+      check();
+    }
     if (mode !== 'vault')
       for (const member of selections) {
         check();
@@ -285,6 +310,20 @@ async function approve() {
       await state.refresh();
       if (stamp === context()) busy.value = false;
     }
+  }
+}
+async function resumePending() {
+  busy.value = true;
+  error.value = '';
+  const stamp = context();
+  try {
+    await resumeQuickApproval(() => {
+      if (stamp !== context()) throw Error('WALLET_CONTEXT_CHANGED');
+    });
+  } catch (cause) {
+    error.value = friendlyError(cause);
+  } finally {
+    if (stamp === context()) busy.value = false;
   }
 }
 function status(member: UserMembership): string {
@@ -320,6 +359,15 @@ function status(member: UserMembership): string {
     :aria-busy="busy || loading"
   >
     <h2 id="approval-setup-title">Approval setup</h2>
+    <p v-if="state.network?.capabilities.includes('quick-ballots-v1')" class="field-help">
+      The same default also approves Quick ballots across Daclify.
+    </p>
+    <p v-if="pendingQuick" class="notice">
+      An earlier approval is awaiting confirmation.
+      <button type="button" class="secondary" :disabled="busy" @click="resumePending">
+        Check approval
+      </button>
+    </p>
     <p>Choose one default method for your DAO actions. Your memberships and roles stay the same.</p>
     <label for="default-approval-method">Default approval method</label>
     <select id="default-approval-method" v-model="kind" :disabled="busy || loading">

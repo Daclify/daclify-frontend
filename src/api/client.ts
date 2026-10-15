@@ -1,3 +1,5 @@
+import { QuickAccountRoutes } from '@daclify/core-protocol';
+import { QuickBallotRoutes } from '@daclify/modules';
 import {
   AccountExitRoutes,
   ExitNativeStepRoute,
@@ -276,6 +278,20 @@ export function verifiedModuleRelease(state: ModuleState): ModuleState {
   };
 }
 export const api = {
+  quickAccountStatus:()=>request(QuickAccountRoutes.quickAccountStatus.path,QuickAccountRoutes.quickAccountStatus.response),
+  quickAccountPrepare:(input:z.infer<typeof QuickAccountRoutes.quickAccountPrepare.input>)=>request(QuickAccountRoutes.quickAccountPrepare.path,QuickAccountRoutes.quickAccountPrepare.response,QuickAccountRoutes.quickAccountPrepare.input.parse(input)),
+  quickAccountSubmit:(input:z.infer<typeof QuickAccountRoutes.quickAccountSubmit.input>)=>request(QuickAccountRoutes.quickAccountSubmit.path,QuickAccountRoutes.quickAccountSubmit.response,QuickAccountRoutes.quickAccountSubmit.input.parse(input),75000),
+  quickList:(query:z.infer<typeof QuickBallotRoutes.quickList.query>={})=>{
+    const checked=QuickBallotRoutes.quickList.query.parse(query),params=new URLSearchParams({...checked.after?{after:checked.after}:{},...checked.daoId?{daoId:checked.daoId}:{}});
+    return request(QuickBallotRoutes.quickList.path+'?'+params,QuickBallotRoutes.quickList.response);
+  },
+  quickDetail:(id:string)=>request(QuickBallotRoutes.quickDetail.path.replace(':ballotId',IdSchema.parse(id)),QuickBallotRoutes.quickDetail.response),
+  quickResponses:(id:string,after?:string)=>request(QuickBallotRoutes.quickResponses.path.replace(':ballotId',IdSchema.parse(id))+'?'+new URLSearchParams(after?{after:QuickBallotRoutes.quickResponses.query.parse({after}).after??''}:{}),QuickBallotRoutes.quickResponses.response),
+  quickOwnResponse:(id:string,identity:string)=>request(QuickBallotRoutes.quickOwnResponse.path.replace(':ballotId',IdSchema.parse(id))+'?'+new URLSearchParams(QuickBallotRoutes.quickOwnResponse.query.parse({identity})),QuickBallotRoutes.quickOwnResponse.response),
+  quickReaders:(id:string)=>request(QuickBallotRoutes.quickReaders.path.replace(':id',IdSchema.parse(id)),QuickBallotRoutes.quickReaders.response),
+  quickAdvance:(id:string)=>request(QuickBallotRoutes.quickAdvance.path.replace(':ballotId',IdSchema.parse(id)),QuickBallotRoutes.quickAdvance.response,{} ,75000),
+  quickFinalize:(id:string,input:z.infer<typeof QuickBallotRoutes.quickFinalize.input>)=>request(QuickBallotRoutes.quickFinalize.path.replace(':ballotId',IdSchema.parse(id)),QuickBallotRoutes.quickFinalize.response,QuickBallotRoutes.quickFinalize.input.parse(input),75000),
+
   daoClaimEligibility: () =>
     request(ApiRoutes.daoClaimEligibility.path, ApiRoutes.daoClaimEligibility.response),
   daoClaimList: () => request(ApiRoutes.daoClaimList.path, ApiRoutes.daoClaimList.response),
@@ -1534,6 +1550,27 @@ export const api = {
 };
 export function friendlyError(error: unknown): string {
   const handoverErrors: Record<string, string> = {
+    QUICK_AUDIENCE:'Join one of the selected DAOs, or enable your default wallet there through Approval setup before voting.',
+    QUICK_SUBMISSION_EXPIRED:'The original approval expired without verified inclusion. Review the current ballot and approve a fresh request.',
+    QUICK_PREPARATION_EXPIRED:'This approval request expired before submission. Review the current ballot and try again.',
+    QUICK_DEFINITION:'This ballot could not be verified. Refresh and check its public source before voting.',
+    QUICK_KEY_PROOF:'This ballot could not be verified. Refresh and check its public source before voting.',
+    QUICK_TALLY_PROOF:'The totals proof could not be verified. No result has been accepted.',
+    QUICK_SNAPSHOT:'The encrypted responses do not match the complete frozen ballot. Refresh the verified archive before tallying.',
+    QUICK_ARCHIVE_REQUIRED:'Load the verified encrypted archive before tallying this ballot.',
+    QUICK_CRYPTO_FAILED:'This ballot could not be verified. Refresh before trying again.',
+    QUICK_CANCELLED:'The task was cancelled. Check any submitted approval before trying again.',
+    QUICK_DEADLINE:'Choose a closing time in the future.',
+    QUICK_APPROVAL_REQUIRED:'Complete Approval setup with your existing account or paired wallet before voting.',
+    QUICK_ROOT_WALLET_REQUIRED:'Connect the original account wallet to approve this setup. Changing between two native wallets requires separate consent.',
+    QUICK_SUBMISSION_PENDING:'An earlier approval is awaiting confirmation. Check it before signing another operation.',
+    QUICK_ORIGINAL_ACCOUNT_REQUIRED:'This wallet already belongs to another Quick ballot identity. Recover or reconnect the original Daclify account.',
+    QUICK_APPROVAL_CHANGE_REQUIRED:'Remove this wallet’s Quick ballot approval before unpairing it. Keep the original account method available.',
+    QUICK_DEACTIVATION_REQUIRED:'Revoke Quick ballot approval with your current account method before deleting the account.',
+    QUICK_REGISTRATION_PENDING:'A voting setup request is still usable. Complete it and revoke approval, or wait for it to expire before deleting the account.',
+    QUICK_READER_REQUIRED:'Only an original ballot reader with matching account encryption keys can read these responses.',
+    QUICK_UNAVAILABLE:'Quick ballots are unavailable until this deployment’s verified contracts and gateway are configured.',
+
     LISTING_ORIGIN_REGISTERED:
       'This HTTPS origin already has a maintainer. Use its existing listing or a verified ownership transfer.',
     LISTING_OWNER_REQUIRED:
