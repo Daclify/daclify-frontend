@@ -264,6 +264,14 @@
     {
       "id": "TELOS-DAO-SIDEBAR-AND-HUB-SEPARATION",
       "tests": ["tests/e2e/catalogue-navigation.spec.ts", "tests/e2e/telos-governance.spec.ts"]
+    },
+    {
+      "id": "TRUSTED-CONTACT-PREPARE-DEVICE-AND-DOCUMENT-RECOVERY",
+      "tests": [
+        "tests/unit/contact-recovery.test.ts",
+        "tests/e2e/contact-recovery.spec.ts",
+        "tests/e2e/contact-recovery-approvals.spec.ts"
+      ]
     }
   ]
 }

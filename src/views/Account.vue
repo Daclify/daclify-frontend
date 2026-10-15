@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContactRecovery from '../components/ContactRecovery.vue';
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
@@ -1125,6 +1126,7 @@ function backup() {
       separately. <RouterLink to="/docs/accounts">How access works</RouterLink>
     </p>
   </div>
+  <ContactRecovery v-if="!embedded" />
 </template>
 <style scoped>
 .account-settings {

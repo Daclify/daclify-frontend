@@ -1,3 +1,4 @@
+import { ContactRecoveryRoutes } from '@daclify/core-protocol';
 import { QuickAccountRoutes } from '@daclify/core-protocol';
 import { QuickBallotRoutes } from '@daclify/modules';
 import {
@@ -1327,6 +1328,32 @@ export const api = {
       ? page.daos.filter((d) => daoPaymentKey(d.reference) === daoPaymentKey(operator.reference))
       : page.daos;
   },
+  contactRecoveryState: (input: z.infer<typeof ContactRecoveryRoutes.contactRecoveryState.input>) =>
+    request(
+      ContactRecoveryRoutes.contactRecoveryState.path,
+      ContactRecoveryRoutes.contactRecoveryState.response,
+      ContactRecoveryRoutes.contactRecoveryState.input.parse(input),
+    ),
+  contactRecoverySubmit: (
+    input: z.infer<typeof ContactRecoveryRoutes.contactRecoverySubmit.input>,
+  ) =>
+    request(
+      ContactRecoveryRoutes.contactRecoverySubmit.path,
+      ContactRecoveryRoutes.contactRecoverySubmit.response,
+      ContactRecoveryRoutes.contactRecoverySubmit.input.parse(input),
+    ),
+  contactRecoveryClaim: (input: z.infer<typeof ContactRecoveryRoutes.contactRecoveryClaim.input>) =>
+    request(
+      ContactRecoveryRoutes.contactRecoveryClaim.path,
+      ContactRecoveryRoutes.contactRecoveryClaim.response,
+      ContactRecoveryRoutes.contactRecoveryClaim.input.parse(input),
+    ),
+  contactRecoveryGrant: (input: z.infer<typeof ContactRecoveryRoutes.contactRecoveryGrant.input>) =>
+    request(
+      ContactRecoveryRoutes.contactRecoveryGrant.path,
+      ContactRecoveryRoutes.contactRecoveryGrant.response,
+      ContactRecoveryRoutes.contactRecoveryGrant.input.parse(input),
+    ),
   challenge: (input: z.infer<typeof ApiRoutes.challenge.input>) =>
     request(
       ApiRoutes.challenge.path,
@@ -1633,6 +1660,25 @@ export const api = {
 };
 export function friendlyError(error: unknown): string {
   const handoverErrors: Record<string, string> = {
+    CONTACT_RECOVERY_CODE_INVALID: 'Use the complete public recovery code.',
+    CONTACT_RECOVERY_HISTORY_LIMIT: 'Recovery history is too large for this screen.',
+    CONTACT_RECOVERY_BACKUP_REQUIRED: 'Save the replacement vault before clearing setup.',
+    CONTACT_RECOVERY_SETUP_EXISTS:
+      'Finish or export and clear the pending replacement before preparing another account.',
+    CONTACT_RECOVERY_BACKUP_IDENTITY: 'This backup belongs to another recovery identity.',
+    CONTACT_RECOVERY_BACKUP_PENDING:
+      'Resume the backup for the pending replacement, or cancel the request first.',
+    CONTACT_RECOVERY_CURRENT_VAULT_REQUIRED:
+      'Sign in with the current replacement vault for this recovery identity.',
+    CONTACT_RECOVERY_SIGNIN_REQUIRED:
+      'Sign in with this replacement before starting another recovery.',
+    CONTACT_RECOVERY_CONTACT_REQUIRED: 'Sign in with one of the selected recovery contacts.',
+    CONTACT_RECOVERY_OFFER_REQUIRED:
+      'Prepare the receiving device and share its public recovery offer first.',
+    RECOVERY_REQUEST_UNKNOWN: 'There is no pending recovery request. Reload the membership.',
+    CONTACT_RECOVERY_VAULT_OVERWRITE: 'Back up your existing vault and confirm replacement first.',
+    CONTACT_RECOVERY_EPOCHS_COVERED: 'All available document keys are already backed up.',
+    CONTACT_RECOVERY_FILE_SIZE: 'Choose a recovery backup or share file smaller than 20 KB.',
     QUICK_AUDIENCE:
       'Join one of the selected DAOs, or enable your default wallet there through Approval setup before voting.',
     QUICK_REVISION:
@@ -2044,6 +2090,7 @@ export function friendlyError(error: unknown): string {
   }
   if (error instanceof Error) {
     const cryptoErrors: Record<string, string> = {
+      ...ContractFailureMessages,
       NATIVE_CONTEXT_REVIEW_REQUIRED:
         'Restore the code-only execution context and complete core action links before handover.',
       NATIVE_POLICY_MIGRATION_REQUIRED:

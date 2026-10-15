@@ -422,20 +422,35 @@ export function canUseVaultKey(signingKey: string | undefined): boolean {
       (!!secrets && PrivateKey.from(secrets.signingKey).toPublic().toString() === signingKey))
   );
 }
-export function signQuickApproval(value:unknown):string {
-  const prepared=QuickAccountPreparedSchema.parse(value);
-  if(!secrets)throw Error('VAULT_LOCKED');
-  const key=PrivateKey.from(secrets.signingKey);
-  if(prepared.context.anchor.kind!=='key' || prepared.context.anchor.publicKey!==key.toPublic().toString())throw Error('ACCOUNT_KEY_MISMATCH');
-  touch();return Serializer.encode({object:key.signDigest(quickAccountDigest(prepared.action,prepared.request))}).hexString;
+export function signQuickApproval(value: unknown): string {
+  const prepared = QuickAccountPreparedSchema.parse(value);
+  if (!secrets) throw Error('VAULT_LOCKED');
+  const key = PrivateKey.from(secrets.signingKey);
+  if (
+    prepared.context.anchor.kind !== 'key' ||
+    prepared.context.anchor.publicKey !== key.toPublic().toString()
+  )
+    throw Error('ACCOUNT_KEY_MISMATCH');
+  touch();
+  return Serializer.encode({
+    object: key.signDigest(quickAccountDigest(prepared.action, prepared.request)),
+  }).hexString;
 }
-export async function openQuickGrant(context:unknown,ciphertext:string):Promise<string> {
-  const started=generation;if(!secrets)throw Error('VAULT_LOCKED');touch();
-  const secret=await openBallotGrant(context,secrets.encryptionPrivateKey,ciphertext);guardEpochAccess(started);return secret;
+export async function openQuickGrant(context: unknown, ciphertext: string): Promise<string> {
+  const started = generation;
+  if (!secrets) throw Error('VAULT_LOCKED');
+  touch();
+  const secret = await openBallotGrant(context, secrets.encryptionPrivateKey, ciphertext);
+  guardEpochAccess(started);
+  return secret;
 }
-export async function readQuickReceipt(context:unknown,receipt:string):Promise<0|1> {
-  const started=generation;if(!secrets)throw Error('VAULT_LOCKED');touch();
-  const choice=await openAccountReceipt(context,secrets.encryptionPrivateKey,receipt);guardEpochAccess(started);return choice;
+export async function readQuickReceipt(context: unknown, receipt: string): Promise<0 | 1> {
+  const started = generation;
+  if (!secrets) throw Error('VAULT_LOCKED');
+  touch();
+  const choice = await openAccountReceipt(context, secrets.encryptionPrivateKey, receipt);
+  guardEpochAccess(started);
+  return choice;
 }
 export function signInstruction(request: instruction): string {
   assertOperatorDao({
@@ -690,17 +705,61 @@ async function epochKey(
   const started = generation;
   const opened = secrets;
   if (!opened) throw new Error('VAULT_LOCKED');
-  const grant = content.keyGrants.find((g) => g.recipient === member && g.epoch === epoch);
+  const original = content.keyGrants.find((g) => g.recipient === member && g.epoch === epoch);
   const commitment = content.epochs.find((c) => c.epoch === epoch);
-  if (!grant || !commitment) throw new Error('EPOCH_UNAVAILABLE');
+  if (!commitment) throw new Error('EPOCH_UNAVAILABLE');
+  if (original) {
+    try {
+      const key = await openCommittedEpoch(
+        opened.encryptionPrivateKey,
+        EpochGrantSchema.parse(JSON.parse(original.envelope)),
+        epochGrantDomain(dao, epoch, member),
+        commitment.commitment,
+      );
+      guardEpochAccess(started);
+      return key;
+    } catch (error) {
+      guardEpochAccess(started);
+      if (error instanceof Error && error.message === 'EPOCH_KEY_MISMATCH') throw error;
+      if (!useWorkspace().network?.capabilities.includes('trusted-contact-recovery-v1'))
+        throw error;
+    }
+  }
+  if (!useWorkspace().network?.capabilities.includes('trusted-contact-recovery-v1'))
+    throw new Error('EPOCH_UNAVAILABLE');
+  const { grant } = await api.contactRecoveryGrant({ target: { dao, memberId: member }, epoch });
+  guardEpochAccess(started);
+  if (!grant) throw new Error('EPOCH_UNAVAILABLE');
   const key = await openCommittedEpoch(
     opened.encryptionPrivateKey,
-    EpochGrantSchema.parse(JSON.parse(grant.envelope)),
+    grant,
     epochGrantDomain(dao, epoch, member),
     commitment.commitment,
   );
   guardEpochAccess(started);
   return key;
+}
+export async function contactEpochSecrets(
+  dao: DaoRef,
+  member: string,
+  epochs: string[],
+  content: DaoContent,
+) {
+  if (!epochs.length || epochs.length > 16) throw new Error('KEY_CHECK_LIMIT');
+  const result = [];
+  for (const epoch of epochs) {
+    const key = await epochKey(dao, member, epoch, content);
+    try {
+      result.push({
+        epoch,
+        commitment: await sha256Hex(key),
+        key: btoa(String.fromCharCode(...key)),
+      });
+    } finally {
+      key.fill(0);
+    }
+  }
+  return result;
 }
 export async function verifyPrivateEpochs(
   dao: DaoRef,

@@ -74,7 +74,7 @@ const guideGroups = [
     id: 'privacy',
     title: 'Privacy & recovery',
     description: 'Protect documents, back up your keys and understand what can be recovered.',
-    topicIds: ['privacy', 'documents', 'recovery', 'archive'],
+    topicIds: ['privacy', 'documents', 'recovery', 'contact-recovery', 'archive'],
   },
   {
     id: 'builders',
