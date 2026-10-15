@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useRoute, useRouter } from 'vue-router';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import type { BallotContent } from '@daclify/modules';
 import {
@@ -61,6 +62,34 @@ const documentPopup = ref(false),
   rolePopup = ref(false),
   format = ref('file');
 const templatePopup = ref(false);
+const route = useRoute(),
+  router = useRouter();
+let consumingTemplateHint = false;
+watch([() => route.fullPath, content], async () => {
+  if (
+    props.section !== 'documents' ||
+    !content.value ||
+    !('templates' in route.query) ||
+    consumingTemplateHint
+  )
+    return;
+  consumingTemplateHint = true;
+  const valid = route.query.templates === '1' && props.member?.active && props.member.admin;
+  const query = { ...route.query };
+  delete query.templates;
+  await router.replace({ path: route.path, query, hash: route.hash });
+  if (valid) templatePopup.value = true;
+  consumingTemplateHint = false;
+});
+const registrationCandidate =
+  ref<import('../content/legal-templates/managed').ManagedDocumentCandidate>();
+function continueDocumentSetup(
+  candidate: import('../content/legal-templates/managed').ManagedDocumentCandidate,
+) {
+  registrationCandidate.value = candidate;
+  templatePopup.value = false;
+  activeTab.value = 'legal';
+}
 const documentTarget = ref(''),
   uploadBusy = ref(false),
   uploadPending = ref(false);
@@ -733,19 +762,41 @@ async function retrieve(document: DaoContent['documents'][number]) {
   }
   return false;
 }
-async function openManagedVersion(document: DaoContent['documents'][number]): Promise<ReviewedDocument | undefined> {
+async function openManagedVersion(
+  document: DaoContent['documents'][number],
+): Promise<ReviewedDocument | undefined> {
   if (!content.value) throw new Error('DOCUMENT_UNKNOWN');
-  const domain = context.value, request = generation;
-  const opened = await readDocumentForReview(props.dao.reference, props.member?.active ? props.member.memberId : undefined, document, content.value);
-  if (disposed || domain !== context.value || request !== generation || (document.envelope_version === 1 && !vaultUnlocked.value)) return;
-  if (opened.file && opened.markdown === undefined) downloadFile(opened.file.bytes, opened.file.metadata);
+  const domain = context.value,
+    request = generation;
+  const opened = await readDocumentForReview(
+    props.dao.reference,
+    props.member?.active ? props.member.memberId : undefined,
+    document,
+    content.value,
+  );
+  if (
+    disposed ||
+    domain !== context.value ||
+    request !== generation ||
+    (document.envelope_version === 1 && !vaultUnlocked.value)
+  )
+    return;
+  if (opened.file && opened.markdown === undefined)
+    downloadFile(opened.file.bytes, opened.file.metadata);
   return opened;
 }
-
 </script>
 <template>
   <div v-if="section === 'documents'" class="workspace-tools-toolbar">
-    <button type="button" class="secondary" aria-haspopup="dialog" :disabled="busy || uploadBusy || !content" @click="templatePopup = true">Create from template</button>
+    <button
+      type="button"
+      class="secondary"
+      aria-haspopup="dialog"
+      :disabled="busy || uploadBusy || !content"
+      @click="templatePopup = true"
+    >
+      Create from template
+    </button>
     <WorkspaceTabs
       v-model="activeTab"
       prefix="documents"
@@ -860,7 +911,14 @@ async function openManagedVersion(document: DaoContent['documents'][number]): Pr
   <p v-if="accessNote" role="status">{{ accessNote }}</p>
 
   <template v-if="section === 'documents'">
-    <LegalTemplatesDialog v-model:open="templatePopup" :dao="dao" :member="member" :content="content" @updated="refresh" />
+    <LegalTemplatesDialog
+      v-model:open="templatePopup"
+      :dao="dao"
+      :member="member"
+      :content="content"
+      @updated="refresh"
+      @request-adoption="continueDocumentSetup"
+    />
     <div
       v-show="activeTab === 'legal'"
       id="documents-legal"
@@ -874,6 +932,8 @@ async function openManagedVersion(document: DaoContent['documents'][number]): Pr
         :content="content"
         :open-version="openManagedVersion"
         :registration-request="registrationRequest"
+        :registration-candidate="registrationCandidate"
+        @registered="registrationCandidate = undefined"
         @updated="refresh"
       />
     </div>

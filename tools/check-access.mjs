@@ -9,6 +9,7 @@ import { DaoSummarySchema, UserMembershipSchema, TreasurySchema } from '@daclify
 import { createRenderer, reactive, h, nextTick, compile, ssrContextKey } from 'vue';
 import { parse, compileScript } from 'vue/compiler-sfc';
 import { createPinia } from 'pinia';
+import { createRouter, createMemoryHistory } from 'vue-router';
 import { ABI, Serializer } from '@wharfkit/antelope';
 import { runtimeAbi } from '@daclify/core-protocol/sdk';
 const root = process.cwd();
@@ -22,6 +23,7 @@ const server = await createServer({
 globalThis.localStorage = { getItem: () => null };
 globalThis.sessionStorage = { getItem: () => null, setItem() {}, removeItem() {} };
 globalThis.document = { activeElement: null };
+globalThis.window = { addEventListener() {}, removeEventListener() {} };
 globalThis.Document = class Document {};
 globalThis.ShadowRoot = class ShadowRoot {};
 const { api } = await server.ssrLoadModule('/src/api/client.ts');
@@ -107,6 +109,7 @@ function mount(Component, props) {
   const container = { tag: 'root', children: [], text: '' };
   const app = renderer.createApp({ render: () => h(Component, props) });
   app.use(createPinia());
+  app.use(createRouter({ history: createMemoryHistory(), routes: [] }));
   app.provide(ssrContextKey, { modules: new Set() });
   app.component('RouterLink', {
     props: ['to'],
@@ -321,7 +324,8 @@ const moduleData = ModuleStateSchema.parse({
 });
 api.people = async () => ({ profiles: [], next: null });
 api.moduleState = async () => moduleData;
-api.treasury = async (id) => TreasurySchema.parse({ dao: reference(id), obligations: [], evidence: [] });
+api.treasury = async (id) =>
+  TreasurySchema.parse({ dao: reference(id), obligations: [], evidence: [] });
 const modules = mount(
   ModulesPanel,
   reactive({ dao: dao('1'), member: member('1'), section: 'works' }),

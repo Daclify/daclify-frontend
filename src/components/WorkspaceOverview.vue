@@ -120,6 +120,20 @@ const hasFunds = computed(
       </button>
     </div>
     <p v-else-if="loading" class="muted" role="status">Checking available DAO tools…</p>
+    <RouterLink
+      v-if="member?.active && member.admin"
+      :to="{ path: `/dao/${dao.reference.daoId}/documents`, query: { templates: '1' } }"
+      class="panel overview-action"
+    >
+      <BookOpen aria-hidden="true" />
+      <div>
+        <h3>Set up DAO documents</h3>
+        <p>
+          Optional: customize a charter, policies or agreements, then review and approve each
+          document.
+        </p>
+      </div>
+    </RouterLink>
     <ul class="overview-actions" aria-label="Everyday DAO destinations">
       <li v-for="tool in installedTools" :key="tool.id">
         <RouterLink :to="`/dao/${dao.reference.daoId}/${tool.id}`" class="overview-action"

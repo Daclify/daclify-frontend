@@ -272,6 +272,16 @@
         "tests/e2e/contact-recovery.spec.ts",
         "tests/e2e/contact-recovery-approvals.spec.ts"
       ]
+    },
+    {
+      "id": "LEGAL-TEMPLATE-DRAFT-PRIVACY-ADOPTION-AND-WORKS",
+      "tests": [
+        "tests/unit/legal-template-catalog.test.ts",
+        "tests/unit/legal-template-render.test.ts",
+        "tests/unit/legal-document-review.test.ts",
+        "tests/unit/legal-managed-register.test.ts",
+        "tests/e2e/legal-templates.spec.ts"
+      ]
     }
   ]
 }

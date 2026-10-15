@@ -1,11 +1,15 @@
 <script setup lang="ts">
+import {
+  loadManagedRegister,
+  type ManagedDocumentCandidate,
+} from '../content/legal-templates/managed';
 import WorkspaceDialog from './WorkspaceDialog.vue';
 import { documentLabel } from '../content/document-labels';
 import type { ReviewedDocument } from '../content/document-review';
 import { formatHelpAnswer } from '../help/format';
 import { downloadFile } from '../content/files';
 import { prepareBallotVote } from '@daclify/modules/sdk';
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import type { DaoContent, DaoSummary, UserMembership } from '@daclify/core-protocol';
 import {
   GoverningDocumentCategories,
@@ -24,9 +28,10 @@ const props = defineProps<{
   member: UserMembership | undefined;
   content: DaoContent | undefined;
   registrationRequest?: number;
+  registrationCandidate?: ManagedDocumentCandidate | undefined;
   openVersion: (document: DaoContent['documents'][number]) => Promise<ReviewedDocument | undefined>;
 }>();
-const emit = defineEmits<{ updated: [] }>();
+const emit = defineEmits<{ updated: []; registered: [documentId: string] }>();
 const workspace = useWorkspace();
 type Registration = GoverningDocumentPage['registrations'][number];
 type Change = GoverningDocumentPage['changes'][number];
@@ -102,39 +107,22 @@ function assertDao(page: GoverningDocumentPage) {
   if (JSON.stringify(page.dao) !== JSON.stringify(props.dao.reference))
     throw new Error('DAO_REFERENCE');
 }
-async function load(more = false) {
+async function load() {
   const domain = context.value,
     request = ++generation;
   loading.value = true;
   error.value = '';
   try {
-    const page = await api.governingDocuments(props.dao.reference.daoId, {
-      ...(more && data.value?.next ? { after: data.value.next } : {}),
-      ...(props.member ? { memberId: props.member.memberId } : {}),
-    });
+    const page = await loadManagedRegister(props.dao.reference, props.member?.memberId);
     if (!current(domain, request)) return;
     assertDao(page);
-    if (more && data.value) {
-      if (page.next && BigInt(page.next) <= BigInt(data.value.next ?? '0'))
-        throw new Error('CHAIN_RESPONSE_INVALID');
-      data.value = {
-        ...page,
-        registrations: [...data.value.registrations, ...page.registrations],
-        changes: [...data.value.changes, ...page.changes],
-        ballots: [...data.value.ballots, ...page.ballots],
-        ballotDefinitions: [...data.value.ballotDefinitions, ...page.ballotDefinitions],
-        votes: [...data.value.votes, ...page.votes],
-        acceptedAdoptionIds: [...data.value.acceptedAdoptionIds, ...page.acceptedAdoptionIds],
-      };
-    } else {
-      data.value = page;
-      history.value.clear();
-      acceptances.value.clear();
-    }
+    data.value = page;
+    history.value.clear();
+    acceptances.value.clear();
   } catch (cause) {
     if (current(domain, request)) {
       error.value = friendlyError(cause);
-      if (!more) data.value = undefined;
+      data.value = undefined;
     }
   } finally {
     if (current(domain, request)) loading.value = false;
@@ -165,6 +153,55 @@ watch(vaultUnlocked, () => {
   opened.value.clear();
   confirmed.value.clear();
 });
+watch(
+  [() => props.registrationCandidate, () => props.content, data],
+  ([candidate]) => {
+    if (!candidate || !data.value || !admin.value) return;
+    const reference = candidate.reference;
+    if (
+      JSON.stringify(reference.dao) !== JSON.stringify(props.dao.reference) ||
+      !props.content?.documents.some(
+        (row) =>
+          row.document_id === reference.documentId &&
+          row.version === reference.version &&
+          row.commitment === reference.commitment,
+      )
+    )
+      return;
+    const existing = data.value.registrations.find(
+      (row) => row.document_id === reference.documentId,
+    );
+    if (existing) {
+      versions.value.set(existing.id, reference.version);
+      registrationPopup.value = false;
+    } else {
+      documentId.value = reference.documentId;
+      category.value = candidate.category;
+      approval.value = candidate.approval;
+      track.value = candidate.trackAcceptance;
+      registrationPopup.value = true;
+    }
+  },
+  { immediate: true },
+);
+async function freshRegister() {
+  const domain = context.value;
+  await workspace.refresh();
+  await nextTick();
+  if (disposed || domain !== context.value) throw new Error('WALLET_CONTEXT_CHANGED');
+  const page = await loadManagedRegister(props.dao.reference, props.member?.memberId);
+  if (disposed || domain !== context.value) throw new Error('WALLET_CONTEXT_CHANGED');
+  if (
+    !page.available ||
+    !page.module?.enabled ||
+    !page.module.compatible ||
+    !page.module.codeVerified ||
+    !admin.value
+  )
+    throw new Error('NOT_AUTHORIZED');
+  data.value = page;
+  return page;
+}
 function change(id: string) {
   return data.value?.changes.find((row) => row.id === id);
 }
@@ -236,7 +273,18 @@ async function run<K extends keyof DecideActions>(
     emit('updated');
     if (!disposed && domain === context.value) notice.value = message;
   } catch (cause) {
-    if (!disposed && domain === context.value) error.value = friendlyError(cause);
+    if (!disposed && domain === context.value) {
+      error.value = friendlyError(cause);
+      try {
+        await workspace.refresh();
+        if (!disposed && domain === context.value) {
+          await load();
+          emit('updated');
+        }
+      } catch {
+        /* Retry is explicit after a failed refresh. */
+      }
+    }
   } finally {
     if (!disposed && domain === context.value) busy.value = false;
   }
@@ -253,40 +301,101 @@ function selectVersion(id: string, event: Event) {
   if (event.target instanceof HTMLSelectElement) versions.value.set(id, Number(event.target.value));
 }
 async function register() {
-  if (!admin.value || !uploaded.value.includes(documentId.value)) return;
-  await run(
-    'regdoc',
-    {
-      ...actor(),
-      document_id: documentId.value,
-      category: category.value,
-      approval: approval.value,
-      track_acceptance: track.value,
-    },
-    'Document registered. Propose a version to adopt it.',
-  );
-  if (notice.value) {
-    documentId.value = '';
-    registrationPopup.value = false;
+  if (!admin.value || busy.value || !documentId.value) return;
+  const id = documentId.value;
+  try {
+    const page = await freshRegister();
+    const existing = page.registrations.find((row) => row.document_id === id);
+    if (existing) {
+      notice.value = 'This document is already registered. Its fixed settings are shown below.';
+      registrationPopup.value = false;
+      emit('registered', id);
+      return;
+    }
+    if (
+      page.registrations.length >= 64 ||
+      (category.value === 0 && page.registrations.some((row) => row.category === 0))
+    )
+      throw new Error('DOCUMENT_REGISTER_LIMIT');
+    if (!uploaded.value.includes(id)) throw new Error('DOCUMENT_CONTENT_UNAVAILABLE');
+    await run(
+      'regdoc',
+      {
+        ...actor(),
+        document_id: id,
+        category: category.value,
+        approval: approval.value,
+        track_acceptance: track.value,
+      },
+      'Document registered. Propose a version to adopt it.',
+    );
+    if (data.value?.registrations.some((row) => row.document_id === id)) {
+      registrationPopup.value = false;
+      const registered = data.value.registrations.find((row) => row.document_id === id);
+      if (registered && props.registrationCandidate)
+        versions.value.set(registered.id, props.registrationCandidate.reference.version);
+      emit('registered', id);
+    }
+  } catch (cause) {
+    error.value = friendlyError(cause);
   }
 }
 async function propose(row: Registration) {
-  if (!admin.value) return;
+  if (!admin.value || busy.value) return;
+  const domain = context.value;
   const version = versions.value.get(row.id) ?? candidates(row)[0]?.version;
   if (!version) return;
-  await run(
-    'proposedoc',
-    {
-      ...actor(),
-      register_id: row.id,
-      document_version: version,
-      expected_revision: row.revision,
-      ballot_id: row.approval ? String(Date.now()) : '0',
-    },
-    row.approval
-      ? 'Member vote opened for this version.'
-      : 'Version proposed for administrator approval.',
-  );
+  try {
+    const previousPin = JSON.stringify([data.value?.policyRevision, data.value?.module]);
+    const page = await freshRegister(),
+      fresh = page.registrations.find((item) => item.id === row.id);
+    if (!fresh) throw new Error('DOCUMENT_REVIEW_STALE');
+    if (fresh.pending_id !== '0') {
+      notice.value = 'A proposal is already pending. Review it below before taking another action.';
+      return;
+    }
+    if (
+      fresh.revision !== row.revision ||
+      previousPin !== JSON.stringify([page.policyRevision, page.module])
+    )
+      throw new Error('DOCUMENT_REVIEW_STALE');
+    const candidate = props.registrationCandidate;
+    if (
+      candidate &&
+      candidate.reference.documentId === fresh.document_id &&
+      version !== candidate.reference.version
+    )
+      throw new Error('DOCUMENT_REVIEW_STALE');
+    const records = await api.content(props.dao.reference.daoId);
+    if (disposed || domain !== context.value) return;
+    assertDao({ ...page, dao: records.dao });
+    if (
+      !records.documents.some(
+        (doc) =>
+          doc.document_id === fresh.document_id &&
+          doc.version === version &&
+          (!candidate ||
+            candidate.reference.documentId !== fresh.document_id ||
+            doc.commitment === candidate.reference.commitment),
+      )
+    )
+      throw new Error('DOCUMENT_REVIEW_STALE');
+    await run(
+      'proposedoc',
+      {
+        ...actor(),
+        register_id: fresh.id,
+        document_version: version,
+        expected_revision: fresh.revision,
+        ballot_id: fresh.approval ? String(Date.now()) : '0',
+      },
+      fresh.approval
+        ? 'Member vote opened for this version.'
+        : 'Version proposed for administrator approval.',
+    );
+  } catch (cause) {
+    error.value = friendlyError(cause);
+  }
 }
 async function open(row: Change) {
   const document = documentFor(row),
@@ -544,7 +653,21 @@ async function details(kind: 'history' | 'acceptances', id: string, more = false
             >
               Open adopted version {{ adopted.document_version }}
             </button>
-            <template v-if="opened.has(adopted.id)"><div v-if="opened.get(adopted.id)?.markdown !== undefined" class="legal-preview" v-html="formatHelpAnswer(opened.get(adopted.id)?.markdown ?? '')" /><pre v-else class="wrap">{{ opened.get(adopted.id)?.text }}</pre><button v-if="opened.get(adopted.id)?.file" class="secondary" @click="downloadOpened(adopted.id)">Download reviewed file</button></template>
+            <template v-if="opened.has(adopted.id)"
+              ><div
+                v-if="opened.get(adopted.id)?.markdown !== undefined"
+                class="legal-preview"
+                v-html="formatHelpAnswer(opened.get(adopted.id)?.markdown ?? '')"
+              />
+              <pre v-else class="wrap">{{ opened.get(adopted.id)?.text }}</pre>
+              <button
+                v-if="opened.get(adopted.id)?.file"
+                class="secondary"
+                @click="downloadOpened(adopted.id)"
+              >
+                Download reviewed file
+              </button></template
+            >
             <p v-else-if="!documentFor(adopted)" class="field-help">
               This version is unavailable. Restore it or ask an administrator for permitted document
               access.
@@ -624,7 +747,21 @@ async function details(kind: 'history' | 'acceptances', id: string, more = false
             >
               Open proposed version {{ pending.document_version }}
             </button>
-            <template v-if="opened.has(pending.id)"><div v-if="opened.get(pending.id)?.markdown !== undefined" class="legal-preview" v-html="formatHelpAnswer(opened.get(pending.id)?.markdown ?? '')" /><pre v-else class="wrap">{{ opened.get(pending.id)?.text }}</pre><button v-if="opened.get(pending.id)?.file" class="secondary" @click="downloadOpened(pending.id)">Download reviewed file</button></template>
+            <template v-if="opened.has(pending.id)"
+              ><div
+                v-if="opened.get(pending.id)?.markdown !== undefined"
+                class="legal-preview"
+                v-html="formatHelpAnswer(opened.get(pending.id)?.markdown ?? '')"
+              />
+              <pre v-else class="wrap">{{ opened.get(pending.id)?.text }}</pre>
+              <button
+                v-if="opened.get(pending.id)?.file"
+                class="secondary"
+                @click="downloadOpened(pending.id)"
+              >
+                Download reviewed file
+              </button></template
+            >
             <template v-if="registered.approval && ballot(pending)">
               <p>
                 Vote closes {{ time(ballot(pending)?.closes ?? 0) }} · quorum
@@ -782,9 +919,6 @@ async function details(kind: 'history' | 'acceptances', id: string, more = false
           </button>
         </details>
       </article>
-      <button v-if="data.next" class="secondary" :disabled="busy || loading" @click="load(true)">
-        Load more managed documents
-      </button>
     </template>
     <p v-else-if="data">Formal document management is unavailable for this deployment.</p>
     <button v-if="error && !data" class="secondary" :disabled="loading" @click="load()">
@@ -793,8 +927,17 @@ async function details(kind: 'history' | 'acceptances', id: string, more = false
   </section>
 </template>
 <style scoped>
-.legal-preview { overflow-wrap: anywhere; max-height: 55dvh; overflow: auto; padding: 16px; }
-.legal-preview :deep(table) { display: block; max-width: 100%; overflow-x: auto; }
+.legal-preview {
+  overflow-wrap: anywhere;
+  max-height: 55dvh;
+  overflow: auto;
+  padding: 16px;
+}
+.legal-preview :deep(table) {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
 .governing-documents {
   margin-bottom: 1.5rem;
   min-width: 0;

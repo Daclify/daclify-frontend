@@ -1660,9 +1660,14 @@ export const api = {
 };
 export function friendlyError(error: unknown): string {
   const handoverErrors: Record<string, string> = {
-    DOCUMENT_REVIEW_STALE: 'This document changed during editing. Return to review and prepare the current version before publishing.',
-    DOCUMENT_TEXT_SIZE: 'This Markdown version exceeds the 128 KiB preview limit. Download it from the Library to inspect its original bytes.',
-    DOCUMENT_TEXT_ENCODING: 'This file is not valid UTF-8 Markdown. Download its original bytes from the Library; do not approve an unread version.',
+    DOCUMENT_REVIEW_STALE:
+      'This document changed during editing. Return to review and prepare the current version before publishing.',
+    DOCUMENT_REGISTER_LIMIT:
+      'The register is full or a constitution already exists. Refresh the register and amend an existing document.',
+    DOCUMENT_TEXT_SIZE:
+      'This Markdown version exceeds the 128 KiB preview limit. Download it from the Library to inspect its original bytes.',
+    DOCUMENT_TEXT_ENCODING:
+      'This file is not valid UTF-8 Markdown. Download its original bytes from the Library; do not approve an unread version.',
     CONTACT_RECOVERY_CODE_INVALID: 'Use the complete public recovery code.',
     CONTACT_RECOVERY_HISTORY_LIMIT: 'Recovery history is too large for this screen.',
     CONTACT_RECOVERY_BACKUP_REQUIRED: 'Save the replacement vault before clearing setup.',

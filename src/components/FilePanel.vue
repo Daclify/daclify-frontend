@@ -15,7 +15,7 @@ import {
 import { encodeAction, makeInstruction } from '@daclify/core-protocol/sdk';
 import { api, friendlyError } from '../api/client';
 import { encryptDaoFile, relayInstruction, vaultUnlocked } from '../auth/session';
-import { preparePublicFile, type PublishedDocumentReference } from '../content/files';
+import { preparePublicFile, downloadFile, type PublishedDocumentReference } from '../content/files';
 import { useWorkspace } from '../state/workspace';
 import { canSignMember } from '../auth/action-signer';
 import StorageUsagePanel from './StorageUsagePanel.vue';
@@ -32,7 +32,12 @@ const props = defineProps<{
   publishLabel?: string;
 }>();
 const signerReady = computed(() => canSignMember(props.member));
-const emit = defineEmits<{ published: [document: PublishedDocumentReference]; busy: [busy: boolean]; pending: [pending: boolean] }>();
+const emit = defineEmits<{
+  published: [document: PublishedDocumentReference];
+  busy: [busy: boolean];
+  pending: [pending: boolean];
+  stale: [];
+}>();
 const workspace = useWorkspace();
 const configured = ref(false);
 const localFixture = ref(false);
@@ -54,6 +59,7 @@ const file = shallowRef<File>();
 const fileInput = ref<HTMLInputElement>();
 const upload = shallowRef<HostedUpload>();
 const receipt = ref<HostedDocument>();
+const conflictContext = ref('');
 const requestId = ref('');
 const storedRequestId = ref('');
 watch(working, (value) => emit('busy', value));
@@ -94,13 +100,24 @@ const pendingKey = computed(() =>
     props.dao.reference.daoId,
   ]),
 );
-const operationContext = computed(() => JSON.stringify([pendingKey.value, workspace.account?.signingKey, workspace.account?.encryptionKey, props.member?.signingKey, props.member?.active, props.dao.privacy, props.dao.keyEpoch]));
+const operationContext = computed(() =>
+  JSON.stringify([
+    pendingKey.value,
+    workspace.account?.signingKey,
+    workspace.account?.encryptionKey,
+    props.member?.signingKey,
+    props.member?.active,
+    props.dao.privacy,
+    props.dao.keyEpoch,
+  ]),
+);
 function remember(id: string) {
   storedRequestId.value = id;
   requestId.value = id;
   sessionStorage.setItem(pendingKey.value, id);
 }
 function clearPending() {
+  conflictContext.value = '';
   sessionStorage.removeItem(pendingKey.value);
   storedRequestId.value = '';
   requestId.value = '';
@@ -134,15 +151,19 @@ watch(
   },
   { immediate: true },
 );
-watch(() => props.initialFile, (selected) => {
-  if (!selected) return;
-  if (storedRequestId.value || receipt.value || upload.value || working.value) {
-    error.value = 'Finish the pending upload before changing its file.';
-    return;
-  }
-  file.value = selected;
-  documentName.value = selected.name;
-}, { immediate: true });
+watch(
+  () => props.initialFile,
+  (selected) => {
+    if (!selected) return;
+    if (storedRequestId.value || receipt.value || upload.value || working.value) {
+      error.value = 'Finish the pending upload before changing its file.';
+      return;
+    }
+    file.value = selected;
+    documentName.value = selected.name;
+  },
+  { immediate: true },
+);
 onMounted(async () => {
   try {
     const storage = await api.storage();
@@ -163,7 +184,10 @@ function acceptReceipt(document: HostedDocument) {
     document.dao.interfaceVersion !== dao.interfaceVersion
   )
     throw new Error('UPLOAD_RECEIPT');
-  if (props.initialFile && (document.documentId !== props.selectedDocumentId || document.version !== props.expectedVersion))
+  if (
+    props.initialFile &&
+    (document.documentId !== props.selectedDocumentId || document.version !== props.expectedVersion)
+  )
     throw new Error('UPLOAD_RECEIPT');
   if (
     upload.value &&
@@ -187,14 +211,19 @@ async function send() {
       if (!selected) throw new Error('FILE_REQUIRED');
       if (selected.size > MAX_HOSTED_CONTENT_BYTES) throw new Error('FILE_TOO_LARGE');
       const id = IdSchema.parse(documentId.value);
-      const records = props.expectedVersion === undefined ? props.content : await api.content(props.dao.reference.daoId);
+      const records =
+        props.expectedVersion === undefined
+          ? props.content
+          : await api.content(props.dao.reference.daoId);
       if (!current()) return;
-      if (JSON.stringify(records.dao) !== JSON.stringify(props.dao.reference)) throw new Error('DAO_REFERENCE');
+      if (JSON.stringify(records.dao) !== JSON.stringify(props.dao.reference))
+        throw new Error('DAO_REFERENCE');
       const previous = records.documents
         .filter((document) => document.document_id === id)
         .reduce((version, document) => Math.max(version, document.version), 0);
       const version = previous + 1;
-      if (props.expectedVersion !== undefined && version !== props.expectedVersion) throw new Error('DOCUMENT_REVIEW_STALE');
+      if (props.expectedVersion !== undefined && version !== props.expectedVersion)
+        throw new Error('DOCUMENT_REVIEW_STALE');
       if (props.newDocument && previous) throw new Error('DOCUMENT_ID_CONFLICT');
       const metadata = FileMetadataSchema.parse({
         version: 1,
@@ -286,8 +315,10 @@ async function publish() {
         existing.metadata !== document.metadata ||
         existing.key_epoch !== document.keyEpoch ||
         existing.envelope_version !== document.envelopeVersion
-      )
+      ) {
+        if (props.initialFile) conflictContext.value = domain;
         throw new Error('DOCUMENT_VERSION');
+      }
     } else {
       await workspace.refresh();
       if (!current() || !signerReady.value) return;
@@ -327,12 +358,33 @@ async function publish() {
     if (!current()) return;
     clearPending();
     notice.value = 'File document published.';
-    emit('published', { dao: document.dao, documentId: document.documentId, version: document.version, commitment: document.commitment });
+    emit('published', {
+      dao: document.dao,
+      documentId: document.documentId,
+      version: document.version,
+      commitment: document.commitment,
+    });
   } catch (cause) {
     if (current()) error.value = friendlyError(cause);
   } finally {
     if (current()) busy.value = false;
   }
+}
+function saveConflictReceipt() {
+  if (
+    !receipt.value ||
+    !conflictContext.value ||
+    conflictContext.value !== operationContext.value ||
+    working.value
+  )
+    return;
+  downloadFile(new TextEncoder().encode(JSON.stringify(receipt.value, null, 2)), {
+    version: 1,
+    filename: 'retained-upload-receipt.json',
+    mediaType: 'application/json',
+  });
+  clearPending();
+  emit('stale');
 }
 async function addDocument() {
   if (
@@ -375,14 +427,15 @@ async function addDocument() {
         v-if="member?.active && !storedRequestId && !receipt"
         @submit.prevent="addDocument"
       >
-        <template v-if="!initialFile"><label for="document-file">Document file</label
-        ><input
-          id="document-file"
-          ref="fileInput"
-          type="file"
-          required
-          :disabled="working"
-          @change="selectFile"
+        <template v-if="!initialFile"
+          ><label for="document-file">Document file</label
+          ><input
+            id="document-file"
+            ref="fileInput"
+            type="file"
+            required
+            :disabled="working"
+            @change="selectFile"
         /></template>
         <p v-else>Reviewed file: {{ initialFile.name }}</p>
         <label for="document-name">Document name</label>
@@ -411,7 +464,7 @@ async function addDocument() {
         form="document-upload-form"
         :disabled="working || !mayUpload || !file || !documentName.trim()"
       >
-        {{ working ? 'Uploading…' : publishLabel ?? 'Add document' }}
+        {{ working ? 'Uploading…' : (publishLabel ?? 'Add document') }}
       </button>
       <div v-if="storedRequestId && !receipt">
         <p class="mono wrap">Pending request: {{ storedRequestId }}</p>
@@ -436,6 +489,15 @@ async function addDocument() {
       </details>
       <div v-if="receipt">
         <h4>Verified file record</h4>
+        <template v-if="conflictContext && conflictContext === operationContext"
+          ><p class="notice">
+            Another file already occupies this native version. This upload remains retained and
+            counts toward storage. Save its receipt before preparing a newly reviewed version.
+          </p>
+          <button type="button" :disabled="working" @click="saveConflictReceipt">
+            Save receipt and review a new version
+          </button></template
+        >
         <details>
           <summary>Storage and record details</summary>
           <dl>
@@ -449,7 +511,10 @@ async function addDocument() {
             <dd class="mono wrap">{{ receipt.cid }}</dd>
           </dl>
         </details>
-        <button :disabled="working || !member?.active || !signerReady" @click="addDocument">
+        <button
+          :disabled="working || !member?.active || !signerReady || !!conflictContext"
+          @click="addDocument"
+        >
           {{ working ? 'Publishing…' : initialFile ? 'Publish verified record' : 'Add document' }}
         </button>
         <p class="field-help">

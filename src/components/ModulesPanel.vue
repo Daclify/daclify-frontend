@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useRoute, useRouter } from 'vue-router';
+import { worksDocumentHint } from '../content/document-reference';
 import ElectionPanel from './ElectionPanel.vue';
 import GrantsPanel from './GrantsPanel.vue';
 import ArbitrationPanel from './ArbitrationPanel.vue';
@@ -55,6 +57,9 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ busy: [value: boolean] }>();
 const workspace = useWorkspace();
+const route = useRoute(),
+  router = useRouter();
+let consumingDocumentHint = false;
 const data = ref<ModuleState>();
 const governance = ref<GovernanceState>();
 const content = ref<DaoContent>();
@@ -66,6 +71,11 @@ const context = computed(() =>
     props.dao.reference,
     workspace.account?.id,
     props.member?.memberId,
+    props.member?.signingKey,
+    props.member?.active,
+    workspace.account?.signingKey,
+    workspace.account?.encryptionKey,
+    props.dao.keyEpoch,
     props.dao.privacy,
   ]),
 );
@@ -760,6 +770,43 @@ const proposalReady = computed(
     paymentsConfirmed.value &&
     contributorOptions.value.some((row) => row.id === contributor.value),
 );
+watch([() => route.fullPath, content, current, choicesLoading], async () => {
+  if (
+    props.section !== 'works' ||
+    choicesLoading.value ||
+    !content.value ||
+    !current.value ||
+    consumingDocumentHint ||
+    !['document', 'version', 'commitment'].some((key) => key in route.query)
+  )
+    return;
+  consumingDocumentHint = true;
+  const domain = context.value,
+    hint = worksDocumentHint(route.query);
+  const query = { ...route.query };
+  delete query.document;
+  delete query.version;
+  delete query.commitment;
+  const record =
+    hint &&
+    content.value.documents.find(
+      (row) =>
+        row.document_id === hint.documentId &&
+        row.version === hint.version &&
+        row.commitment === hint.commitment,
+    );
+  await router.replace({ path: route.path, query, hash: route.hash });
+  if (!disposed && domain === context.value) {
+    if (!record)
+      error.value =
+        'The exact agreement version is unavailable. Choose and review a document explicitly.';
+    else {
+      workDocument.value = record.id;
+      showWorkDialog();
+    }
+  }
+  consumingDocumentHint = false;
+});
 function showWorkDialog(memberId?: string) {
   if (busy.value || !props.member?.active || !current.value?.enabled) return;
   if (memberId) contributor.value = memberId;
@@ -2007,6 +2054,11 @@ const selectedProject = computed(() =>
               class="field-help"
             >
               No active members are available.
+            </p>
+            <p class="field-help">
+              Review this exact agreement against the contributor, amounts and dates below. A new
+              agreement cannot replace the fixed document terms of an existing project; create a
+              successor proposal when terms change.
             </p>
             <label for="work-document">Proposal document</label>
             <select id="work-document" v-model="workDocument" required :disabled="choicesLoading">

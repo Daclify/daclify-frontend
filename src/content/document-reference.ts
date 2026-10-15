@@ -9,13 +9,11 @@ export function documentReferenceLocation(input: {
   returnTo?: string | undefined;
 }) {
   const dao = IdSchema.safeParse(input.daoId),
-    reference = BallotContentSchema.shape.document
-      .unwrap()
-      .safeParse({
-        documentId: input.documentId,
-        version: input.version,
-        commitment: input.commitment,
-      });
+    reference = BallotContentSchema.shape.document.unwrap().safeParse({
+      documentId: input.documentId,
+      version: input.version,
+      commitment: input.commitment,
+    });
   if (!dao.success || !reference.success) return;
   const returnTo =
     input.returnTo?.startsWith(`/dao/${dao.data}/`) &&
@@ -31,4 +29,22 @@ export function documentReferenceLocation(input: {
       ...(returnTo ? { returnTo } : {}),
     },
   };
+}
+
+export function worksDocumentHint(query: Readonly<Record<string, unknown>>) {
+  if (
+    typeof query.document !== 'string' ||
+    typeof query.version !== 'string' ||
+    !/^[1-9][0-9]*$/.test(query.version) ||
+    typeof query.commitment !== 'string'
+  )
+    return;
+  const reference = BallotContentSchema.shape.document
+    .unwrap()
+    .safeParse({
+      documentId: query.document,
+      version: Number(query.version),
+      commitment: query.commitment,
+    });
+  return reference.success ? reference.data : undefined;
 }
