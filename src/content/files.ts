@@ -6,10 +6,12 @@ import {
   FileMetadataSchema,
   PrivateFilePayloadSchema,
   ContentEnvelopeSchema,
+  type HostedDocument,
 } from '@daclify/core-protocol';
 import { sealContent, openContent, sha256Hex } from '../auth/vault';
 
 export type FileMetadata = z.infer<typeof FileMetadataSchema>;
+export type PublishedDocumentReference = Pick<HostedDocument, 'dao' | 'documentId' | 'version' | 'commitment'>;
 const PreparedFileSchema = HostedUploadSchema.pick({
   content: true,
   metadata: true,

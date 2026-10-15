@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import WorkspaceDialog from './WorkspaceDialog.vue';
 import { documentLabel } from '../content/document-labels';
+import type { ReviewedDocument } from '../content/document-review';
+import { formatHelpAnswer } from '../help/format';
+import { downloadFile } from '../content/files';
 import { prepareBallotVote } from '@daclify/modules/sdk';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import type { DaoContent, DaoSummary, UserMembership } from '@daclify/core-protocol';
@@ -21,7 +24,7 @@ const props = defineProps<{
   member: UserMembership | undefined;
   content: DaoContent | undefined;
   registrationRequest?: number;
-  openVersion: (document: DaoContent['documents'][number]) => Promise<string | undefined>;
+  openVersion: (document: DaoContent['documents'][number]) => Promise<ReviewedDocument | undefined>;
 }>();
 const emit = defineEmits<{ updated: [] }>();
 const workspace = useWorkspace();
@@ -35,7 +38,7 @@ const clock = setInterval(() => {
 const data = ref<GoverningDocumentPage>(),
   history = ref(new Map<string, GoverningDocumentPage>());
 const acceptances = ref(new Map<string, GoverningDocumentPage>());
-const opened = ref(new Map<string, string>()),
+const opened = ref(new Map<string, ReviewedDocument>()),
   confirmed = ref(new Set<string>());
 const documentId = ref(''),
   category = ref(0),
@@ -70,6 +73,10 @@ const context = computed(() =>
   JSON.stringify([
     props.dao.reference,
     workspace.account?.id,
+    workspace.account?.signingKey,
+    workspace.account?.encryptionKey,
+    props.member?.signingKey,
+    props.dao.keyEpoch,
     props.member?.memberId,
     props.member?.active,
     props.dao.privacy,
@@ -298,6 +305,10 @@ async function open(row: Change) {
   } finally {
     if (current(domain, request)) busy.value = false;
   }
+}
+function downloadOpened(id: string) {
+  const file = opened.value.get(id)?.file;
+  if (file) downloadFile(file.bytes, file.metadata);
 }
 async function adopt(row: Change) {
   if (!opened.value.has(row.id)) return;
@@ -533,7 +544,7 @@ async function details(kind: 'history' | 'acceptances', id: string, more = false
             >
               Open adopted version {{ adopted.document_version }}
             </button>
-            <pre v-if="opened.has(adopted.id)" class="wrap">{{ opened.get(adopted.id) }}</pre>
+            <template v-if="opened.has(adopted.id)"><div v-if="opened.get(adopted.id)?.markdown !== undefined" class="legal-preview" v-html="formatHelpAnswer(opened.get(adopted.id)?.markdown ?? '')" /><pre v-else class="wrap">{{ opened.get(adopted.id)?.text }}</pre><button v-if="opened.get(adopted.id)?.file" class="secondary" @click="downloadOpened(adopted.id)">Download reviewed file</button></template>
             <p v-else-if="!documentFor(adopted)" class="field-help">
               This version is unavailable. Restore it or ask an administrator for permitted document
               access.
@@ -613,7 +624,7 @@ async function details(kind: 'history' | 'acceptances', id: string, more = false
             >
               Open proposed version {{ pending.document_version }}
             </button>
-            <pre v-if="opened.has(pending.id)" class="wrap">{{ opened.get(pending.id) }}</pre>
+            <template v-if="opened.has(pending.id)"><div v-if="opened.get(pending.id)?.markdown !== undefined" class="legal-preview" v-html="formatHelpAnswer(opened.get(pending.id)?.markdown ?? '')" /><pre v-else class="wrap">{{ opened.get(pending.id)?.text }}</pre><button v-if="opened.get(pending.id)?.file" class="secondary" @click="downloadOpened(pending.id)">Download reviewed file</button></template>
             <template v-if="registered.approval && ballot(pending)">
               <p>
                 Vote closes {{ time(ballot(pending)?.closes ?? 0) }} · quorum
@@ -782,6 +793,8 @@ async function details(kind: 'history' | 'acceptances', id: string, more = false
   </section>
 </template>
 <style scoped>
+.legal-preview { overflow-wrap: anywhere; max-height: 55dvh; overflow: auto; padding: 16px; }
+.legal-preview :deep(table) { display: block; max-width: 100%; overflow-x: auto; }
 .governing-documents {
   margin-bottom: 1.5rem;
   min-width: 0;

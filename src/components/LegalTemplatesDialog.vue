@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router';
 import { daoPaymentKey, type ContactRecoveryState, type DaoContent, type DaoSummary, type GovernanceState, type UserMembership } from '@daclify/core-protocol';
 import { api, friendlyError } from '../api/client';
@@ -7,13 +7,14 @@ import { useWorkspace } from '../state/workspace';
 import { vaultUnlocked } from '../auth/session';
 import { legalTemplates, type LegalTemplate } from '../content/legal-templates/catalog';
 import { assembleLegalDocument, LegalDraftError, LEGAL_DOCUMENT_MAX_BYTES, legalFileName, prefillLegalTemplate, renderLegalTemplate, validateLegalDraft, type TemplateContext, type TemplateMilestone } from '../content/legal-templates/render';
-import { downloadFile } from '../content/files';
+import { downloadFile, type PublishedDocumentReference } from '../content/files';
 import { newDocumentId } from '../content/document-identity';
 import { formatHelpAnswer } from '../help/format';
 import WorkspaceDialog from './WorkspaceDialog.vue';
+import FilePanel from './FilePanel.vue';
 
 const props = defineProps<{ dao: DaoSummary; member: UserMembership | undefined; content: DaoContent | undefined; open: boolean; targetDocumentId?: string }>();
-const emit = defineEmits<{ 'update:open': [open: boolean]; updated: [] }>();
+const emit = defineEmits<{ 'update:open': [open: boolean]; updated: []; published: [document: PublishedDocumentReference] }>();
 const workspace = useWorkspace();
 const step = ref<'choose' | 'details' | 'review' | 'publish'>('choose');
 const chosen = ref<string[]>([]), template = ref<LegalTemplate>();
@@ -22,6 +23,8 @@ const milestones = ref<TemplateMilestone[]>([{ deliverable: '', dueDate: '', pay
 const title = ref(''), body = ref(''), generatedBody = ref(''), documentId = ref(''), documentVersion = ref(1);
 const mode = ref<'edit' | 'preview'>('preview'), regenerateConsent = ref(false), exportConsent = ref(false);
 const error = ref(''), factsLoading = ref(false), dirty = ref(false);
+const reviewed = ref(false), publicConsent = ref(false), publicationBusy = ref(false), publicationPending = ref(false);
+const frozenFile = shallowRef<File>(), published = ref<PublishedDocumentReference>();
 const governance = ref<GovernanceState>(), recovery = ref<ContactRecoveryState>();
 const privateDao = computed(() => props.dao.privacy !== 'public');
 const context = computed(() => JSON.stringify([props.dao.reference, props.dao.privacy, props.dao.keyEpoch, workspace.account?.id, workspace.account?.signingKey, workspace.account?.encryptionKey, props.member?.memberId, props.member?.signingKey, props.member?.active]));
@@ -65,15 +68,18 @@ watch(context, () => {
   body.value = ''; generatedBody.value = ''; title.value = ''; documentId.value = '';
   governance.value = undefined; recovery.value = undefined; error.value = ''; dirty.value = false;
   step.value = 'choose'; exportConsent.value = false; regenerateConsent.value = false;
+  frozenFile.value = undefined; published.value = undefined; publicationBusy.value = false; publicationPending.value = false;
   emit('update:open', false);
 });
 watch(vaultUnlocked, (unlocked) => {
   if (!unlocked && privateDao.value) {
     generation++; body.value = ''; generatedBody.value = ''; values.value = {}; common.value = {};
     template.value = undefined; chosen.value = []; dirty.value = false; step.value = 'choose';
+    frozenFile.value = undefined; published.value = undefined; publicationBusy.value = false; publicationPending.value = false;
     emit('update:open', false);
   }
 });
+watch([body, title], () => { reviewed.value = false; publicConsent.value = false; });
 function rememberCommon() {
   for (const key of ['DAO_NAME', 'DAO_MISSION', 'LEGAL_STATUS', 'EFFECTIVE_DATE']) {
     const value = values.value[key];
@@ -116,6 +122,28 @@ function exportDraft() {
   downloadFile(new TextEncoder().encode(body.value), { version: 1, filename: legalFileName(title.value), mediaType: 'text/markdown' });
   dirty.value = false;
 }
+function preparePublication() {
+  if (!template.value || validation.value.length || !reviewed.value || (!privateDao.value && !publicConsent.value)) return;
+  try {
+    if (!title.value.trim() || title.value.length > 120) throw new LegalDraftError('Enter a document title of 1–120 characters.');
+    const markdown = assembleLegalDocument(template.value, body.value, draftContext.value);
+    frozenFile.value = new File([markdown], legalFileName(title.value), { type: 'text/markdown' });
+    error.value = ''; step.value = 'publish';
+  } catch (cause) { error.value = draftError(cause); }
+}
+function filePublished(reference: PublishedDocumentReference) {
+  if (daoPaymentKey(reference.dao) !== daoPaymentKey(props.dao.reference) || reference.documentId !== documentId.value || reference.version !== documentVersion.value) {
+    error.value = friendlyError(new Error('UPLOAD_RECEIPT')); return;
+  }
+  published.value = reference; frozenFile.value = undefined; dirty.value = false;
+  publicationBusy.value = false; publicationPending.value = false;
+  emit('published', reference); emit('updated');
+}
+function nextTemplate() {
+  chosen.value = chosen.value.filter((id) => id !== template.value?.id);
+  published.value = undefined; frozenFile.value = undefined; body.value = ''; generatedBody.value = '';
+  if (chosen.value.length) chooseTemplate(); else { step.value = 'choose'; template.value = undefined; }
+}
 async function importDraft(event: Event) {
   const input = event.target;
   if (!(input instanceof HTMLInputElement)) return;
@@ -143,7 +171,7 @@ onBeforeUnmount(() => { disposed = true; generation++; window.removeEventListene
 </script>
 
 <template>
-  <WorkspaceDialog :open="open" title="Create from template" class="legal-template-dialog" @update:open="emit('update:open', $event)">
+  <WorkspaceDialog :open="open" title="Create from template" class="legal-template-dialog" :busy="publicationBusy" @update:open="emit('update:open', $event)">
     <p class="field-help">Drafts stay on this page until you download or publish them. Templates require review for your DAO and jurisdiction.</p>
     <p class="notice">{{ privateDao ? 'Document body and filename will be encrypted using this DAO’s access policy.' : 'Published documents in this DAO are public.' }}</p>
     <p v-if="factsLoading" role="status">Checking current DAO policies…</p>
@@ -186,7 +214,7 @@ onBeforeUnmount(() => { disposed = true; generation++; window.removeEventListene
           <button type="submit">Review document</button>
         </form>
       </template>
-      <template v-else>
+      <template v-else-if="step === 'review'">
         <p v-if="manuallyEdited" role="status">Your edited wording is preserved.</p>
         <div class="button-row"><button type="button" class="secondary" @click="mode = 'edit'">Edit</button><button type="button" class="secondary" @click="mode = 'preview'">Preview</button><button type="button" class="secondary" @click="step = 'details'">Back to details</button></div>
         <template v-if="mode === 'edit'"><label for="legal-body">Document text</label><textarea id="legal-body" v-model="body" rows="18" spellcheck="false" @input="dirty = true" /></template>
@@ -198,7 +226,22 @@ onBeforeUnmount(() => { disposed = true; generation++; window.removeEventListene
         <p v-if="privateDao" class="field-help">Downloading a draft creates an unencrypted file on this device.</p>
         <label v-if="privateDao" class="checkbox"><input v-model="exportConsent" type="checkbox" />I understand this downloads an unencrypted draft</label>
         <button type="button" class="secondary" :disabled="privateDao && !exportConsent" @click="exportDraft">Download draft</button>
+        <label class="checkbox"><input v-model="reviewed" type="checkbox" />I reviewed this document for publication</label>
+        <label v-if="!privateDao" class="checkbox"><input v-model="publicConsent" type="checkbox" />I understand this document will be public</label>
+        <button type="button" :disabled="validation.length > 0 || !reviewed || (!privateDao && !publicConsent) || !member?.active" @click="preparePublication">Continue to publish</button>
         <RouterLink to="/docs/governing-documents">Publishing and adopting a document ↗</RouterLink>
+      </template>
+      <template v-else-if="step === 'publish'">
+        <template v-if="published">
+          <p role="status">Published draft</p>
+          <p>Document {{ published.documentId }} · version {{ published.version }}. Publication does not adopt this document.</p>
+          <button type="button" class="secondary" @click="nextTemplate">{{ chosen.length > 1 ? 'Next template' : 'Choose another template' }}</button>
+        </template>
+        <template v-else>
+          <p>The reviewed file is frozen for this upload. Sign to publish its record.</p>
+          <FilePanel v-if="frozenFile" :dao="dao" :member="member" :content="content" :selected-document-id="documentId" :new-document="!targetDocumentId" :initial-file="frozenFile" :expected-version="documentVersion" publish-label="Publish draft" @busy="publicationBusy = $event" @pending="publicationPending = $event" @published="filePublished" />
+          <button type="button" class="secondary" :disabled="publicationBusy || publicationPending" @click="frozenFile = undefined; step = 'review'">Return to review</button>
+        </template>
       </template>
     </template>
   </WorkspaceDialog>

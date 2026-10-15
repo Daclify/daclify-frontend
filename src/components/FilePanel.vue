@@ -15,7 +15,7 @@ import {
 import { encodeAction, makeInstruction } from '@daclify/core-protocol/sdk';
 import { api, friendlyError } from '../api/client';
 import { encryptDaoFile, relayInstruction, vaultUnlocked } from '../auth/session';
-import { preparePublicFile } from '../content/files';
+import { preparePublicFile, type PublishedDocumentReference } from '../content/files';
 import { useWorkspace } from '../state/workspace';
 import { canSignMember } from '../auth/action-signer';
 import StorageUsagePanel from './StorageUsagePanel.vue';
@@ -27,9 +27,12 @@ const props = defineProps<{
   content: DaoContent | undefined;
   selectedDocumentId?: string;
   newDocument?: boolean;
+  initialFile?: File;
+  expectedVersion?: number;
+  publishLabel?: string;
 }>();
 const signerReady = computed(() => canSignMember(props.member));
-const emit = defineEmits<{ published: []; busy: [busy: boolean]; pending: [pending: boolean] }>();
+const emit = defineEmits<{ published: [document: PublishedDocumentReference]; busy: [busy: boolean]; pending: [pending: boolean] }>();
 const workspace = useWorkspace();
 const configured = ref(false);
 const localFixture = ref(false);
@@ -91,6 +94,7 @@ const pendingKey = computed(() =>
     props.dao.reference.daoId,
   ]),
 );
+const operationContext = computed(() => JSON.stringify([pendingKey.value, workspace.account?.signingKey, workspace.account?.encryptionKey, props.member?.signingKey, props.member?.active, props.dao.privacy, props.dao.keyEpoch]));
 function remember(id: string) {
   storedRequestId.value = id;
   requestId.value = id;
@@ -130,6 +134,15 @@ watch(
   },
   { immediate: true },
 );
+watch(() => props.initialFile, (selected) => {
+  if (!selected) return;
+  if (storedRequestId.value || receipt.value || upload.value || working.value) {
+    error.value = 'Finish the pending upload before changing its file.';
+    return;
+  }
+  file.value = selected;
+  documentName.value = selected.name;
+}, { immediate: true });
 onMounted(async () => {
   try {
     const storage = await api.storage();
@@ -150,6 +163,8 @@ function acceptReceipt(document: HostedDocument) {
     document.dao.interfaceVersion !== dao.interfaceVersion
   )
     throw new Error('UPLOAD_RECEIPT');
+  if (props.initialFile && (document.documentId !== props.selectedDocumentId || document.version !== props.expectedVersion))
+    throw new Error('UPLOAD_RECEIPT');
   if (
     upload.value &&
     JSON.stringify(HostedIntentSchema.strip().parse(document)) !==
@@ -161,8 +176,8 @@ function acceptReceipt(document: HostedDocument) {
 }
 async function send() {
   if (!props.member || !props.content || !mayUpload.value || disposed) return;
-  const domain = pendingKey.value;
-  const current = () => !disposed && domain === pendingKey.value;
+  const domain = operationContext.value;
+  const current = () => !disposed && domain === operationContext.value;
   busy.value = true;
   error.value = '';
   notice.value = '';
@@ -172,11 +187,15 @@ async function send() {
       if (!selected) throw new Error('FILE_REQUIRED');
       if (selected.size > MAX_HOSTED_CONTENT_BYTES) throw new Error('FILE_TOO_LARGE');
       const id = IdSchema.parse(documentId.value);
-      const previous = props.content.documents
+      const records = props.expectedVersion === undefined ? props.content : await api.content(props.dao.reference.daoId);
+      if (!current()) return;
+      if (JSON.stringify(records.dao) !== JSON.stringify(props.dao.reference)) throw new Error('DAO_REFERENCE');
+      const previous = records.documents
         .filter((document) => document.document_id === id)
         .reduce((version, document) => Math.max(version, document.version), 0);
-      if (props.newDocument && previous) throw new Error('DOCUMENT_ID_CONFLICT');
       const version = previous + 1;
+      if (props.expectedVersion !== undefined && version !== props.expectedVersion) throw new Error('DOCUMENT_REVIEW_STALE');
+      if (props.newDocument && previous) throw new Error('DOCUMENT_ID_CONFLICT');
       const metadata = FileMetadataSchema.parse({
         version: 1,
         filename: documentName.value.trim(),
@@ -222,8 +241,8 @@ async function send() {
 }
 async function check() {
   if (busy.value || disposed) return;
-  const domain = pendingKey.value;
-  const current = () => !disposed && domain === pendingKey.value;
+  const domain = operationContext.value;
+  const current = () => !disposed && domain === operationContext.value;
   busy.value = true;
   error.value = '';
   notice.value = '';
@@ -246,8 +265,8 @@ async function check() {
 async function publish() {
   const document = receipt.value;
   if (!document || busy.value || disposed || !props.member?.active || !signerReady.value) return;
-  const domain = pendingKey.value;
-  const current = () => !disposed && domain === pendingKey.value;
+  const domain = operationContext.value;
+  const current = () => !disposed && domain === operationContext.value;
   busy.value = true;
   error.value = '';
   notice.value = '';
@@ -308,7 +327,7 @@ async function publish() {
     if (!current()) return;
     clearPending();
     notice.value = 'File document published.';
-    emit('published');
+    emit('published', { dao: document.dao, documentId: document.documentId, version: document.version, commitment: document.commitment });
   } catch (cause) {
     if (current()) error.value = friendlyError(cause);
   } finally {
@@ -356,7 +375,7 @@ async function addDocument() {
         v-if="member?.active && !storedRequestId && !receipt"
         @submit.prevent="addDocument"
       >
-        <label for="document-file">Document file</label
+        <template v-if="!initialFile"><label for="document-file">Document file</label
         ><input
           id="document-file"
           ref="fileInput"
@@ -364,14 +383,15 @@ async function addDocument() {
           required
           :disabled="working"
           @change="selectFile"
-        />
+        /></template>
+        <p v-else>Reviewed file: {{ initialFile.name }}</p>
         <label for="document-name">Document name</label>
         <input
           id="document-name"
           v-model="documentName"
           maxlength="160"
           required
-          :disabled="working"
+          :disabled="working || !!initialFile"
         />
       </form>
       <p v-if="!member?.active" class="field-help">
@@ -391,7 +411,7 @@ async function addDocument() {
         form="document-upload-form"
         :disabled="working || !mayUpload || !file || !documentName.trim()"
       >
-        {{ working ? 'Uploading…' : 'Add document' }}
+        {{ working ? 'Uploading…' : publishLabel ?? 'Add document' }}
       </button>
       <div v-if="storedRequestId && !receipt">
         <p class="mono wrap">Pending request: {{ storedRequestId }}</p>
@@ -430,7 +450,7 @@ async function addDocument() {
           </dl>
         </details>
         <button :disabled="working || !member?.active || !signerReady" @click="addDocument">
-          {{ working ? 'Publishing…' : 'Add document' }}
+          {{ working ? 'Publishing…' : initialFile ? 'Publish verified record' : 'Add document' }}
         </button>
         <p class="field-help">
           The record is not published until its blockchain transaction succeeds. Keep the request ID

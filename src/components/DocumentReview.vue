@@ -9,7 +9,8 @@ import {
 import { useWorkspace } from '../state/workspace';
 import { vaultUnlocked } from '../auth/session';
 import { friendlyError } from '../api/client';
-import { readDocumentForReview } from '../content/document-review';
+import { readDocumentForReview, type ReviewedDocument } from '../content/document-review';
+import { formatHelpAnswer } from '../help/format';
 import { downloadFile } from '../content/files';
 const props = defineProps<{
   dao: DaoRef;
@@ -21,6 +22,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ reviewed: [ready: boolean] }>();
 const workspace = useWorkspace();
+const opened = ref<ReviewedDocument>();
 const text = ref(''),
   error = ref(''),
   busy = ref(false),
@@ -29,6 +31,8 @@ const context = computed(() =>
   JSON.stringify([
     daoPaymentKey(props.dao),
     workspace.account?.id,
+    workspace.account?.signingKey,
+    workspace.account?.encryptionKey,
     props.member?.signingKey,
     props.member?.memberId,
     props.member?.active,
@@ -47,6 +51,7 @@ let generation = 0,
 function reset() {
   generation++;
   text.value = '';
+  opened.value = undefined;
   error.value = '';
   reviewed.value = false;
   busy.value = false;
@@ -89,7 +94,8 @@ async function read() {
       (doc.envelope_version === 1 && !vaultUnlocked.value)
     )
       return;
-    if (result.file) downloadFile(result.file.bytes, result.file.metadata);
+    if (result.file && result.markdown === undefined) downloadFile(result.file.bytes, result.file.metadata);
+    opened.value = result;
     text.value = result.text;
   } catch (cause) {
     if (!disposed && current === generation) error.value = friendlyError(cause);
@@ -117,9 +123,14 @@ async function read() {
       Unlock your account keys to review this encrypted version.
     </p>
     <p v-if="error" role="alert" class="alert">{{ error }}</p>
-    <pre v-if="text" class="wrap">{{ text }}</pre>
+    <div v-if="opened?.markdown !== undefined" class="document-markdown" v-html="formatHelpAnswer(opened.markdown)" /><pre v-else-if="text" class="wrap">{{ text }}</pre><button v-if="opened?.file" class="secondary" @click="downloadFile(opened.file.bytes, opened.file.metadata)">Download reviewed file</button>
     <label v-if="text" class="choice"
       ><input v-model="reviewed" type="checkbox" /> I reviewed this document version</label
     >
   </div>
 </template>
+
+<style scoped>
+.document-markdown { max-height: 55dvh; overflow: auto; overflow-wrap: anywhere; padding: 12px; }
+.document-markdown :deep(table) { display: block; max-width: 100%; overflow-x: auto; }
+</style>

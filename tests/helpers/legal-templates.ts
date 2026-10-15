@@ -4,6 +4,10 @@ import { Catalog, ModuleApiRoutes, ModuleStateSchema, ModulePermissions } from '
 import { ModuleCodeHashes } from '@daclify/modules/sdk';
 import { createVault, createEpochGrant, sha256Hex } from '../../src/auth/vault';
 import { epochGrantDomain } from '@daclify/core-protocol';
+import { HostedUploadSchema, type HostedUpload, type HostedDocument } from '@daclify/core-protocol';
+import { ABI, Serializer, Signature, PublicKey } from '@wharfkit/antelope';
+import { runtimeAbi, RuntimeActionSchemas, instructionDigest } from '@daclify/core-protocol/sdk';
+import { z } from 'zod';
 
 export async function legalFixture(page: Page, options: { encrypted?: boolean; admin?: boolean; recovery?: 'off' | 'allowed' | 'opted-in' | 'unsupported' | 'failed' | 'foreign' } = {}) {
   const password = 'disposable legal template fixture password';
@@ -21,6 +25,8 @@ export async function legalFixture(page: Page, options: { encrypted?: boolean; a
   const governance = GovernanceStateSchema.parse({ dao, policy: null, actors: [], sessions: [], guardian: null, budget: null });
   const modules = ModuleStateSchema.parse({ dao, modules: [module], ballots: [], votes: [], projects: [], milestones: [], schedules: [], controls: [], executions: [], entries: [] });
   const writes: string[] = [];
+  const uploads: HostedUpload[] = [], receipts = new Map<string, HostedDocument>(), actions: string[] = [];
+  const faults = { upload: false, lostPublication: false };
   let loginMessage = '';
   await page.addInitScript((kit) => {
     localStorage.setItem('daclify.vault.v1', kit);
@@ -39,6 +45,51 @@ export async function legalFixture(page: Page, options: { encrypted?: boolean; a
     if (path === '/v1/daos/1/governance') return route.fulfill({ json: governance });
     if (path === '/v1/daos/1/private-access') return route.fulfill({ json: { dao, privacy: summary.privacy, historyPolicy: 'from-join', keyEpoch: '1' } });
     if (path === '/v1/storage') return route.fulfill({ json: { provider: 'local-fixture', configured: true, uploadLimit: MAX_HOSTED_CONTENT_BYTES } });
+    if (path === ApiRoutes.storageUsage.path) return route.fulfill({ json: { dao, capacityBytes: '100000000', verifiedBytes: '0', reservedBytes: '0', totalBytes: '0', objects: 0, references: 0, cleanup: 'disabled' } });
+    if (path === '/v1/uploads') {
+      writes.push(path);
+      const upload = HostedUploadSchema.parse(route.request().postDataJSON());
+      const found = receipts.get(upload.requestId);
+      if (found) return route.fulfill({ json: found });
+      uploads.push(upload);
+      if (faults.upload) return route.fulfill({ status: 503, json: { code: 'SERVICE_UNAVAILABLE', message: 'Fixture unavailable' } });
+      const { content: _content, ...intent } = upload;
+      const receipt = { ...intent, cid: 'bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku' };
+      receipts.set(upload.requestId, receipt);
+      return route.fulfill({ json: receipt });
+    }
+    if (path.startsWith('/v1/uploads/') && path.endsWith('/reconcile')) {
+      const id = path.split('/')[3], receipt = id ? receipts.get(id) : undefined;
+      if (!id || !receipt) return route.fulfill({ status: 404, json: { code: 'UPLOAD_UNKNOWN', message: 'Unknown fixture' } });
+      return route.fulfill({ json: { requestId: id, state: 'verified', document: receipt } });
+    }
+    if (/^\/v1\/daos\/1\/documents\/\d+\/\d+\/content$/.test(path)) {
+      const parts = path.split('/');
+      const upload = uploads.find((item) => item.documentId === parts[5] && String(item.version) === parts[6]);
+      return upload ? route.fulfill({ json: { content: upload.content } }) : route.fulfill({ status: 404, json: { code: 'DOCUMENT_UNKNOWN', message: 'Unknown fixture' } });
+    }
+    if (path === '/v1/relay') {
+      writes.push(path);
+      const input = ApiRoutes.relay.input.parse(route.request().postDataJSON());
+      expect(Signature.from(input.sig).verifyDigest(instructionDigest(input.request), PublicKey.from(vault.signingPublicKey))).toBe(true);
+      expect(input.request.dao_id).toBe(dao.daoId);
+      expect(input.request.nonce).toBe(member.nonce);
+      if (input.request.action !== 'putdoc') throw new Error('Unexpected legal fixture action: ' + input.request.action);
+      const decoded = z.record(z.string(), z.unknown()).parse(Serializer.objectify(Serializer.decode({ abi: ABI.from(runtimeAbi), type: 'putdoc', data: input.request.data })));
+      for (const key of ['dao_id', 'member_id', 'document_id', 'key_epoch']) {
+        if (typeof decoded[key] === 'number' && Number.isSafeInteger(decoded[key])) decoded[key] = String(decoded[key]);
+      }
+      const fields = RuntimeActionSchemas.putdoc.parse(decoded);
+      expect(fields.dao_id).toBe(dao.daoId);
+      expect(records.documents.some((row) => row.document_id === fields.document_id && row.version === fields.version)).toBe(false);
+      records.documents.push({ id: String(records.documents.length + 1), document_id: fields.document_id, version: fields.version, author: fields.member_id, cid: fields.cid, metadata: fields.metadata, commitment: fields.commitment, bytes: fields.bytes, envelope_version: fields.envelope_version, key_epoch: fields.key_epoch });
+      member.nonce = String(BigInt(member.nonce) + 1n); actions.push(input.request.action);
+      if (faults.lostPublication) {
+        faults.lostPublication = false;
+        return route.fulfill({ status: 503, json: { code: 'SERVICE_UNAVAILABLE', message: 'Publication response lost' } });
+      }
+      return route.fulfill({ json: { transactionId: 'ab'.repeat(32) } });
+    }
     if (path === '/v1/recovery/contacts/state') {
       if (options.recovery === 'failed') return route.fulfill({ status: 503, json: { code: 'SERVICE_UNAVAILABLE', message: 'Fixture unavailable' } });
       return route.fulfill({ json: ContactRecoveryStateSchema.parse({ target: { dao: options.recovery === 'foreign' ? { ...dao, daoId: '2' } : dao, memberId: '1' }, supported: options.recovery !== 'unsupported', documentsAllowed: ['allowed', 'opted-in'].includes(options.recovery ?? ''), nextPacketId: '1', member: null, policy: options.recovery === 'opted-in' ? { member_id: '1', revision: '1', next_request: '0', owner_key: vault.signingPublicKey, contacts: [], accepted: 7, documents: true } : null, pending: null, result: null, packets: [], next: null }) });
@@ -59,5 +110,16 @@ export async function legalFixture(page: Page, options: { encrypted?: boolean; a
     await page.getByRole('button', { name: 'Unlock and sign in', exact: true }).click();
     await expect(page.getByText('Keys unlocked', { exact: true })).toBeVisible();
   }
-  return { account, dao, member, summary, records, register, governance, modules, vault, epoch, password, writes, unlock };
+  return { account, dao, member, summary, records, register, governance, modules, vault, epoch, password, writes, unlock, uploads, receipts, actions, faults };
+}
+
+export async function unlockLegalFixture(page: Page, password: string) {
+  await page.evaluate(async (value) => {
+    const sessionPath = '/src/auth/session.ts', statePath = '/src/state/workspace.ts';
+    const session: typeof import('../../src/auth/session') = await import(sessionPath);
+    const stateModule: typeof import('../../src/state/workspace') = await import(statePath);
+    const state = stateModule.useWorkspace();
+    state.account = await session.unlockAndLogin(value, state.account);
+    await state.refresh();
+  }, password);
 }

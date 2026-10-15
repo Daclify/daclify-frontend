@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { readFile } from 'node:fs/promises';
-import { legalFixture } from '../helpers/legal-templates';
+import { legalFixture, unlockLegalFixture } from '../helpers/legal-templates';
 import { createVault } from '../../src/auth/vault';
 
 test('fills a template, preserves manual edits and exports an unpublished Markdown draft', async ({ page }) => {
@@ -89,3 +89,39 @@ test('clears local reviews when recovery replaces keys without changing the acco
   await expect(dialog.getByRole('heading', { name: 'Choose your documents' })).toBeVisible();
   await expect(dialog.getByRole('checkbox', { name: /Conflict of Interest Policy/ })).not.toBeChecked();
 });
+
+for (const encrypted of [false, true]) {
+  test(`publishes exact generated Markdown once and protects private bytes: ${encrypted}`, async ({ page }) => {
+    const fixture = await legalFixture(page, { encrypted });
+    await page.goto('/dao/1/documents');
+    await unlockLegalFixture(page, fixture.password);
+    await page.getByRole('button', { name: 'Create from template', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Create from template', exact: true });
+    await dialog.getByRole('checkbox', { name: /DAO Code of Conduct/ }).check();
+    await dialog.getByRole('button', { name: 'Continue', exact: true }).click();
+    await dialog.getByRole('button', { name: 'Review document', exact: true }).click();
+    const body = '# Unique private contract text\n\nReviewed agreement.';
+    await dialog.getByLabel('Import edited Markdown').setInputFiles({ name: 'draft.md', mimeType: 'text/markdown', buffer: Buffer.from(body) });
+    await dialog.getByLabel('I reviewed this document for publication').check();
+    if (!encrypted) await dialog.getByLabel('I understand this document will be public').check();
+    await dialog.getByRole('button', { name: 'Continue to publish', exact: true }).click();
+    fixture.faults.lostPublication = true;
+    await dialog.getByRole('button', { name: 'Publish draft', exact: true }).click();
+    await expect.poll(() => fixture.actions).toEqual(['putdoc']);
+    await dialog.getByRole('button', { name: 'Publish verified record', exact: true }).click();
+    await expect(dialog.getByText('Published draft', { exact: true })).toBeVisible();
+    expect(fixture.uploads).toHaveLength(1); expect(fixture.actions).toEqual(['putdoc']);
+    const upload = fixture.uploads[0];
+    if (!upload) throw new Error('FIXTURE_UPLOAD');
+    const stored = Buffer.from(upload.content, 'base64').toString();
+    if (encrypted) {
+      expect(upload.metadata).toBe('{}');
+      expect(stored).not.toContain('Unique private contract text');
+      expect(stored).not.toContain('Source SHA-256');
+    } else {
+      expect(stored).toContain(body);
+      expect(stored).toContain(`Document ${upload.documentId} / version 1`);
+      expect(stored).toContain('Source SHA-256');
+    }
+  });
+}

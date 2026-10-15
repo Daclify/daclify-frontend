@@ -26,7 +26,7 @@ import LegalTemplatesDialog from './LegalTemplatesDialog.vue';
 import WorkspaceDialog from './WorkspaceDialog.vue';
 import WorkspaceActions from './WorkspaceActions.vue';
 import WorkspaceTabs from './WorkspaceTabs.vue';
-import { readDocumentForReview } from '../content/document-review';
+import { readDocumentForReview, type ReviewedDocument } from '../content/document-review';
 import { documentLabel } from '../content/document-labels';
 import { newDocumentId } from '../content/document-identity';
 import AdmissionPanel from './AdmissionPanel.vue';
@@ -152,6 +152,10 @@ const context = computed(() =>
   JSON.stringify([
     props.dao.reference,
     state.account?.id,
+    state.account?.signingKey,
+    state.account?.encryptionKey,
+    props.member?.signingKey,
+    props.dao.keyEpoch,
     props.member?.memberId,
     props.dao.privacy,
   ]),
@@ -712,6 +716,7 @@ async function retrieve(document: DaoContent['documents'][number]) {
       props.member?.active ? props.member.memberId : undefined,
       document,
       content.value,
+      { previewMarkdown: false },
     );
     if (
       current() &&
@@ -728,27 +733,15 @@ async function retrieve(document: DaoContent['documents'][number]) {
   }
   return false;
 }
-async function openManagedVersion(
-  document: DaoContent['documents'][number],
-): Promise<string | undefined> {
-  if (document.cid)
-    return (await retrieve(document))
-      ? 'The verified file has been downloaded. Review it before accepting.'
-      : undefined;
-  if (document.envelope_version === 1) {
-    await decrypt(document);
-    return decrypted.value.get(document.id);
-  }
+async function openManagedVersion(document: DaoContent['documents'][number]): Promise<ReviewedDocument | undefined> {
   if (!content.value) throw new Error('DOCUMENT_UNKNOWN');
-  return (
-    await readDocumentForReview(
-      props.dao.reference,
-      props.member?.memberId,
-      document,
-      content.value,
-    )
-  ).text;
+  const domain = context.value, request = generation;
+  const opened = await readDocumentForReview(props.dao.reference, props.member?.active ? props.member.memberId : undefined, document, content.value);
+  if (disposed || domain !== context.value || request !== generation || (document.envelope_version === 1 && !vaultUnlocked.value)) return;
+  if (opened.file && opened.markdown === undefined) downloadFile(opened.file.bytes, opened.file.metadata);
+  return opened;
 }
+
 </script>
 <template>
   <div v-if="section === 'documents'" class="workspace-tools-toolbar">
