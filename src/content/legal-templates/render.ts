@@ -4,6 +4,7 @@ import type { LegalTemplate } from './catalog';
 import { percentageText, readableDuration } from '../governance-inputs';
 
 export const LEGAL_DOCUMENT_MAX_BYTES = 131072;
+export class LegalDraftError extends Error {}
 export type TemplateValues = Readonly<Record<string, string>>;
 export type TemplateMilestone = { deliverable: string; dueDate: string; payment: string };
 export type TemplateContext = {
@@ -48,7 +49,7 @@ function escapeField(value: string): string {
 function dateValue(value: string) {
   const date = new Date(value + 'T00:00:00Z');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(date.valueOf()) || date.toISOString().slice(0, 10) !== value)
-    throw new Error('Enter a valid calendar date.');
+    throw new LegalDraftError('Enter a valid calendar date.');
 }
 
 function markers(body: string): string[] {
@@ -76,7 +77,7 @@ export function assembleLegalDocument(template: LegalTemplate, body: string, con
   checkContext(context);
   const markdown = body.trimEnd() + `\n\n---\n\nSource template: Daclify ${template.id}\n\nTemplate revision: ${template.revision}\n\nSource SHA-256: ${template.sourceSha256}\n\nDocument ${context.documentId} / version ${context.documentVersion}\n\nThis document was customized from a draft template. Its origin does not establish legal review or execution.\n`;
   if (new TextEncoder().encode(markdown).length > LEGAL_DOCUMENT_MAX_BYTES)
-    throw new Error('Document including its source reference is limited to 128 KiB.');
+    throw new LegalDraftError('Document including its source reference is limited to 128 KiB.');
   return markdown;
 }
 
@@ -91,16 +92,16 @@ export function renderLegalTemplate(
   for (const field of template.fields) {
     const value = values[field.key]?.trim();
     if (!value) continue;
-    if (value.length > field.maxLength) throw new Error(`${field.label} is limited to ${field.maxLength} characters.`);
-    if (/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(value)) throw new Error(`Remove control characters from ${field.label}.`);
+    if (value.length > field.maxLength) throw new LegalDraftError(`${field.label} is limited to ${field.maxLength} characters.`);
+    if (/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(value)) throw new LegalDraftError(`Remove control characters from ${field.label}.`);
     if (field.kind === 'date') dateValue(value);
     replacements[field.key] = escapeField(field.kind === 'textarea' ? value : value.replace(/[\r\n\t]+/g, ' '));
   }
   if (template.markdown.includes('[MILESTONES]')) {
-    if (milestones.length < 1 || milestones.length > 16) throw new Error('Add between 1 and 16 milestones.');
+    if (milestones.length < 1 || milestones.length > 16) throw new LegalDraftError('Add between 1 and 16 milestones.');
     const complete = milestones.every((row) => row.deliverable.trim() && row.dueDate.trim() && row.payment.trim());
     for (const row of milestones) {
-      if (Object.values(row).some((value) => value.length > 500)) throw new Error('Milestone fields are limited to 500 characters.');
+      if (Object.values(row).some((value) => value.length > 500)) throw new LegalDraftError('Milestone fields are limited to 500 characters.');
       if (row.dueDate) dateValue(row.dueDate);
     }
     if (complete) replacements.MILESTONES = '| Milestone | Deliverable | Due date | Payment |\n|---|---|---|---|\n' + milestones.map((row, index) =>

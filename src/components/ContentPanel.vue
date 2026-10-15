@@ -22,6 +22,7 @@ import {
 } from '../auth/session';
 import { downloadFile } from '../content/files';
 import FilePanel from './FilePanel.vue';
+import LegalTemplatesDialog from './LegalTemplatesDialog.vue';
 import WorkspaceDialog from './WorkspaceDialog.vue';
 import WorkspaceActions from './WorkspaceActions.vue';
 import WorkspaceTabs from './WorkspaceTabs.vue';
@@ -59,6 +60,7 @@ const search = ref(''),
 const documentPopup = ref(false),
   rolePopup = ref(false),
   format = ref('file');
+const templatePopup = ref(false);
 const documentTarget = ref(''),
   uploadBusy = ref(false),
   uploadPending = ref(false);
@@ -750,6 +752,7 @@ async function openManagedVersion(
 </script>
 <template>
   <div v-if="section === 'documents'" class="workspace-tools-toolbar">
+    <button type="button" class="secondary" aria-haspopup="dialog" :disabled="busy || uploadBusy || !content" @click="templatePopup = true">Create from template</button>
     <WorkspaceTabs
       v-model="activeTab"
       prefix="documents"
@@ -864,6 +867,7 @@ async function openManagedVersion(
   <p v-if="accessNote" role="status">{{ accessNote }}</p>
 
   <template v-if="section === 'documents'">
+    <LegalTemplatesDialog v-model:open="templatePopup" :dao="dao" :member="member" :content="content" @updated="refresh" />
     <div
       v-show="activeTab === 'legal'"
       id="documents-legal"
