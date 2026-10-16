@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.15.0-alpha.53
+
+- Keep the current account profile and unsaved editor draft mounted when a membership refresh temporarily fails. Continue showing the connection error and retry action; confirmed sign-out and account/network changes still clear the relevant state.
+
 ## 0.15.0-alpha.47
 
 - Show claim invitation preparation immediately on eligible free saved setups, and put the personal resume address under Save this order for my own account.

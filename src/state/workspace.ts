@@ -48,7 +48,6 @@ export const useWorkspace = defineStore('workspace', () => {
         memberships.value = memberRecords;
       } catch (cause) {
         if (stale()) return;
-        memberships.value = [];
         if (cause instanceof ApiFailure && cause.code === 'AUTH_REQUIRED')
           account.value = undefined;
         else throw cause;

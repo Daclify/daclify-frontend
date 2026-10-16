@@ -119,6 +119,30 @@ describe('workspace refresh availability', () => {
     expect(state.error).toContain('blockchain node');
     expect(state.memberships).toEqual([]);
   });
+  it('keeps the current profile identity during a temporary membership refresh failure', async () => {
+    const state = useWorkspace();
+    state.account = account;
+    state.network = network;
+    const member = UserMembershipSchema.parse({
+      dao: { chainId: network.chainId, contract: network.runtime, daoId: '7', interfaceVersion: 1 },
+      memberId: '1',
+      nonce: '0',
+      active: true,
+      admin: true,
+      reviewer: false,
+      credits: '0',
+      claim: '0',
+      stake: '0',
+      nativeAccount: '',
+      custody: 'managed',
+    });
+    state.memberships = [member];
+    vi.mocked(api.memberships).mockRejectedValue(new ApiFailure('CONNECTION_FAILED'));
+    await state.refresh();
+    expect(state.account).toEqual(account);
+    expect(state.memberships).toEqual([member]);
+    expect(state.error).not.toBe('');
+  });
   it('clears account state only when the service confirms authentication is required', async () => {
     const state = useWorkspace();
     state.account = account;

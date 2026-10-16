@@ -411,6 +411,38 @@ test('unlocks a signed-in email account directly from its locked profile without
   await expect(profile.getByRole('button', { name: 'E-Mail', exact: true })).toBeVisible();
   await expect(profile.getByLabel('Full name', { exact: true })).toHaveCount(0);
 });
+test('keeps the profile editor and its draft when a membership refresh temporarily fails', async ({
+  page,
+}) => {
+  await fixture(page, true, true);
+  await page.goto('/users/me');
+  await page.getByRole('button', { name: 'Edit profile & account', exact: true }).click();
+  await page.route('**/v1/me/memberships', (route) =>
+    route.fulfill({
+      status: 503,
+      json: { code: 'SERVICE_UNAVAILABLE', message: 'Fixture' },
+    }),
+  );
+  const failedRefresh = page.waitForResponse(
+    (response) => response.url().endsWith('/v1/me/memberships') && response.status() === 503,
+  );
+  const profile = await unlockProfile(page);
+  await failedRefresh;
+  const name = profile.getByLabel('Full name', { exact: true });
+  await expect(name).toHaveValue('Alice Example');
+  await name.fill('Unsaved profile draft');
+  const retry = page.waitForResponse(
+    (response) => response.url().endsWith('/v1/me/memberships') && response.status() === 503,
+  );
+  await page.getByRole('button', { name: 'Retry connection', exact: true }).click();
+  await retry;
+  await expect(name).toHaveValue('Unsaved profile draft');
+  await expect(page.getByRole('tab', { name: 'Profile', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(page.getByText('Vault unlocked', { exact: true })).toBeVisible();
+});
 test('stays in Profile during approval-setup recovery without duplicating hidden email forms', async ({
   page,
 }) => {
