@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import WorkspaceDialog from './WorkspaceDialog.vue';
 import { Pencil } from '@lucide/vue';
 import ExecutivePanel from './ExecutivePanel.vue';
+import PrivateAgentDetails from './PrivateAgentDetails.vue';
 import VotingDurationInput from './VotingDurationInput.vue';
 import PercentageInput from './PercentageInput.vue';
 import { readableDuration, percentageText } from '../content/governance-inputs';
@@ -433,6 +434,12 @@ function prepareGuardian() {
           <li v-for="agent in agents" :key="agent.id">
             Member {{ agent.id }} · {{ agent.operator_label }} ·
             {{ agent.revoked ? 'Authority revoked' : 'Registered' }}
+            <PrivateAgentDetails
+              v-if="dao.privacy !== 'public'"
+              :dao="dao"
+              :member="member"
+              :subject="agent.id"
+            />
           </li>
         </ul>
         <details v-if="member">

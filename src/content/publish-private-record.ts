@@ -25,7 +25,7 @@ import {
 } from '../auth/session';
 import { readPrivateRecord, privateRecordAccess } from './private-records';
 
-type PrivateAction = 'commitepoch' | 'putjson' | 'putdoc' | 'setmeta';
+type PrivateAction = 'commitepoch' | 'putjson' | 'putdoc' | 'setmeta' | 'setagentdesc';
 export async function sendPrivateAction(
   dao: DaoRef,
   memberId: string,

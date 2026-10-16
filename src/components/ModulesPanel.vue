@@ -7,6 +7,7 @@ import ArbitrationPanel from './ArbitrationPanel.vue';
 import ContributionAgreementPanel from './ContributionAgreementPanel.vue';
 import ServiceCatalogue from './ServiceCatalogue.vue';
 import DocumentReview from './DocumentReview.vue';
+import PrivatePayrollNames from './PrivatePayrollNames.vue';
 import BallotTargetReview from './BallotTargetReview.vue';
 import BallotExportButton from './BallotExportButton.vue';
 import DocumentReferenceLink from './DocumentReferenceLink.vue';
@@ -28,6 +29,7 @@ import {
   type DaoSummary,
   type UserMembership,
   type GovernanceState,
+  type PrivateRecordReference,
   PrivateRecordPayloadSchema,
   daoPaymentKey,
 } from '@daclify/core-protocol';
@@ -44,6 +46,7 @@ import {
   encodeDecide,
   encodeWorks,
   encodePayroll,
+  PayrollActionSchemas,
   type WorksActions,
 } from '@daclify/modules/sdk';
 import { api, friendlyError } from '../api/client';
@@ -58,6 +61,12 @@ import {
   type PrivateBallotDraft,
 } from '../content/private-ballot-draft';
 import { canSignMember } from '../auth/action-signer';
+import {
+  loadPrivatePayrollDraft,
+  savePrivatePayrollDraft,
+  clearPrivatePayrollDraft,
+  type PrivatePayrollDraft,
+} from '../content/private-payroll-draft';
 const signerReady = computed(() => canSignMember(props.member));
 import { useWorkspace } from '../state/workspace';
 const props = defineProps<{
@@ -93,8 +102,14 @@ const context = computed(() =>
 const loading = ref(false);
 const busy = ref(false),
   ballotPreparing = ref(false);
+const payrollPreparing = ref(false),
+  privatePayrollDraft = ref<PrivatePayrollDraft>(),
+  payrollReviewed = ref(false);
+const openedPayrollNames = ref<Record<string, { agreed: string; display: string }>>({});
+const privatePayroll = computed(() => props.dao.privacy !== 'public');
+const payrollAction = computed(() => (privatePayroll.value ? 'commitpriv' : 'commitdoc'));
 watch(
-  () => busy.value || ballotPreparing.value,
+  () => busy.value || ballotPreparing.value || payrollPreparing.value,
   (value) => emit('busy', value),
   { flush: 'sync' },
 );
@@ -180,6 +195,14 @@ watch(
       reviewedBallotDocuments.value = {};
       reviewedBallotTargets.value = {};
       ballotDialog.value?.close();
+      payrollDialog.value?.close();
+      payrollName.value = '';
+      payrollQuery.value = '';
+      payrollConfirmed.value = false;
+      payrollReviewed.value = false;
+      openedPayrollNames.value = {};
+      privatePayrollDraft.value = undefined;
+      payrollPreparing.value = false;
     }
   },
   { flush: 'sync' },
@@ -312,6 +335,10 @@ onBeforeUnmount(() => {
   description.value = '';
   ballotChoices.value = [];
   privateDraft.value = undefined;
+  privatePayrollDraft.value = undefined;
+  openedPayrollNames.value = {};
+  payrollName.value = '';
+  payrollQuery.value = '';
   emit('busy', false);
   generation++;
   choicesRequest++;
@@ -524,6 +551,10 @@ watch(
     payrollRecipient.value = '';
     payrollAmount.value = '';
     payrollConfirmed.value = false;
+    payrollReviewed.value = false;
+    openedPayrollNames.value = {};
+    privatePayrollDraft.value = undefined;
+    payrollPreparing.value = false;
     periods.value = 2;
     intervalDays.value = 30;
     payrollStarts.value = new Date(Date.now() + 60000).toISOString().slice(0, 19);
@@ -1437,6 +1468,10 @@ const payrollState = computed(() => {
 });
 const payrollReady = computed(
   () =>
+    (!privatePayroll.value ||
+      (vaultUnlocked.value &&
+        payrollReviewed.value &&
+        workspace.network?.capabilities.includes('private-payroll-labels-v1'))) &&
     !choicesLoading.value &&
     payrollState.value.valid &&
     payrollConfirmed.value &&
@@ -1467,9 +1502,13 @@ function showPayrollDialog(previous?: ModuleState['schedules'][number]) {
   error.value = '';
   success.value = '';
   payrollPrevious.value = previous?.id ?? '0';
+  if (!previous && !payrollName.value && !payrollAmount.value)
+    payrollStarts.value = new Date(Date.now() + 300000).toISOString().slice(0, 19);
   if (previous) {
     payrollRecipient.value = previous.recipient;
-    payrollName.value = controlFor(previous.id)?.label || `Schedule ${previous.id}`;
+    payrollName.value =
+      openedPayrollNames.value[previous.id]?.display ||
+      (privatePayroll.value ? '' : controlFor(previous.id)?.label || `Schedule ${previous.id}`);
     const terms = data.value?.payrollTerms.find((row) => row.schedule_id === previous.id);
     payrollDocument.value =
       content.value?.documents.find(
@@ -1491,12 +1530,30 @@ function showPayrollDialog(previous?: ModuleState['schedules'][number]) {
   payrollDialog.value?.showModal();
 }
 async function commit() {
-  if (!current.value || !props.member?.admin || !payrollReady.value || !allowed('commitdoc'))
+  if (
+    !current.value ||
+    !props.member?.admin ||
+    !payrollReady.value ||
+    !allowed(payrollAction.value) ||
+    payrollPreparing.value
+  )
     return;
   const domain = context.value;
   const terms = selectedDocument(payrollDocument.value);
   if (!terms) return;
+  payrollPreparing.value = true;
+  error.value = '';
   try {
+    const saved = loadPrivatePayrollDraft(
+      props.dao.reference,
+      current.value.deployment.account,
+      props.member.memberId,
+    );
+    if (
+      saved &&
+      (!privatePayroll.value || JSON.stringify(saved) !== JSON.stringify(privatePayrollDraft.value))
+    )
+      throw Error('PENDING_UPLOAD_FINISH');
     const input = parsePayrollInputs(
       payrollAmount.value,
       periods.value,
@@ -1505,25 +1562,96 @@ async function commit() {
       props.dao.token.precision,
       Math.floor(Date.now() / 1000),
     );
-    await run(
-      current.value.deployment.account,
-      'commitdoc',
-      encodePayroll('commitdoc', {
-        ...actor(),
-        schedule_id: newId(),
-        recipient: payrollRecipient.value,
-        quantity: `${formatUnits(input.quantity, props.dao.token.precision)} ${props.dao.token.symbol}`,
-        periods: periods.value,
-        interval: input.interval,
-        starts: input.starts,
-        label: payrollName.value.trim(),
-        document_id: terms.document_id,
-        document_version: terms.version,
-        expected: terms.commitment,
-        successor_of: payrollPrevious.value,
-      }),
-      'Funded payroll committed',
-    );
+    const fields = PayrollActionSchemas.commitpriv.omit({ label: true }).parse({
+      ...actor(),
+      schedule_id: saved?.fields.schedule_id ?? newId(),
+      recipient: payrollRecipient.value,
+      quantity: `${formatUnits(input.quantity, props.dao.token.precision)} ${props.dao.token.symbol}`,
+      periods: periods.value,
+      interval: input.interval,
+      starts: input.starts,
+      document_id: terms.document_id,
+      document_version: terms.version,
+      expected: terms.commitment,
+      successor_of: payrollPrevious.value,
+    });
+    if (saved) {
+      const { label: _label, ...prior } =
+        saved.stage === 'committing' ? saved.fields : { ...saved.fields, label: undefined };
+      if (JSON.stringify(fields) !== JSON.stringify(prior)) throw Error('PAYROLL_TERMS_CHANGED');
+    }
+    if (privatePayroll.value) {
+      if (!saved)
+        privatePayrollDraft.value = savePrivatePayrollDraft(
+          props.dao.reference,
+          current.value.deployment.account,
+          props.member.memberId,
+          { stage: 'content', fields },
+        );
+      const reference = await publishPrivateRecord(
+        props.dao.reference,
+        props.member.memberId,
+        fields.schedule_id,
+        1,
+        {
+          schemaVersion: 1,
+          kind: 'payroll-label',
+          source: current.value.deployment.account,
+          recordId: fields.schedule_id,
+          body: { purpose: 'agreed', label: payrollName.value.trim() },
+        },
+      );
+      if (disposed || domain !== context.value || !vaultUnlocked.value) return;
+      const committed = PayrollActionSchemas.commitpriv.parse({
+        ...fields,
+        label: {
+          document_id: reference.documentId,
+          version: reference.version,
+          commitment: reference.commitment,
+          key_epoch: reference.keyEpoch,
+        },
+      });
+      if (
+        saved?.stage === 'committing' &&
+        JSON.stringify(saved.fields) !== JSON.stringify(committed)
+      )
+        throw Error('PAYROLL_TERMS_CHANGED');
+      privatePayrollDraft.value = savePrivatePayrollDraft(
+        props.dao.reference,
+        current.value.deployment.account,
+        props.member.memberId,
+        { stage: 'committing', fields: committed },
+      );
+      if (!(await existingPrivatePayroll(privatePayrollDraft.value))) {
+        await run(
+          current.value.deployment.account,
+          'commitpriv',
+          encodePayroll('commitpriv', committed),
+          'Funded payroll committed',
+        );
+      }
+      if (disposed || domain !== context.value) return;
+      if (await existingPrivatePayroll(privatePayrollDraft.value)) {
+        clearPrivatePayrollDraft(
+          props.dao.reference,
+          current.value.deployment.account,
+          props.member.memberId,
+        );
+        privatePayrollDraft.value = undefined;
+        error.value = '';
+        await workspace.refresh();
+        if (disposed || domain !== context.value) return;
+        await load();
+        success.value = 'Funded payroll committed';
+      }
+    } else {
+      await run(
+        current.value.deployment.account,
+        'commitdoc',
+        encodePayroll('commitdoc', { ...fields, label: payrollName.value.trim() }),
+        'Funded payroll committed',
+      );
+    }
     if (!disposed && domain === context.value && success.value === 'Funded payroll committed') {
       payrollDialog.value?.close();
       payrollName.value = '';
@@ -1537,6 +1665,143 @@ async function commit() {
     }
   } catch (cause) {
     if (!disposed && domain === context.value) error.value = friendlyError(cause);
+  } finally {
+    if (!disposed && domain === context.value) payrollPreparing.value = false;
+  }
+}
+async function existingPrivatePayroll(draft: PrivatePayrollDraft) {
+  if (!current.value) throw Error('MODULE_UNVERIFIED');
+  const domain = context.value,
+    fields = draft.fields;
+  const rows = await api.moduleState(props.dao.reference.daoId, { schedules: fields.schedule_id });
+  if (disposed || domain !== context.value) throw Error('RECOVERY_CONTEXT_CHANGED');
+  const found = rows.schedules.find((row) => row.id === fields.schedule_id);
+  if (!found) return false;
+  const terms = rows.payrollTerms.find((row) => row.schedule_id === fields.schedule_id);
+  const protectedNames = await api.privatePayroll(props.dao.reference, fields.schedule_id);
+  if (disposed || domain !== context.value) throw Error('RECOVERY_CONTEXT_CHANGED');
+  if (draft.stage !== 'committing' || !protectedNames.agreed) throw Error('PAYROLL_TERMS_CHANGED');
+  const expectedLabel = draft.fields.label,
+    agreed = protectedNames.agreed;
+  if (
+    protectedNames.source !== current.value.deployment.account ||
+    daoPaymentKey(protectedNames.dao) !== daoPaymentKey(props.dao.reference) ||
+    found.creator !== fields.member_id ||
+    found.recipient !== fields.recipient ||
+    found.quantity !== fields.quantity ||
+    found.periods !== fields.periods ||
+    found.interval !== fields.interval ||
+    found.starts !== fields.starts ||
+    terms?.document_id !== fields.document_id ||
+    terms.document_version !== fields.document_version ||
+    terms.commitment !== fields.expected ||
+    terms.successor_of !== fields.successor_of ||
+    terms.schema_version !== 2 ||
+    agreed.documentId !== expectedLabel.document_id ||
+    agreed.version !== expectedLabel.version ||
+    agreed.commitment !== expectedLabel.commitment ||
+    agreed.keyEpoch !== expectedLabel.key_epoch
+  )
+    throw Error('PAYROLL_TERMS_CHANGED');
+  return true;
+}
+async function resumePrivatePayroll() {
+  const source = current.value?.deployment.account,
+    member = props.member,
+    domain = context.value;
+  if (!source || !member?.active || !member.admin || busy.value || payrollPreparing.value) return;
+  payrollPreparing.value = true;
+  error.value = '';
+  success.value = '';
+  try {
+    const saved = loadPrivatePayrollDraft(props.dao.reference, source, member.memberId);
+    if (!saved) {
+      success.value = 'No unfinished private payroll on this browser.';
+      return;
+    }
+    if (await existingPrivatePayroll(saved)) {
+      clearPrivatePayrollDraft(props.dao.reference, source, member.memberId);
+      privatePayrollDraft.value = undefined;
+      await load();
+      success.value = 'Funded payroll already committed';
+      return;
+    }
+    if (!vaultUnlocked.value) throw Error('VAULT_LOCKED');
+    const records = await api.content(props.dao.reference.daoId),
+      document = records.documents.find(
+        (row) => row.document_id === saved.fields.schedule_id && row.version === 1,
+      );
+    if (disposed || domain !== context.value || !vaultUnlocked.value) return;
+    if (!document) throw Error('PRIVATE_RECORD_PENDING');
+    const payload = await readPrivateRecord(
+      props.dao.reference,
+      member.memberId,
+      {
+        documentId: document.document_id,
+        version: document.version,
+        commitment: document.commitment,
+        keyEpoch: document.key_epoch,
+      },
+      records,
+      { kind: 'payroll-label', source, recordId: saved.fields.schedule_id },
+    );
+    if (disposed || domain !== context.value || !vaultUnlocked.value) return;
+    if (payload.kind !== 'payroll-label' || payload.body.purpose !== 'agreed')
+      throw Error('PRIVATE_RECORD_CONTEXT');
+    const terms = records.documents.find(
+      (row) =>
+        row.document_id === saved.fields.document_id &&
+        row.version === saved.fields.document_version &&
+        row.commitment === saved.fields.expected,
+    );
+    if (!terms) throw Error('DOCUMENT_UNKNOWN');
+    payrollRecipient.value = saved.fields.recipient;
+    payrollName.value = payload.body.label;
+    payrollAmount.value = formatUnits(
+      BigInt(saved.fields.quantity.split(' ')[0]?.replace('.', '') ?? '0'),
+      props.dao.token.precision,
+    ).replace(/\.0+$/, '');
+    periods.value = saved.fields.periods;
+    intervalDays.value = saved.fields.interval / 86400;
+    payrollStarts.value = new Date(saved.fields.starts * 1000).toISOString().slice(0, 19);
+    payrollDocument.value = terms.id;
+    payrollPrevious.value = saved.fields.successor_of;
+    payrollConfirmed.value = false;
+    payrollReviewed.value = false;
+    content.value = records;
+    privatePayrollDraft.value = saved;
+    payrollDialog.value?.showModal();
+    success.value = 'Original private payroll restored. Review its exact terms before committing.';
+  } catch (cause) {
+    if (!disposed && domain === context.value) error.value = friendlyError(cause);
+  } finally {
+    if (!disposed && domain === context.value) payrollPreparing.value = false;
+  }
+}
+async function discardEmptyPrivatePayroll() {
+  const source = current.value?.deployment.account,
+    member = props.member,
+    domain = context.value;
+  if (!source || !member?.active || busy.value || payrollPreparing.value) return;
+  payrollPreparing.value = true;
+  error.value = '';
+  try {
+    const saved = loadPrivatePayrollDraft(props.dao.reference, source, member.memberId);
+    if (!saved || saved.stage !== 'content' || (await existingPrivatePayroll(saved)))
+      throw Error('PENDING_UPLOAD_FINISH');
+    const records = await api.content(props.dao.reference.daoId);
+    const pending = await pendingPrivateRecord(props.dao.reference, member.memberId, records);
+    if (disposed || domain !== context.value) return;
+    if (pending || records.documents.some((row) => row.document_id === saved.fields.schedule_id))
+      throw Error('PENDING_UPLOAD_FINISH');
+    clearPrivatePayrollDraft(props.dao.reference, source, member.memberId);
+    privatePayrollDraft.value = undefined;
+    success.value =
+      'Empty local draft discarded. No document, payment or on-chain record was deleted.';
+  } catch (cause) {
+    if (!disposed && domain === context.value) error.value = friendlyError(cause);
+  } finally {
+    if (!disposed && domain === context.value) payrollPreparing.value = false;
   }
 }
 function obligation(id: string) {
@@ -1593,7 +1858,8 @@ const visibleSchedules = computed(() => {
     const open = entries.some((entry) => obligation(entry.id)?.status !== 2);
     if (showOngoing.value && entries.length > 0 && !open) return false;
     if (!query) return true;
-    const label = controlFor(schedule.id)?.label ?? '';
+    const label =
+      openedPayrollNames.value[schedule.id]?.display ?? controlFor(schedule.id)?.label ?? '';
     return (
       schedule.id.includes(query) ||
       schedule.recipient.includes(query) ||
@@ -1603,7 +1869,9 @@ const visibleSchedules = computed(() => {
 });
 async function editSchedule(scheduleId: string) {
   if (!current.value) return;
-  const label = draftLabel.value[scheduleId] ?? '';
+  const label = privatePayroll.value
+    ? (controlFor(scheduleId)?.label ?? '')
+    : (draftLabel.value[scheduleId] ?? '');
   await run(
     current.value.deployment.account,
     'edit',
@@ -1615,6 +1883,38 @@ async function editSchedule(scheduleId: string) {
     }),
     'Payroll settings saved',
   );
+}
+async function editPrivateSchedule(scheduleId: string, reference: PrivateRecordReference) {
+  if (!current.value || !allowed('editpriv')) return false;
+  const domain = context.value,
+    source = current.value.deployment.account;
+  await run(
+    current.value.deployment.account,
+    'editpriv',
+    encodePayroll('editpriv', {
+      ...actor(),
+      schedule_id: scheduleId,
+      label: {
+        document_id: reference.documentId,
+        version: reference.version,
+        commitment: reference.commitment,
+        key_epoch: reference.keyEpoch,
+      },
+    }),
+    'Private payroll display name saved',
+  );
+  if (disposed || domain !== context.value) return false;
+  const record = await api.privatePayroll(props.dao.reference, scheduleId);
+  if (disposed || domain !== context.value) return false;
+  if (
+    daoPaymentKey(record.dao) !== daoPaymentKey(props.dao.reference) ||
+    record.source !== source ||
+    JSON.stringify(record.display) !== JSON.stringify(reference)
+  )
+    return false;
+  error.value = '';
+  success.value = 'Private payroll display name saved';
+  return true;
 }
 async function payOutstanding(scheduleId: string) {
   const entry = outstandingEntry(scheduleId);
@@ -3041,6 +3341,30 @@ const selectedProject = computed(() =>
       </section></template
     >
     <template v-else-if="section === 'payroll'">
+      <p v-if="privatePayroll" class="notice">
+        Names and terms are encrypted. Recipients, amounts, dates and payment status remain public.
+      </p>
+      <button
+        v-if="privatePayroll && member?.admin"
+        type="button"
+        class="secondary"
+        :disabled="busy || payrollPreparing"
+        @click="resumePrivatePayroll"
+      >
+        Resume an unfinished private payroll
+      </button>
+      <details v-if="privatePayroll && member?.admin">
+        <summary>Discard an empty local draft</summary>
+        <p>This only removes a draft if no encrypted name or schedule was published.</p>
+        <button
+          type="button"
+          class="secondary"
+          :disabled="busy || payrollPreparing"
+          @click="discardEmptyPrivatePayroll"
+        >
+          Discard empty private payroll draft
+        </button>
+      </details>
       <dialog
         v-if="member?.active && member.admin && current?.enabled"
         ref="payrollDialog"
@@ -3061,7 +3385,7 @@ const selectedProject = computed(() =>
           </button>
         </header>
         <p v-if="error" class="alert" role="alert">{{ error }}</p>
-        <p v-if="busy" role="status">Committing funded payroll…</p>
+        <p v-if="busy || payrollPreparing" role="status">Committing funded payroll…</p>
         <p v-else-if="!signerReady" class="notice">
           Choose an authorized signer in Signing &amp; wallets before committing this payroll.
         </p>
@@ -3083,7 +3407,7 @@ const selectedProject = computed(() =>
           Retry members
         </button>
         <form class="form-panel" @submit.prevent="commit">
-          <fieldset :disabled="busy">
+          <fieldset :disabled="busy || payrollPreparing">
             <label for="pay-recipient">Recipient</label>
             <select
               id="pay-recipient"
@@ -3122,6 +3446,9 @@ const selectedProject = computed(() =>
             </p>
             <label for="pay-name">Payroll name</label
             ><input id="pay-name" v-model="payrollName" maxlength="80" required />
+            <p v-if="privatePayroll" class="field-help">
+              The name is encrypted before publication. The public record says “Private payroll”.
+            </p>
             <label for="pay-terms">Terms document</label
             ><select id="pay-terms" v-model="payrollDocument" required>
               <option value="" disabled>Choose the agreed version</option>
@@ -3137,6 +3464,16 @@ const selectedProject = computed(() =>
               :commitment="payrollTermsDocument.commitment"
               :return-to="`/dao/${dao.reference.daoId}/payroll`"
               label="Review payroll terms"
+            />
+            <DocumentReview
+              v-if="privatePayroll && payrollTermsDocument"
+              :dao="dao.reference"
+              :member="member"
+              :content="content"
+              :document-id="payrollTermsDocument.document_id"
+              :version="payrollTermsDocument.version"
+              :commitment="payrollTermsDocument.commitment"
+              @reviewed="payrollReviewed = $event"
             />
             <p v-if="payrollPrevious !== '0'" class="notice">
               Renewing schedule {{ payrollPrevious }}. This creates a separately funded schedule;
@@ -3205,7 +3542,7 @@ const selectedProject = computed(() =>
               I checked the recipient, installments and total</label
             >
             <div class="button-row">
-              <button :disabled="!allowed('commitdoc') || !payrollReady">
+              <button :disabled="!allowed(payrollAction) || !payrollReady">
                 Commit funded payroll
               </button>
               <button type="button" class="secondary" @click="payrollDialog?.close()">
@@ -3220,12 +3557,33 @@ const selectedProject = computed(() =>
         grant that action. Approved installments stay payable.
       </p>
       <article v-for="schedule in visibleSchedules" :key="schedule.id" class="panel">
-        <h2>{{ controlFor(schedule.id)?.label || `Schedule ${schedule.id}` }}</h2>
+        <h2>
+          {{
+            openedPayrollNames[schedule.id]?.display ||
+            controlFor(schedule.id)?.label ||
+            `Schedule ${schedule.id}`
+          }}
+        </h2>
+        <PrivatePayrollNames
+          v-if="privatePayroll && current"
+          :dao="dao"
+          :member="member"
+          :schedule-id="schedule.id"
+          :source="current.deployment.account"
+          :editable="!!allowed('editpriv')"
+          :save="(reference) => editPrivateSchedule(schedule.id, reference)"
+          @opened="
+            (value) => {
+              if (value) openedPayrollNames[schedule.id] = value;
+              else delete openedPayrollNames[schedule.id];
+            }
+          "
+        />
         <template
           v-for="terms in data?.payrollTerms.filter((row) => row.schedule_id === schedule.id)"
           :key="terms.schedule_id"
           ><p>
-            Agreed name: {{ terms.label
+            {{ terms.schema_version === 2 ? 'Encrypted agreed name' : 'Agreed name: ' + terms.label
             }}<span v-if="terms.successor_of !== '0'">
               · Renews schedule {{ terms.successor_of }}</span
             >
@@ -3248,7 +3606,7 @@ const selectedProject = computed(() =>
             !current?.enabled ||
             !current.compatible ||
             !current.codeVerified ||
-            !current.actions.includes('commitdoc') ||
+            !current.actions.includes(payrollAction) ||
             data?.payrollTerms.some((row) => row.successor_of === schedule.id)
           "
           @click="showPayrollDialog(schedule)"
@@ -3279,8 +3637,9 @@ const selectedProject = computed(() =>
           class="form-panel"
           @submit.prevent="editSchedule(schedule.id)"
         >
-          <label :for="`pay-label-${schedule.id}`">Label</label
+          <label v-if="!privatePayroll" :for="`pay-label-${schedule.id}`">Label</label
           ><input
+            v-if="!privatePayroll"
             :id="`pay-label-${schedule.id}`"
             v-model="draftLabel[schedule.id]"
             maxlength="80"

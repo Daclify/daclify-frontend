@@ -348,9 +348,9 @@ test('signed payroll checks the code pin, encodes exact installments and preserv
     return route.fulfill({ json: { transactionId: 'ab'.repeat(32) } });
   });
   await page.goto('/account');
-  await page.getByLabel('Vault password', { exact: true }).fill(password);
-  await page.getByRole('button', { name: 'Unlock and sign in', exact: true }).click();
-  await expect(page.getByText('Keys unlocked', { exact: true })).toBeVisible();
+  await page.getByLabel('Password for this device', { exact: true }).fill(password);
+  await page.getByRole('button', { name: 'Unlock account', exact: true }).click();
+  await expect(page.getByText('Vault unlocked', { exact: true })).toBeVisible();
   const menu = page.getByRole('button', { name: 'Menu', exact: true });
   if (await menu.isVisible()) await menu.click();
   await page.getByRole('link', { name: 'My DAO', exact: true }).click();

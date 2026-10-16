@@ -5,6 +5,7 @@ import {
   PrivateFounderSetupSchema,
   PrivateRecordPayloadSchema,
   PrivateIdentityBodySchema,
+  PrivateAgentBodySchema,
   EncryptionPublicKeySchema,
   epochGrantDomain,
   privateCreationCommitment,
@@ -65,6 +66,7 @@ async function sealFounder(
   documentId: string,
   bytes: Uint8Array,
   contextCommitment: string,
+  agent?: z.infer<typeof PrivateAgentBodySchema>,
 ): Promise<PrivateFounderSetup> {
   const account = useWorkspace().account;
   if (!account?.encryptionKey) throw Error('AUTH_REQUIRED');
@@ -80,11 +82,34 @@ async function sealFounder(
         documentId,
         contextCommitment,
       };
+      const agentDocument = agent ? newPrivateRecordId() : undefined;
       return PrivateFounderSetupSchema.parse({
         ...pending,
         epochCommitment: await sha256Hex(key),
         selfGrant,
         envelope: await sealContent(bytes, key, setupDomain(dao, pending)),
+        ...(agent && agentDocument
+          ? {
+              agentDescription: {
+                documentId: agentDocument,
+                envelope: await sealContent(
+                  text.encode(
+                    JSON.stringify(
+                      PrivateRecordPayloadSchema.parse({
+                        schemaVersion: 1,
+                        kind: 'agent-description',
+                        source: dao.contract,
+                        recordId: '1',
+                        body: agent,
+                      }),
+                    ),
+                  ),
+                  key,
+                  setupDomain(dao, { ...pending, documentId: agentDocument }),
+                ),
+              },
+            }
+          : {}),
       });
     } finally {
       key.fill(0);
@@ -138,6 +163,48 @@ export async function openPrivateInvitation(
     key.fill(0);
   }
 }
+export async function openPrivateFounderAgent(
+  dao: DaoRef,
+  setup: PrivateFounderSetup,
+  request: Creation,
+) {
+  setup = PrivateFounderSetupSchema.parse(setup);
+  verifySetup(dao, setup, request);
+  const account = useWorkspace().account;
+  if (!account || !setup.agentDescription || !request.foundingAgent)
+    throw Error('PRIVATE_FOUNDER_IDENTITY');
+  const record = setup.agentDescription;
+  return withUnlockedVault(account, async (keys) => {
+    const key = await openCommittedEpoch(
+      keys.encryptionPrivateKey,
+      setup.selfGrant,
+      epochGrantDomain(dao, '1', '1'),
+      setup.epochCommitment,
+    );
+    try {
+      const payload = PrivateRecordPayloadSchema.parse(
+        JSON.parse(
+          new TextDecoder('utf-8', { fatal: true }).decode(
+            await openContent(
+              record.envelope,
+              key,
+              setupDomain(dao, { ...setup, documentId: record.documentId }),
+            ),
+          ),
+        ),
+      );
+      if (
+        payload.kind !== 'agent-description' ||
+        payload.source !== dao.contract ||
+        payload.recordId !== '1'
+      )
+        throw Error('PRIVATE_RECORD_CONTEXT');
+      return payload;
+    } finally {
+      key.fill(0);
+    }
+  });
+}
 export async function resealPrivateInvitation(
   dao: DaoRef,
   setup: PrivateDaoSetup,
@@ -166,7 +233,36 @@ export async function sealPrivateCreation(
     )
   )
     throw Error('PRIVATE_IDENTITY_UNSUPPORTED');
-  if (input.foundingAgent) throw Error('PRIVATE_FOUNDER_IDENTITY');
+  let agent: z.infer<typeof PrivateAgentBodySchema> | undefined;
+  if (input.foundingAgent) {
+    const account = useWorkspace().account;
+    if (
+      stage !== 'founder' ||
+      !account ||
+      account.signingKey !== input.foundingAgent.signingKey ||
+      JSON.stringify(account.encryptionKey) !== JSON.stringify(input.foundingAgent.encryptionKey)
+    )
+      throw Error('PRIVATE_FOUNDER_IDENTITY');
+    agent =
+      input.privateSetup?.stage === 'founder' && input.privateSetup.agentDescription
+        ? (
+            await openPrivateFounderAgent(
+              DaoRefSchema.parse({
+                chainId: network.chainId,
+                contract: network.runtime,
+                daoId: input.privateSetup.daoId,
+                interfaceVersion: 1,
+              }),
+              input.privateSetup,
+              input,
+            )
+          ).body
+        : PrivateAgentBodySchema.parse({
+            operatorLabel: input.foundingAgent.operator,
+            description: '',
+          });
+    input = { ...input, foundingAgent: { ...input.foundingAgent, operator: 'Agent' } };
+  }
   const dao = DaoRefSchema.parse({
     chainId: network.chainId,
     contract: network.runtime,
@@ -222,7 +318,7 @@ export async function sealPrivateCreation(
     } finally {
       key.fill(0);
     }
-  } else privateSetup = await sealFounder(dao, documentId, bytes, contextCommitment);
+  } else privateSetup = await sealFounder(dao, documentId, bytes, contextCommitment, agent);
   return {
     request: CreateDaoSchema.parse({ ...input, metadata, privateSetup }),
     ...(contentKey ? { contentKey } : {}),

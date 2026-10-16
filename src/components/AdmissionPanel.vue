@@ -249,7 +249,8 @@ function publicFields() {
     encryption_key: JSON.stringify(person.encryptionKey),
     custody: person.custody === 'managed' ? 1 : 0,
     kind: kind.value,
-    operator_label: kind.value === 1 ? operator.value : '',
+    operator_label:
+      kind.value === 1 ? (props.dao.privacy === 'public' ? operator.value : 'Agent') : '',
   };
 }
 async function admit() {
@@ -450,9 +451,13 @@ function eligibleAction(action: string) {
       ><select id="participant-kind" v-model.number="kind">
         <option v-if="dao.participantMode !== 'agents-guarded'" :value="0">Human</option>
         <option v-if="dao.participantMode !== 'humans'" :value="1">Declared agent</option></select
-      ><label v-if="kind === 1"
-        >Declared operator<input v-model="operator" maxlength="64" required /></label
-      ><template v-if="requiresEndorsement"
+      ><label v-if="kind === 1 && dao.privacy === 'public'"
+        >Declared operator<input v-model="operator" maxlength="64" required
+      /></label>
+      <p v-if="kind === 1 && dao.privacy !== 'public'" class="field-help">
+        The public participant label is Agent. Keep operating details in encrypted DAO documents.
+      </p>
+      <template v-if="requiresEndorsement"
         ><label for="join-document">Application document</label
         ><select id="join-document" v-model="documentChoice" required :disabled="busy">
           <option value="" disabled>Choose a published document version</option>

@@ -181,7 +181,12 @@ async function create() {
       {
         ...actor(),
         election_id: newId(),
-        title: purpose.value === 'executive' ? 'Executives' : title.value,
+        title:
+          purpose.value === 'executive'
+            ? 'Executives'
+            : props.dao.privacy === 'public'
+              ? title.value
+              : 'Office',
         document_id: selectedRules.value.document_id,
         document_version: selectedRules.value.version,
         nomination_close: seconds(nominationClose.value),
@@ -351,7 +356,7 @@ function termStatus(term: ModuleState['terms'][number]) {
             retains control. For the governing DAO, administrator rights follow the eligible paired
             executive roster.
           </p>
-          <label v-else
+          <label v-else-if="dao.privacy === 'public'"
             >Representative title<input
               v-model="title"
               maxlength="80"
@@ -359,6 +364,10 @@ function termStatus(term: ModuleState['terms'][number]) {
               pattern="(?!Executives$).*"
               title="Executives is reserved for executive governance elections"
           /></label>
+          <p v-else class="notice">
+            Describe the representative office in its encrypted rules document. Its public title
+            will be “Office”. The “Executives” marker keeps its governance meaning.
+          </p>
           <p class="field-help" v-if="purpose === 'representative'">
             A representative title gives members a defined office; it grants no administrator or
             spending powers.

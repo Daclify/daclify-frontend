@@ -79,6 +79,10 @@ watch(vaultUnlocked, (unlocked) => {
     if (privateDao.value) {
       generation++;
       busy.value = false;
+      title.value = '';
+      summary.value = '';
+      skills.value = '';
+      open.value = false;
     }
     privateBusy.value = false;
     privateOffers.value.clear();

@@ -1495,6 +1495,20 @@ export const api = {
       ApiRoutes.governance.path.replace(':id', IdSchema.parse(daoId)),
       ApiRoutes.governance.response,
     ),
+  privateAgent: (dao: DaoSummary['reference'], memberId: string) =>
+    request(
+      PrivateRecordRoutes.agent.path
+        .replace(':id', IdSchema.parse(dao.daoId))
+        .replace(':member', IdSchema.parse(memberId)),
+      PrivateRecordRoutes.agent.response,
+    ),
+  privatePayroll: (dao: DaoSummary['reference'], scheduleId: string) =>
+    request(
+      ModuleApiRoutes.privatePayroll.path
+        .replace(':id', IdSchema.parse(dao.daoId))
+        .replace(':schedule', IdSchema.parse(scheduleId)),
+      ModuleApiRoutes.privatePayroll.response,
+    ),
   execute: (dao: DaoSummary['reference'], ballotId: string) =>
     request(
       ModuleApiRoutes.execute.path,

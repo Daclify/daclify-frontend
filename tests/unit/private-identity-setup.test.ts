@@ -132,6 +132,56 @@ it('seals an invitation before any request is built and binds it to its prospect
   expect(localStorage.length).toBe(0);
   expect(sessionStorage.length).toBe(0);
 });
+
+it('seals a private guarded founder with its selected original agent identity and no public operator name', async () => {
+  const account = await unlockOriginal();
+  const setup = defaultDaoSetup('custom');
+  const request = CreateDaoSchema.parse({
+    ...input,
+    setup: {
+      ...setup,
+      participantMode: 'agents-guarded',
+      governance: {
+        ...setup.governance,
+        guardian: 'guardian',
+        governedWorks: true,
+        maxCommitment: '10000',
+        dailyCommitment: '20000',
+      },
+    },
+    foundingAgent: {
+      signingKey: account.signingKey,
+      encryptionKey: account.encryptionKey,
+      operator: 'Secret agent operator canary',
+    },
+  });
+  const sealed = await sealPrivateCreation(request, 'founder');
+  expect(sealed.request.foundingAgent).toEqual({ ...request.foundingAgent, operator: 'Agent' });
+  expect(JSON.stringify(sealed.request)).not.toContain('Secret agent operator canary');
+  expect(sealed.request.privateSetup).toHaveProperty('agentDescription.envelope');
+  if (!sealed.request.privateSetup || sealed.request.privateSetup.stage !== 'founder')
+    throw Error('fixture founder seal');
+  expect(
+    (
+      await openPrivateFounder(
+        scope(sealed.request.privateSetup.daoId),
+        sealed.request.privateSetup,
+        sealed.request,
+      )
+    ).body.title,
+  ).toBe(input.metadata.title);
+  const other = PrivateKey.generate('K1').toPublic().toString();
+  const founder = request.foundingAgent;
+  if (!founder) throw Error('fixture founding agent');
+  await expect(
+    sealPrivateCreation(
+      { ...request, foundingAgent: { ...founder, signingKey: other } },
+      'founder',
+    ),
+  ).rejects.toThrow('PRIVATE_FOUNDER_IDENTITY');
+  lockVault();
+  await expect(sealPrivateCreation(request, 'founder')).rejects.toThrow();
+});
 it('reseals the reviewed question with fresh founder keys so the issuer key cannot open DAO content', async () => {
   const invitation = await sealPrivateCreation(input, 'invitation'),
     draft = invitation.request.privateSetup;

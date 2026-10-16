@@ -7,7 +7,7 @@ import {
 import { api } from '../api/client';
 import { useWorkspace } from '../state/workspace';
 import { recoveryContextGuard, vaultUnlocked } from '../auth/session';
-import { openPrivateFounder } from './private-identity-setup';
+import { openPrivateFounder, openPrivateFounderAgent } from './private-identity-setup';
 import { publishPrivateRecord, sendPrivateAction } from './publish-private-record';
 
 export async function installPrivateIdentity(order: CreationOrderView) {
@@ -67,21 +67,59 @@ export async function installPrivateIdentity(order: CreationOrderView) {
   if (metadata.privateIdentity) {
     if (JSON.stringify(metadata.privateIdentity) !== JSON.stringify(reference))
       throw Error('PRIVATE_METADATA_CHANGED');
-    return;
-  }
-  await sendPrivateAction(
-    dao,
-    '1',
-    'setmeta',
-    {
-      ...actor,
-      metadata: JSON.stringify({ ...metadata, privateIdentity: reference }),
-      expected: snapshot.metadataCommitment,
-    },
-    true,
-  );
+  } else
+    await sendPrivateAction(
+      dao,
+      '1',
+      'setmeta',
+      {
+        ...actor,
+        metadata: JSON.stringify({ ...metadata, privateIdentity: reference }),
+        expected: snapshot.metadataCommitment,
+      },
+      true,
+    );
   const published = await api.privateIdentity(dao);
   check();
   if (JSON.stringify(published.reference) !== JSON.stringify(reference))
     throw Error('PRIVATE_RECORD_PENDING');
+  if (setup.agentDescription) {
+    const payload = await openPrivateFounderAgent(dao, setup, order.setup);
+    check();
+    const reference = await publishPrivateRecord(
+      dao,
+      '1',
+      setup.agentDescription.documentId,
+      1,
+      payload,
+      true,
+    );
+    check();
+    const saved = await api.privateAgent(dao, '1');
+    check();
+    if (saved.reference) {
+      if (JSON.stringify(saved.reference) !== JSON.stringify(reference))
+        throw Error('PRIVATE_INITIALIZATION_CHANGED');
+    } else
+      await sendPrivateAction(
+        dao,
+        '1',
+        'setagentdesc',
+        {
+          ...actor,
+          subject: '1',
+          reference: {
+            document_id: reference.documentId,
+            version: reference.version,
+            commitment: reference.commitment,
+            key_epoch: reference.keyEpoch,
+          },
+        },
+        true,
+      );
+    const installed = await api.privateAgent(dao, '1');
+    check();
+    if (JSON.stringify(installed.reference) !== JSON.stringify(reference))
+      throw Error('PRIVATE_RECORD_PENDING');
+  }
 }

@@ -362,6 +362,12 @@ async function checkOrder() {
     if (order.value?.state === 'created' && order.value.dao) {
       const dao = order.value.dao;
       if (order.value.setup.privateSetup && !(await api.privateIdentity(dao)).reference) return;
+      if (
+        order.value.setup.privateSetup?.stage === 'founder' &&
+        order.value.setup.privateSetup.agentDescription &&
+        !(await api.privateAgent(dao, '1')).reference
+      )
+        return;
       await state.refresh();
       if (request === orderSequence) await router.push(createdDaoLocation(dao.daoId));
     }
@@ -832,8 +838,23 @@ onBeforeUnmount(() => {
         </p>
         <template v-if="setup.participantMode === 'agents-guarded'">
           <p class="notice">
-            Your human account sponsors creation and does not receive a voting membership.
+            {{
+              privacy === 'public'
+                ? 'Your account sponsors creation. Only the founding agent receives the initial membership.'
+                : 'Use the founding agent’s original account keys. Its membership is registered as an agent, with a separate human guardian.'
+            }}
           </p>
+          <button
+            v-if="privacy !== 'public' && state.account?.signingKey && state.account.encryptionKey"
+            type="button"
+            class="secondary"
+            @click="
+              agentSigningKey = state.account.signingKey;
+              agentEncryptionKey = JSON.stringify(state.account.encryptionKey);
+            "
+          >
+            Use this account as the founding agent
+          </button>
           <label for="agent-signing">Founding agent signing public key</label
           ><input
             id="agent-signing"
@@ -850,11 +871,16 @@ onBeforeUnmount(() => {
             rows="3"
             placeholder='{"kty":"EC","crv":"P-256","x":"…","y":"…"}'
           ></textarea>
-          <label for="agent-operator">Declared agent operator</label
+          <label for="agent-operator">{{
+            privacy === 'public' ? 'Declared agent operator' : 'Private agent operating name'
+          }}</label
           ><input id="agent-operator" v-model="agentOperator" required maxlength="64" />
           <p class="field-help">
-            Provide public keys only. The first agent becomes administrator. Its signing key remains
-            outside this browser.
+            {{
+              privacy === 'public'
+                ? 'Provide public keys only. The first agent becomes administrator. Its signing key remains outside this browser.'
+                : 'Unlock this account with its original keys to encrypt the operating name. The blockchain shows Agent, its public keys and governance rights.'
+            }}
           </p>
         </template>
       </fieldset>
