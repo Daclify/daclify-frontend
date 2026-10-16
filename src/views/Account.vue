@@ -856,8 +856,8 @@ function backup() {
                 Recover from an encrypted kit
               </button>
               <p class="field-help">
-                Keys lock after ten minutes without using them. Browsing alone does not keep them
-                unlocked.
+                Using the portal keeps your keys unlocked. Keys lock after twelve hours of
+                inactivity, when your sign-in expires, or when you reload this page.
               </p>
               <button
                 v-if="!vaultUnlocked"

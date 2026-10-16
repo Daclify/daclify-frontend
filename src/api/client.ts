@@ -121,6 +121,14 @@ export type SignInMethods = z.infer<typeof SignInMethodsSchema>;
 export type PasskeyRegisterOptions = z.infer<typeof PasskeyRegisterOptionsSchema>;
 export type PasskeyLoginOptions = z.infer<typeof PasskeyLoginOptionsSchema>;
 export type ServiceReceipt = z.infer<typeof ServiceReceiptSchema>;
+export const SIGN_IN_DURATION_MS = 12 * 60 * 60_000;
+let sessionExpiryListener:
+  ((accountId: string, scope: string, expires: number) => void) | undefined;
+export function setSessionExpiryListener(
+  listener: (accountId: string, scope: string, expires: number) => void,
+): void {
+  sessionExpiryListener = listener;
+}
 let recoveryGrant: { token: string; accountId: string; scope: string; expires: number } | undefined;
 export function takeRecoveryGrant(accountId: string): string | undefined {
   const grant = recoveryGrant;
@@ -194,6 +202,7 @@ async function request<T>(
     else controlHeaders['x-account-proof'] = JSON.stringify(proof);
   }
   checkNetwork();
+  const requestedAt = Date.now();
   const response = await fetch(url, {
     method: input === undefined ? 'GET' : 'POST',
     credentials: 'include',
@@ -253,6 +262,18 @@ async function request<T>(
       new URL(resolveApiUrl('/'), window.location.origin).origin,
     );
   const login = SessionSchema.safeParse(result);
+  if (login.success || (path === '/v1/sign-in/session' && input === undefined)) {
+    const account = login.success
+      ? login.data.account
+      : ApiRoutes.me.response.parse(result).account;
+    const remaining = response.headers.get('x-daclify-session-ms');
+    if (remaining !== null) {
+      const parsed = z.coerce.number().int().min(0).max(SIGN_IN_DURATION_MS).safeParse(remaining);
+      if (!parsed.success) throw new ApiFailure('SERVICE_UNAVAILABLE');
+      if (login.success || sessionStorage.getItem(csrfKey) === (csrf || null))
+        sessionExpiryListener?.(account.id, csrfKey, requestedAt + parsed.data);
+    }
+  }
   if (login.success) {
     const token = RecoveryGrantSchema.safeParse(response.headers.get('x-daclify-recovery-grant'));
     recoveryGrant = token.success

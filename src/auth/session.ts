@@ -42,7 +42,13 @@ import {
   verifyRecoveryIdentity,
   type instruction,
 } from '@daclify/core-protocol/sdk';
-import { api, setAccountControlSigner, takeRecoveryGrant } from '../api/client';
+import {
+  api,
+  setAccountControlSigner,
+  takeRecoveryGrant,
+  setSessionExpiryListener,
+  SIGN_IN_DURATION_MS,
+} from '../api/client';
 import {
   AppSnapshotEnvelopeSchema,
   appEvidenceDomain,
@@ -72,8 +78,15 @@ import {
 export type SavedVault = RecoveryKit;
 let generation = 0;
 let secrets: VaultSecrets | undefined;
+let vaultAccountId: string | undefined;
+let idleExpires: number | undefined;
+let sessionExpiry: { accountId: string; scope: string; expires: number } | undefined;
 let timer: ReturnType<typeof setTimeout> | undefined;
 export const vaultUnlocked = ref(false);
+setSessionExpiryListener((accountId, scope, expires) => {
+  sessionExpiry = { accountId, scope, expires };
+  scheduleLock();
+});
 setAccountControlSigner(async (challenge) => {
   const message = AccountControlMessageSchema.parse(JSON.parse(challenge.message));
   const { useWorkspace } = await import('../state/workspace');
@@ -161,6 +174,8 @@ export function saveRestoredVault(record: RecoveryKit): void {
 function clearVault(): void {
   generation++;
   secrets = undefined;
+  vaultAccountId = undefined;
+  idleExpires = undefined;
   vaultUnlocked.value = false;
   if (timer) clearTimeout(timer);
   timer = undefined;
@@ -222,6 +237,16 @@ export function startSessionSecurity(): () => void {
   };
   channel?.addEventListener('message', onMessage);
   window.addEventListener('storage', onStorage);
+  const onActivity = () => {
+    if (document.visibilityState === 'visible' && !expired()) touch();
+  };
+  const onVisibility = () => {
+    expired();
+  };
+  const activityEvents = ['pointerdown', 'pointermove', 'keydown', 'scroll'];
+  for (const type of activityEvents)
+    window.addEventListener(type, onActivity, { capture: true, passive: true });
+  document.addEventListener('visibilitychange', onVisibility);
   publishSessionEvent = publish;
   const stop = watch(
     () => [
@@ -233,7 +258,8 @@ export function startSessionSecurity(): () => void {
     (_next, previous) => {
       if (
         secrets &&
-        (state.account?.signingKey !== PrivateKey.from(secrets.signingKey).toPublic().toString() ||
+        (state.account?.id !== vaultAccountId ||
+          state.account?.signingKey !== PrivateKey.from(secrets.signingKey).toPublic().toString() ||
           state.account?.encryptionKey?.x !== secrets.encryptionPrivateKey.x ||
           state.account?.encryptionKey?.y !== secrets.encryptionPrivateKey.y)
       )
@@ -250,6 +276,8 @@ export function startSessionSecurity(): () => void {
     stop();
     channel?.close();
     window.removeEventListener('storage', onStorage);
+    for (const type of activityEvents) window.removeEventListener(type, onActivity, true);
+    document.removeEventListener('visibilitychange', onVisibility);
     if (publishSessionEvent === publish) publishSessionEvent = undefined;
   };
 }
@@ -268,9 +296,28 @@ export async function logoutAccount(): Promise<void> {
   state.account = undefined;
   state.memberships = [];
 }
-function touch() {
+function keyDeadline(): number {
+  const session = sessionExpiry;
+  return Math.min(
+    idleExpires ?? Infinity,
+    session && session.accountId === vaultAccountId && session.scope === csrfStorageKey()
+      ? session.expires
+      : Infinity,
+  );
+}
+function expired(): boolean {
+  if (secrets && Date.now() >= keyDeadline()) clearVault();
+  return !secrets;
+}
+function scheduleLock(): void {
   if (timer) clearTimeout(timer);
-  timer = setTimeout(clearVault, 10 * 60_000);
+  timer = undefined;
+  if (!expired()) timer = setTimeout(scheduleLock, Math.max(0, keyDeadline() - Date.now()));
+}
+function touch(): void {
+  if (expired()) throw new Error('VAULT_LOCKED');
+  idleExpires = Date.now() + SIGN_IN_DURATION_MS;
+  scheduleLock();
 }
 export function acceptProviderSession(account: Account, csrfToken: string): Account {
   if (!/^[A-Za-z0-9_-]{32,128}$/.test(csrfToken)) throw new Error('CSRF_REQUIRED');
@@ -313,6 +360,7 @@ export function recoveryContextGuard(account: Account): () => void {
     location = globalThis.location?.href,
     network = JSON.stringify([state.network?.chainId, state.network?.runtime]);
   return () => {
+    expired();
     if (
       started !== generation ||
       scope !== csrfStorageKey() ||
@@ -380,6 +428,7 @@ export async function installRecoveredVault(
   await checkRecoveryAccount(account);
   check();
   secrets = opened;
+  vaultAccountId = account.id;
   approval.restorePreferredSigner();
   vaultUnlocked.value = true;
   touch();
@@ -402,6 +451,7 @@ export async function installCreatedVault(
     approval = await import('./approval-preference');
   check();
   secrets = opened;
+  vaultAccountId = account.id;
   approval.restorePreferredSigner();
   vaultUnlocked.value = true;
   touch();
@@ -503,6 +553,7 @@ export async function unlockAndLogin(
   )
     throw new Error('ACCOUNT_KEY_MISMATCH');
   secrets = opened;
+  vaultAccountId = account.id;
   (await import('./approval-preference')).restorePreferredSigner();
   vaultUnlocked.value = true;
   touch();
@@ -513,6 +564,7 @@ export async function relayInstruction(request: instruction): Promise<string> {
 }
 export function canUseVaultKey(signingKey: string | undefined): boolean {
   return (
+    !expired() &&
     vaultUnlocked.value &&
     (!signingKey ||
       (!!secrets && PrivateKey.from(secrets.signingKey).toPublic().toString() === signingKey))
@@ -639,7 +691,7 @@ export function downloadBackup(record: SavedVault): void {
 }
 
 function guardEpochAccess(started: number): void {
-  if (!secrets || generation !== started) throw new Error('VAULT_LOCKED');
+  if (expired() || generation !== started) throw new Error('VAULT_LOCKED');
 }
 export async function preparePrivateProfile(
   plaintext: Uint8Array,

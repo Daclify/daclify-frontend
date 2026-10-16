@@ -10,7 +10,7 @@ import { PrivateKey, Signature, PublicKey } from '@wharfkit/antelope';
 import { makeInstruction, encodeAction, instructionDigest } from '@daclify/core-protocol/sdk';
 import { generateVaultSecrets } from '../../src/auth/vault';
 
-async function fixture(context: BrowserContext) {
+async function fixture(context: BrowserContext, remainingMs = 43_200_000) {
   const keys = await generateVaultSecrets();
   const account = AccountSchema.parse({
     id: '11111111-1111-4111-8111-111111111111',
@@ -41,7 +41,15 @@ async function fixture(context: BrowserContext) {
       });
     if (path === '/v1/daos') return route.fulfill({ json: { daos: [], next: null } });
     if (path === '/v1/sign-in/session')
-      return signedOut ? route.fulfill({ status: 204 }) : route.fulfill({ json: { account } });
+      return signedOut
+        ? route.fulfill({ status: 204 })
+        : route.fulfill({
+            json: { account },
+            headers: {
+              'x-daclify-session-ms': String(remainingMs),
+              'access-control-expose-headers': 'x-daclify-session-ms',
+            },
+          });
     if (path === '/v1/me/memberships') return route.fulfill({ json: { memberships: [] } });
     return route.fulfill({
       status: 503,
@@ -56,6 +64,35 @@ async function fixture(context: BrowserContext) {
     },
   };
 }
+
+test('ordinary portal use keeps keys unlocked past ten minutes until sign-in expires', async ({
+  context,
+  page,
+}) => {
+  const bundle = await fixture(context);
+  await page.clock.install();
+  await unlock(page, bundle);
+  await page.clock.fastForward(11 * 60_000);
+  await page.keyboard.press('Tab');
+  expect(await inspect(page)).toMatchObject({ unlocked: true, canSign: true });
+  await page.clock.fastForward(43_200_001);
+  expect(await inspect(page)).toMatchObject({ unlocked: false, canSign: false });
+});
+
+test('activity cannot prolong a nearly expired sign-in or reopen locked keys', async ({
+  context,
+  page,
+}) => {
+  const bundle = await fixture(context, 60_000);
+  await page.clock.install();
+  await unlock(page, bundle);
+  await page.clock.fastForward(50_000);
+  await page.keyboard.press('Tab');
+  expect(await inspect(page)).toMatchObject({ unlocked: true, canSign: true });
+  await page.clock.fastForward(10_001);
+  await page.keyboard.press('Tab');
+  expect(await inspect(page)).toMatchObject({ unlocked: false, canSign: false });
+});
 
 async function unlock(page: Page, bundle: { account: Account; keys: VaultSecrets }) {
   await page.goto('/mcp/oauth/consent');

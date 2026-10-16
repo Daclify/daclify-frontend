@@ -58,6 +58,7 @@ import {
   logoutAccount,
   canUseVaultKey,
   withUnlockedVault,
+  startSessionSecurity,
 } from '../../src/auth/session';
 const password = 'long disposable fixture password';
 const csrf = 'a'.repeat(43);
@@ -80,6 +81,106 @@ afterEach(() => {
   vi.unstubAllGlobals();
   configureNetworks(null);
   setActivePinia(undefined);
+  vi.useRealTimers();
+});
+
+describe('portal activity and key expiration', () => {
+  let stop: (() => void) | undefined;
+  afterEach(() => {
+    stop?.();
+    stop = undefined;
+  });
+  async function opened(remainingMs?: number) {
+    setActivePinia(createPinia());
+    const browser = Object.assign(new EventTarget(), {
+      location: { origin: 'https://portal.example' },
+    });
+    vi.stubGlobal('window', browser);
+    vi.stubGlobal('document', Object.assign(new EventTarget(), { visibilityState: 'visible' }));
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    const created = await createVault(password);
+    saveVault(created);
+    const owned = {
+      ...account(created.signingPublicKey),
+      encryptionKey: created.encryptionPublicKey,
+    };
+    vi.spyOn(api, 'challenge').mockResolvedValue({
+      id: randomUUID(),
+      message: 'fixture-message',
+      expires: new Date(Date.now() + 60_000).toISOString(),
+    });
+    vi.spyOn(api, 'login').mockResolvedValue(owned);
+    await unlockAndLogin(password);
+    useWorkspace().account = owned;
+    stop = startSessionSecurity();
+    if (remainingMs !== undefined) {
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn<typeof fetch>()
+          .mockResolvedValue(
+            Response.json(
+              { account: owned },
+              { headers: { 'x-daclify-session-ms': String(remainingMs) } },
+            ),
+          ),
+      );
+      await api.me();
+    }
+    return { browser, owned };
+  }
+  it('keeps keys available beyond ten minutes and locks after twelve idle hours', async () => {
+    const { owned } = await opened();
+    await vi.advanceTimersByTimeAsync(11 * 60_000);
+    expect(vaultUnlocked.value).toBe(true);
+    await vi.advanceTimersByTimeAsync(43_200_000 - 11 * 60_000);
+    expect(vaultUnlocked.value).toBe(false);
+    expect(canUseVaultKey(owned.signingKey)).toBe(false);
+  });
+  it.each(['pointerdown', 'keydown', 'scroll'])(
+    'visible portal %s restarts the idle interval',
+    async (type) => {
+      const { browser } = await opened();
+      await vi.advanceTimersByTimeAsync(11 * 60 * 60_000);
+      browser.dispatchEvent(new Event(type));
+      await vi.advanceTimersByTimeAsync(2 * 60 * 60_000);
+      expect(vaultUnlocked.value).toBe(true);
+      await vi.advanceTimersByTimeAsync(10 * 60 * 60_000);
+      expect(vaultUnlocked.value).toBe(false);
+    },
+  );
+  it('portal input cannot extend the authoritative sign-in deadline', async () => {
+    const { browser, owned } = await opened(60_000);
+    await vi.advanceTimersByTimeAsync(50_000);
+    browser.dispatchEvent(new Event('keydown'));
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(vaultUnlocked.value).toBe(false);
+    expect(canUseVaultKey(owned.signingKey)).toBe(false);
+  });
+  it('checks elapsed time before key use when a suspended browser has not run its timers', async () => {
+    const { owned } = await opened(60_000);
+    vi.setSystemTime(Date.now() + 60_001);
+    expect(canUseVaultKey(owned.signingKey)).toBe(false);
+    await expect(withUnlockedVault(owned, async () => 'private result')).rejects.toThrow(
+      'VAULT_LOCKED',
+    );
+  });
+  it('discards pending private work if sign-in expires while browser timers are suspended', async () => {
+    const { owned } = await opened(60_000);
+    await expect(
+      withUnlockedVault(owned, async () => {
+        vi.setSystemTime(Date.now() + 60_001);
+        return 'private result';
+      }),
+    ).rejects.toThrow('WALLET_CONTEXT_CHANGED');
+    expect(vaultUnlocked.value).toBe(false);
+  });
+  it('activity cannot unlock manually locked keys', async () => {
+    const { browser } = await opened();
+    lockVault();
+    browser.dispatchEvent(new Event('keydown'));
+    expect(vaultUnlocked.value).toBe(false);
+  });
 });
 it.each(['success', 'service failure', 'network timeout'] as const)(
   'locks keys immediately during sign-out despite %s',

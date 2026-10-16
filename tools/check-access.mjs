@@ -194,8 +194,23 @@ console.log(
 );
 content.app.unmount();
 
-const { vaultUnlocked } = await server.ssrLoadModule('/src/auth/session.ts');
-vaultUnlocked.value = true;
+const storageValues = new Map();
+globalThis.localStorage = {
+  getItem: (key) => storageValues.get(key) ?? null,
+  setItem: (key, value) => storageValues.set(key, value),
+};
+const session = await server.ssrLoadModule('/src/auth/session.ts');
+const { createVault } = await server.ssrLoadModule('/src/auth/vault.ts');
+const created = await createVault('disposable audit fixture password');
+session.saveVault(created);
+api.challenge = async () => ({ message: 'audit fixture' });
+api.login = async () => ({
+  id: 'fixture',
+  custody: 'user-controlled',
+  signingKey: created.signingPublicKey,
+  encryptionKey: created.encryptionPublicKey,
+});
+await session.unlockAndLogin('disposable audit fixture password');
 api.content = async (id) => ({
   dao: reference(id),
   members: [],
@@ -429,23 +444,6 @@ await flush();
 console.log(JSON.stringify({ check: 'unmounted file preparation', uploads, markers }));
 
 // Exercise the real branding save while its content read is invalidated.
-const storageValues = new Map();
-globalThis.localStorage = {
-  getItem: (key) => storageValues.get(key) ?? null,
-  setItem: (key, value) => storageValues.set(key, value),
-};
-const session = await server.ssrLoadModule('/src/auth/session.ts');
-const { createVault } = await server.ssrLoadModule('/src/auth/vault.ts');
-const created = await createVault('disposable audit fixture password');
-session.saveVault(created);
-api.challenge = async () => ({ message: 'audit fixture' });
-api.login = async () => ({
-  id: 'fixture',
-  custody: 'user-controlled',
-  signingKey: created.signingPublicKey,
-  encryptionKey: created.encryptionPublicKey,
-});
-await session.unlockAndLogin('disposable audit fixture password');
 const finishBranding = [];
 let brandingWrites = 0;
 api.relay = () => {

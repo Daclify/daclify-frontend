@@ -195,6 +195,7 @@ async function fixture(page: Page, withProfile = false, initiallyAuthenticated =
   return account;
 }
 async function unlockProfile(page: Page) {
+  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
   const profile = page.getByRole('tabpanel', { name: 'Profile', exact: true });
   await profile.getByRole('button', { name: 'E-Mail', exact: true }).click();
   await profile.getByLabel('Sign-in email', { exact: true }).fill('alice@example.test');
@@ -257,6 +258,7 @@ test('keeps the paired email and offers retry when requesting a code fails', asy
     ),
   );
   await page.goto('/account');
+  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
   const profile = page.getByRole('tabpanel', { name: 'Profile', exact: true });
   await profile.getByRole('button', { name: 'E-Mail', exact: true }).click();
   await profile.getByRole('button', { name: 'Send code', exact: true }).click();
@@ -382,6 +384,7 @@ test('unlocks a signed-in email account directly from its locked profile without
     if (request.method() === 'POST') writes.push(new URL(request.url()).pathname);
   });
   await page.goto('/account');
+  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
   const profile = page.getByRole('tabpanel', { name: 'Profile', exact: true });
   await expect(profile.getByLabel('Full name', { exact: true })).toHaveCount(0);
   await unlockProfile(page);
@@ -404,6 +407,7 @@ test('unlocks a signed-in email account directly from its locked profile without
     await page.evaluate(() => JSON.stringify({ ...localStorage, ...sessionStorage })),
   ).not.toContain('PVT_K1_');
   await page.reload();
+  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
   await expect(profile.getByRole('button', { name: 'E-Mail', exact: true })).toBeVisible();
   await expect(profile.getByLabel('Full name', { exact: true })).toHaveCount(0);
 });
@@ -501,6 +505,7 @@ test('offers account recovery without claiming a sign-in-only email can unlock k
     }),
   );
   await page.goto('/account');
+  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
   const profile = page.getByRole('tabpanel', { name: 'Profile', exact: true });
   await expect(
     profile.getByRole('button', { name: 'Access & recovery', exact: true }),
@@ -527,6 +532,7 @@ test('retries unavailable unlock options without requesting a code', async ({ pa
         }),
   );
   await page.goto('/account');
+  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
   const profile = page.getByRole('tabpanel', { name: 'Profile', exact: true });
   await expect(
     profile.getByRole('button', { name: 'Retry unlock options', exact: true }),
@@ -541,7 +547,7 @@ test('requires another paired email verification after the inactivity lock', asy
   await page.goto('/account');
   const profile = await unlockProfile(page);
   await expect(profile.getByLabel('Full name', { exact: true })).toHaveValue('Alice Example');
-  await page.clock.fastForward(10 * 60000 + 1000);
+  await page.clock.fastForward(12 * 60 * 60_000 + 1000);
   await expect(profile.getByLabel('Full name', { exact: true })).toHaveCount(0);
   await unlockProfile(page);
   await expect(profile.getByLabel('Full name', { exact: true })).toHaveValue('Alice Example');
