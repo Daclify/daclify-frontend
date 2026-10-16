@@ -274,6 +274,60 @@ test('keeps the paired email and offers retry when requesting a code fails', asy
     profile.getByRole('button', { name: 'Verify code and unlock', exact: true }),
   ).toBeVisible();
 });
+test('cannot reuse an accepted email code while recovery is pending or after recovery fails', async ({
+  page,
+}) => {
+  await fixture(page, true, true);
+  let releaseRecovery = () => {};
+  const recovery = new Promise<void>((resolve) => {
+    releaseRecovery = resolve;
+  });
+  let logins = 0;
+  await page.route('**/v1/sign-in/email/login', (route) => {
+    logins++;
+    return logins === 1
+      ? route.fallback()
+      : route.fulfill({
+          status: 401,
+          json: { code: 'EMAIL_INVALID', message: 'Single-use fixture code' },
+        });
+  });
+  await page.route('**/v1/account/recovery/claim', async (route) => {
+    await recovery;
+    await route.fulfill({
+      status: 503,
+      json: { code: 'RECOVERY_BACKUP_UNAVAILABLE', message: 'Synthetic backup failure' },
+    });
+  });
+  await page.goto('/account');
+  const profile = await unlockProfile(page);
+  await expect(profile.getByLabel('Email code', { exact: true })).toHaveCount(0);
+  await expect(
+    profile.getByRole('button', { name: 'Verify code and unlock', exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Completing your account request' }),
+  ).toBeVisible();
+  expect(logins).toBe(1);
+  releaseRecovery();
+  await expect(page.getByRole('alert')).toContainText(
+    'Your encrypted backup could not be verified or retrieved',
+  );
+  await expect(page.getByRole('alert')).toBeFocused();
+  await expect(profile.getByLabel('Email code', { exact: true })).toHaveCount(0);
+  await expect(
+    profile.getByRole('button', { name: 'Verify code and unlock', exact: true }),
+  ).toHaveCount(0);
+  await expect(profile.getByLabel('Full name', { exact: true })).toHaveCount(0);
+  await expect(profile.getByRole('button', { name: 'Send code', exact: true })).toBeVisible();
+  await expect(profile.getByLabel('Sign-in email', { exact: true })).toHaveValue(
+    'alice@example.test',
+  );
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Completing your account request' }),
+  ).toHaveCount(0);
+  expect(logins).toBe(1);
+});
 test('requires an explicit email choice when multiple full-access addresses are paired', async ({
   page,
 }) => {

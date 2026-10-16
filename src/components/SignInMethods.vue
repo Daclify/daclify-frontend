@@ -303,6 +303,9 @@ async function confirmCode() {
     } else {
       const session = await api.loginWithEmail(mailbox, entered);
       check();
+      awaitingCode.value = false;
+      code.value = '';
+      notice.value = 'Email verified. This sign-in code has now been used.';
       signedIn(session.account, session.csrfToken);
     }
   });

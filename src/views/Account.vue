@@ -472,23 +472,28 @@ function cancelRecoveredAccount() {
   void nextTick(() => document.getElementById('unlock')?.focus());
 }
 async function onSignedIn(account: Account, stayHere = false) {
-  state.account = account;
-  password.value = '';
-  error.value = '';
-  if (route.query.signup) await router.replace({ query: { ...route.query, signup: undefined } });
+  busy.value = true;
   try {
-    const restored = await restoreFastSignIn(account);
-    if ((approvalRecoveryRequested.value || stayHere) && !restored && !vaultUnlocked.value)
-      error.value =
-        'This sign-in did not unlock your account keys. Try another full-access method, an unlocked device, or your original encrypted kit.';
-  } catch (cause) {
-    error.value = friendlyError(cause);
+    state.account = account;
+    password.value = '';
+    error.value = '';
+    if (route.query.signup) await router.replace({ query: { ...route.query, signup: undefined } });
+    try {
+      const restored = await restoreFastSignIn(account);
+      if ((approvalRecoveryRequested.value || stayHere) && !restored && !vaultUnlocked.value)
+        error.value =
+          'This sign-in did not unlock your account keys. Try another full-access method, an unlocked device, or your original encrypted kit.';
+    } catch (cause) {
+      error.value = friendlyError(cause);
+    }
+    await state.refresh();
+    if (stayHere && error.value)
+      void nextTick(() => document.getElementById('account-error')?.focus());
+    if (!stayHere && destination.value && !approvalSetup.value && !approvalRecoveryRequested.value)
+      await router.push(destination.value);
+  } finally {
+    busy.value = false;
   }
-  await state.refresh();
-  if (stayHere && error.value)
-    void nextTick(() => document.getElementById('account-error')?.focus());
-  if (!stayHere && destination.value && !approvalSetup.value && !approvalRecoveryRequested.value)
-    await router.push(destination.value);
 }
 async function logout() {
   busy.value = true;
@@ -543,6 +548,7 @@ function backup() {
   <p v-if="error && !restoring" id="account-error" class="alert" role="alert" tabindex="-1">
     {{ error }}
   </p>
+  <p v-if="busy && state.account" role="status">Completing your account request…</p>
   <section v-if="recoveredAccountFound" class="panel narrow" aria-labelledby="recovered-title">
     <h2 id="recovered-title">Your original account was found</h2>
     <p>
@@ -798,6 +804,7 @@ function backup() {
                   (!requested || unlockMethods?.some((method) => method !== 'google'))
                 "
                 mode="enter"
+                :inert="busy"
                 :paired-email="unlockEmail"
                 :unlock-methods="requested ? unlockMethods : undefined"
                 @authenticated="onSignedIn"
@@ -848,7 +855,10 @@ function backup() {
               >
                 Recover from an encrypted kit
               </button>
-              <p class="field-help">Keys lock after ten minutes without a signing action.</p>
+              <p class="field-help">
+                Keys lock after ten minutes without using them. Browsing alone does not keep them
+                unlocked.
+              </p>
               <button
                 v-if="!vaultUnlocked"
                 type="button"
@@ -970,6 +980,7 @@ function backup() {
             <SignInMethods
               v-if="unlockMethods?.some((method) => method !== 'google')"
               mode="enter"
+              :inert="busy"
               :paired-email="unlockEmail"
               :unlock-methods="unlockMethods"
               @authenticated="(account) => onSignedIn(account, true)"
@@ -1088,6 +1099,7 @@ function backup() {
         </div>
         <SignInMethods
           mode="enter"
+          :inert="busy"
           :initial-method="appSignInMethod(route.query.method)"
           @authenticated="onSignedIn"
           @busy="providerBusy = $event"

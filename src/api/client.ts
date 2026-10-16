@@ -2073,7 +2073,10 @@ export function friendlyError(error: unknown): string {
         'Assisted recovery changed after this request started. Refresh and review consent again.',
       EMAIL_UNAVAILABLE: 'Email delivery is not configured on this server.',
       EMAIL_DELIVERY_FAILED: 'The email could not be sent. Try again or use another paired method.',
-      EMAIL_INVALID: 'That email code is not valid anymore.',
+      EMAIL_INVALID:
+        'That code could not be verified. Use the latest code requested in this browser, or request a new code.',
+      SIGNIN_ATTEMPT_INVALID:
+        'This sign-in attempt has expired or belongs to another browser. Request a new code here.',
       CREDENTIAL_LINKED:
         'That sign-in method belongs to another account. If you just restored your kit, use Reconnect existing sign-ins under Telos Zero to bring back your previous methods.',
       NATIVE_LINKED:

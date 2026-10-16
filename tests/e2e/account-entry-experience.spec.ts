@@ -476,9 +476,7 @@ test('email code steps preserve the recipient, prevent duplicate sends and allow
   await expect(main(page).getByLabel('Sign-in email', { exact: true })).toHaveCount(0);
   await main(page).getByLabel('Email code', { exact: true }).fill('12345678');
   await main(page).getByRole('button', { name: 'Sign in with email', exact: true }).click();
-  await expect(
-    main(page).getByText('That email code is not valid anymore.', { exact: true }),
-  ).toBeVisible();
+  await expect(main(page).getByText(/That code could not be verified/)).toBeVisible();
   await main(page).getByRole('button', { name: 'Send another code', exact: true }).click();
   await expect(main(page).getByLabel('Email code', { exact: true })).toHaveValue('');
   expect(sends).toBe(2);
