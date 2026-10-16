@@ -287,9 +287,11 @@ onBeforeUnmount(clear);
     <p v-if="state.memberships.length === 0" class="notice">
       Join or create a DAO to publish a profile.
     </p>
-    <p v-else-if="!signerReady" class="notice">
-      Unlock your account vault to read or edit your private profile.
-    </p>
+    <div v-else-if="!signerReady">
+      <slot name="unlock">
+        <p class="notice">Unlock your account vault to read or edit your private profile.</p>
+      </slot>
+    </div>
     <form v-else @input="edited = true" @submit.prevent="publish">
       <fieldset :disabled="busy" class="profile-editor-fields">
         <legend class="sr-only">Private profile editor</legend>
