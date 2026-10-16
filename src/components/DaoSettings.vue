@@ -14,6 +14,7 @@ import WorkspaceDialog from './WorkspaceDialog.vue';
 import WorkspaceTabs from './WorkspaceTabs.vue';
 import DaoBrandingPanel from './DaoBrandingPanel.vue';
 import PrivateDaoIdentity from './PrivateDaoIdentity.vue';
+import PrivacyMigrationPanel from './PrivacyMigrationPanel.vue';
 import GovernancePanel from './GovernancePanel.vue';
 import { currentOperator } from '../api/networks';
 import { relayInstruction } from '../auth/session';
@@ -183,6 +184,7 @@ async function rename() {
         :reference="privateReference"
         @updated="$emit('updated')"
       />
+      <PrivacyMigrationPanel :dao="dao" :member="member" @updated="$emit('updated')" />
       <section class="panel">
         <div class="panel-heading">
           <div>

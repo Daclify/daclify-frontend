@@ -31,6 +31,7 @@ import {
 } from '../../src/auth/session';
 import { useWorkspace } from '../../src/state/workspace';
 import { api, ApiFailure } from '../../src/api/client';
+import { resolveApiUrl } from '../../src/api/networks';
 
 const dao = DaoRefSchema.parse({
   chainId: 'ab'.repeat(32),
@@ -158,15 +159,34 @@ async function fixture(value: unknown = payload) {
 }
 it('reads a private Quick question with DAO grants as a non-executive and refuses missing grants or copied contexts', async () => {
   const expected = { kind: 'quick-question' as const, source: 'quickvote', recordId: '41' };
-  const value = { schemaVersion: 1, ...expected, body: { question: 'Hidden Quick question canary', explanation: 'Only DAO content readers may see this.' } };
+  const value = {
+    schemaVersion: 1,
+    ...expected,
+    body: {
+      question: 'Hidden Quick question canary',
+      explanation: 'Only DAO content readers may see this.',
+    },
+  };
   const f = await fixture(value);
-  const member = f.records.members[0]; if (!member) throw Error('fixture member missing'); member.admin = false;
-  await expect(readPrivateRecord(dao, '1', f.reference, { ...f.records, keyGrants: [] }, expected)).rejects.toThrow();
-  await expect(readPrivateRecord(dao, '1', f.reference, f.records, expected)).resolves.toEqual(value);
-  await expect(readPrivateRecord(dao, '1', f.reference, f.records, { ...expected, source: 'foreign' })).rejects.toThrow('PRIVATE_RECORD_CONTEXT');
-  await expect(readPrivateRecord(dao, '1', f.reference, f.records, { ...expected, recordId: '42' })).rejects.toThrow('PRIVATE_RECORD_CONTEXT');
+  const member = f.records.members[0];
+  if (!member) throw Error('fixture member missing');
+  member.admin = false;
+  await expect(
+    readPrivateRecord(dao, '1', f.reference, { ...f.records, keyGrants: [] }, expected),
+  ).rejects.toThrow();
+  await expect(readPrivateRecord(dao, '1', f.reference, f.records, expected)).resolves.toEqual(
+    value,
+  );
+  await expect(
+    readPrivateRecord(dao, '1', f.reference, f.records, { ...expected, source: 'foreign' }),
+  ).rejects.toThrow('PRIVATE_RECORD_CONTEXT');
+  await expect(
+    readPrivateRecord(dao, '1', f.reference, f.records, { ...expected, recordId: '42' }),
+  ).rejects.toThrow('PRIVATE_RECORD_CONTEXT');
   lockVault();
-  await expect(readPrivateRecord(dao, '1', f.reference, f.records, expected)).rejects.toThrow('VAULT_LOCKED');
+  await expect(readPrivateRecord(dao, '1', f.reference, f.records, expected)).rejects.toThrow(
+    'VAULT_LOCKED',
+  );
 });
 
 it('opens only a frozen private ballot and refuses copied parents, semantics and missing definitions', async () => {
@@ -290,6 +310,21 @@ it('finishes linking a published identity after a lost response without publishi
   vi.spyOn(api, 'privateIdentity')
     .mockResolvedValueOnce(snapshot)
     .mockResolvedValueOnce({ ...snapshot, reference: f.reference });
+  vi.spyOn(api, 'dao').mockResolvedValue(
+    DaoSummarySchema.parse({
+      reference: dao,
+      title: 'Private DAO',
+      description: '',
+      privacy: 'encrypted-user-controlled',
+      owner: 'alice',
+      token: { chainId: dao.chainId, contract: 'eosio.token', symbol: 'TLOS', precision: 4 },
+      members: 1,
+      available: '0',
+      reserved: '0',
+      claims: '0',
+      keyEpoch: '1',
+    }),
+  );
   vi.spyOn(api, 'content').mockResolvedValue(f.records);
   vi.spyOn(api, 'memberships').mockResolvedValue([
     UserMembershipSchema.parse({
@@ -545,3 +580,247 @@ it.each(['lock', 'account', 'network', 'membership'])(
     await rejection;
   },
 );
+
+it.each([
+  { ...payload },
+  {
+    schemaVersion: 1,
+    kind: 'ballot-content',
+    source: 'decide',
+    recordId: '41',
+    body: {
+      title: 'Recovered private ballot',
+      description: 'Original choices',
+      semantics: 'poll',
+      options: ['No', 'Yes', 'Later'],
+    },
+  },
+  {
+    schemaVersion: 1,
+    kind: 'payroll-label',
+    source: 'payroll',
+    recordId: '41',
+    body: { purpose: 'agreed', label: 'Recovered agreed name' },
+  },
+  {
+    schemaVersion: 1,
+    kind: 'payroll-label',
+    source: 'payroll',
+    recordId: '41',
+    body: { purpose: 'display', label: 'Recovered display name' },
+  },
+  {
+    schemaVersion: 1,
+    kind: 'agent-description',
+    source: dao.contract,
+    recordId: '41',
+    body: { operatorLabel: 'Recovered operator', description: 'Original operating details' },
+  },
+  {
+    schemaVersion: 1,
+    kind: 'quick-question',
+    source: 'quickvote',
+    recordId: '41',
+    body: { question: 'Recovered private question', explanation: 'Separate vote readers' },
+  },
+])(
+  'preserves permitted original encrypted history for another device and refuses missing or inactive grants: $kind',
+  async (value) => {
+    const { PrivateRecordPayloadSchema } = await import('@daclify/core-protocol');
+    const { grantPrivateEpoch } = await import('../../src/auth/session');
+    const { planPrivateAccess } = await import('../../src/auth/private-access');
+    const payload = PrivateRecordPayloadSchema.parse(value),
+      f = await fixture(payload);
+    const keys = await generateVaultSecrets(),
+      privateKey = keys.encryptionPrivateKey;
+    const account = AccountSchema.parse({
+      id: crypto.randomUUID(),
+      custody: 'user-controlled',
+      signingKey: PrivateKey.from(keys.signingKey).toPublic().toString(),
+      encryptionKey: { kty: privateKey.kty, crv: privateKey.crv, x: privateKey.x, y: privateKey.y },
+    });
+    const original = f.records.members[0];
+    if (!original) throw Error('Fixture member missing');
+    const recipient = {
+      ...original,
+      id: '2',
+      admin: false,
+      signing_key: PrivateKey.from(keys.signingKey).toPublic().toString(),
+      encryption_key: JSON.stringify(account.encryptionKey),
+      join_epoch: '2',
+    };
+    f.records.members.push(recipient);
+    expect(
+      planPrivateAccess(f.records, '1', 'from-join', 'encrypted-user-controlled').grants,
+    ).toHaveLength(0);
+    expect(
+      planPrivateAccess(f.records, '1', 'full-history', 'encrypted-user-controlled').grants,
+    ).toMatchObject([{ epoch: '1', recipient: { id: '2' } }]);
+    const envelope = await grantPrivateEpoch(dao, '1', recipient, '1', f.records);
+    lockVault();
+    useWorkspace().account = account;
+    const context = RecoveryContextSchema.parse({
+      version: 1,
+      id: crypto.randomUUID(),
+      accountId: account.id,
+      origin: window.location.origin,
+      credentialKey: 'native:fixture',
+      mode: 'wallet-protected',
+      signingPublicKey: account.signingKey,
+      encryptionPublicKey: account.encryptionKey,
+      salt: btoa('a'.repeat(32)),
+    });
+    await installCreatedVault(account, keys, context, () => {});
+    await expect(readPrivateRecord(dao, '2', f.reference, f.records, payload)).rejects.toThrow(
+      'EPOCH_UNAVAILABLE',
+    );
+    f.records.keyGrants.push({ id: '2', recipient: '2', grantor: '1', epoch: '1', envelope });
+    original.active = false;
+    expect(await readPrivateRecord(dao, '2', f.reference, f.records, payload)).toEqual(payload);
+    lockVault();
+    await installCreatedVault(account, keys, context, () => {});
+    expect(await readPrivateRecord(dao, '2', f.reference, f.records, payload)).toEqual(payload);
+    recipient.active = false;
+    await expect(readPrivateRecord(dao, '2', f.reference, f.records, payload)).rejects.toThrow(
+      'MEMBER_REQUIRED',
+    );
+  },
+);
+
+it('reprepares a verified obsolete upload with original grants and keeps its old request tracked without releasing storage', async () => {
+  const { repreparePrivateRecord } = await import('../../src/content/reprepare-private-record');
+  const f = await fixture(),
+    network = useWorkspace().network;
+  if (!network) throw Error('fixture network missing');
+  network.capabilities.push('private-records-v1');
+  const large = {
+    ...payload,
+    body: { ...payload.body, description: 'Original private content '.repeat(150) },
+  };
+  const summary = DaoSummarySchema.parse({
+    reference: dao,
+    title: 'Private DAO',
+    description: '',
+    privacy: 'encrypted-user-controlled',
+    owner: 'alice',
+    token: { chainId: dao.chainId, contract: 'eosio.token', symbol: 'TLOS', precision: 4 },
+    members: 1,
+    available: '0',
+    reserved: '0',
+    claims: '0',
+    keyEpoch: '1',
+  });
+  const daoRead = vi.spyOn(api, 'dao').mockImplementation(async () => ({ ...summary }));
+  vi.spyOn(api, 'content').mockResolvedValue(f.records);
+  vi.spyOn(api, 'memberships').mockResolvedValue([
+    UserMembershipSchema.parse({
+      dao,
+      memberId: '1',
+      nonce: '0',
+      active: true,
+      admin: true,
+      reviewer: false,
+      credits: '0',
+      claim: '0',
+      stake: '0',
+      nativeAccount: '',
+      custody: 'user-controlled',
+      signingKey: f.account.signingKey,
+    }),
+  ]);
+  const upload = vi.spyOn(api, 'upload').mockRejectedValueOnce(Error('Lost upload confirmation'));
+  await expect(publishPrivateRecord(dao, '1', '42', 1, large, true)).rejects.toThrow(
+    'Lost upload confirmation',
+  );
+  const first = HostedUploadSchema.parse(upload.mock.calls[0]?.[0]);
+  summary.keyEpoch = '2';
+  const epoch = await preparePrivateEpoch(dao, '1', '2');
+  f.records.epochs.push({ epoch: '2', commitment: epoch.commitment, creator: '1' });
+  f.records.keyGrants.push({
+    id: '2',
+    recipient: '1',
+    grantor: '1',
+    epoch: '2',
+    envelope: epoch.selfGrant,
+  });
+  const cid = 'bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku';
+  const receipt = (input: typeof first) =>
+    HostedDocumentSchema.parse({ ...HostedIntentSchema.strip().parse(input), cid });
+  const reconcile = vi
+    .spyOn(api, 'reconcileUpload')
+    .mockResolvedValue({ requestId: first.requestId, state: 'reserved' });
+  const pendingBefore = [...Array(sessionStorage.length)].map((_, i) =>
+    sessionStorage.getItem(sessionStorage.key(i) ?? ''),
+  );
+  await expect(repreparePrivateRecord(dao, '1', expected, '42')).rejects.toThrow('UPLOAD_PENDING');
+  expect(upload).toHaveBeenCalledTimes(1);
+  expect(
+    [...Array(sessionStorage.length)].map((_, i) =>
+      sessionStorage.getItem(sessionStorage.key(i) ?? ''),
+    ),
+  ).toEqual(pendingBefore);
+  reconcile.mockResolvedValue({
+    requestId: first.requestId,
+    state: 'verified',
+    document: receipt(first),
+  });
+  upload.mockImplementation(async (input) => receipt(input));
+  vi.spyOn(api, 'documentBytes').mockImplementation(async () => {
+    const input = upload.mock.calls.at(-1)?.[0];
+    if (!input) throw Error('fixture upload missing');
+    return { content: input.content };
+  });
+  const relay = vi.spyOn(api, 'relay').mockImplementation(async (request) => {
+    expect(request.action).toBe('putdoc');
+    const input = HostedUploadSchema.parse(upload.mock.calls.at(-1)?.[0]);
+    f.records.documents.push({
+      id: '5',
+      document_id: input.documentId,
+      version: input.version,
+      author: '1',
+      cid,
+      metadata: input.metadata,
+      bytes: input.bytes,
+      commitment: input.commitment,
+      envelope_version: 1,
+      key_epoch: input.keyEpoch,
+    });
+    return { transactionId: 'ab'.repeat(32) };
+  });
+  const pendingKey = [...Array(sessionStorage.length)]
+    .map((_, i) => sessionStorage.key(i))
+    .find((key) => key?.includes('daclify.pending-private-record.v1'));
+  if (!pendingKey) throw Error('fixture pending missing');
+  const originalCiphertext = sessionStorage.getItem(pendingKey);
+  daoRead
+    .mockResolvedValueOnce({ ...summary })
+    .mockRejectedValueOnce(Error('Read interrupted before replacement'));
+  await expect(repreparePrivateRecord(dao, '1', expected, '42')).rejects.toThrow(
+    'Read interrupted before replacement',
+  );
+  expect(sessionStorage.getItem(pendingKey)).toBe(originalCiphertext);
+  expect(upload).toHaveBeenCalledTimes(1);
+  const retiredKey = JSON.stringify([
+    'daclify.retired-private-uploads.v1',
+    resolveApiUrl('/'),
+    f.account.id,
+    dao,
+  ]);
+  const previousRequests = Array.from({ length: 25 }, () => crypto.randomUUID());
+  sessionStorage.setItem(retiredKey, JSON.stringify(previousRequests));
+  const result = await repreparePrivateRecord(dao, '1', expected, '42');
+  const retired = JSON.parse(sessionStorage.getItem(retiredKey) ?? '[]');
+  expect(retired).toHaveLength(25);
+  expect(retired).not.toContain(previousRequests[0]);
+  expect(retired).toContain(first.requestId);
+  expect(result.payload).toEqual(large);
+  expect(result.reference).toMatchObject({ documentId: '42', version: 1, keyEpoch: '2' });
+  expect(upload.mock.calls[1]?.[0].requestId).not.toBe(first.requestId);
+  expect(relay).toHaveBeenCalledTimes(1);
+  expect(
+    [...Array(sessionStorage.length)]
+      .map((_, i) => sessionStorage.getItem(sessionStorage.key(i) ?? ''))
+      .join(''),
+  ).toContain(first.requestId);
+  expect(f.records.members[0]?.signing_key).toBe(f.account.signingKey);
+});

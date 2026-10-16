@@ -183,12 +183,11 @@ test('private claim links reveal their setup locally and reseal for the sole cla
   );
   expect(seed.status()).toBe(200);
   await expect
-    .poll(
-      async () =>
-        ApiRoutes.daoClaimEligibility.response.parse(
-          await (await page.request.get(ApiRoutes.daoClaimEligibility.path)).json(),
-        ).eligible,
-    )
+    .poll(async () => {
+      const response = await page.request.get(ApiRoutes.daoClaimEligibility.path);
+      if (!response.ok()) return { status: response.status(), error: await response.json() };
+      return ApiRoutes.daoClaimEligibility.response.parse(await response.json()).eligible;
+    })
     .toBe(true);
   await createPage(page);
   const title = 'Hidden invited DAO ' + Date.now(),

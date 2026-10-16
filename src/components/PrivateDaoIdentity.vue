@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { privateContentError as friendlyError } from '../content/private-errors';
 import { computed, ref, watch, onBeforeUnmount } from 'vue';
 import { useRoute } from 'vue-router';
 import {
@@ -7,12 +8,17 @@ import {
   type PrivateRecordPayload,
   type PrivateRecordReference,
 } from '@daclify/core-protocol';
-import { api, friendlyError } from '../api/client';
+import { api } from '../api/client';
 import { vaultUnlocked } from '../auth/session';
 import { canSignMember } from '../auth/action-signer';
 import { updatePrivateIdentity } from '../content/dao-identity';
+import { repreparePrivateRecord } from '../content/reprepare-private-record';
 import { pendingPrivateRecord } from '../content/publish-private-record';
-import { readPrivateImage, newPrivateRecordId } from '../content/private-records';
+import {
+  readPrivateImage,
+  readPrivateRecord,
+  newPrivateRecordId,
+} from '../content/private-records';
 import type { PublishedDocumentReference } from '../content/files';
 import WorkspaceDialog from './WorkspaceDialog.vue';
 import FilePanel from './FilePanel.vue';
@@ -94,7 +100,7 @@ async function open() {
     if (started === generation) error.value = friendlyError(cause);
   }
 }
-async function resume() {
+async function resume(reprepare = false) {
   const member = props.member,
     reference = props.reference,
     started = generation;
@@ -105,21 +111,60 @@ async function resume() {
     const rows = await api.content(props.dao.reference.daoId),
       saved = await pendingPrivateRecord(props.dao.reference, member.memberId, rows);
     if (started !== generation) return;
-    if (!saved) {
-      resumeMessage.value = 'No unfinished encrypted edit on this browser.';
-      return;
+    const expected = {
+      kind: 'dao-identity' as const,
+      source: props.dao.reference.contract,
+      recordId: props.dao.reference.daoId,
+    };
+    let payload: PrivateRecordPayload;
+    if (saved) {
+      if (saved.upload.documentId !== reference.documentId) throw Error('PENDING_UPLOAD_FINISH');
+      payload = saved.payload;
+    } else {
+      const latest = rows.documents
+        .filter(
+          (row) => row.document_id === reference.documentId && row.version > reference.version,
+        )
+        .sort((a, b) => b.version - a.version)[0];
+      if (!latest) {
+        resumeMessage.value = 'No unfinished encrypted edit on this browser.';
+        return;
+      }
+      payload = await readPrivateRecord(
+        props.dao.reference,
+        member.memberId,
+        {
+          documentId: latest.document_id,
+          version: latest.version,
+          commitment: latest.commitment,
+          keyEpoch: latest.key_epoch,
+        },
+        rows,
+        expected,
+      );
     }
+    if (started !== generation) return;
     if (
-      saved.upload.documentId !== reference.documentId ||
-      saved.payload.kind !== 'dao-identity' ||
-      saved.payload.source !== props.dao.reference.contract ||
-      saved.payload.recordId !== props.dao.reference.daoId
+      payload.kind !== expected.kind ||
+      payload.source !== expected.source ||
+      payload.recordId !== expected.recordId
     )
-      throw Error('PENDING_UPLOAD_FINISH');
-    title.value = saved.payload.body.title;
-    description.value = saved.payload.body.description;
-    summary.value = saved.payload.body.summary ?? '';
-    branding.value = { ...saved.payload.body.branding };
+      throw Error('PRIVATE_RECORD_CONTEXT');
+    if (reprepare) {
+      const result = await repreparePrivateRecord(
+        props.dao.reference,
+        member.memberId,
+        expected,
+        reference.documentId,
+      );
+      if (started !== generation) return;
+      if (JSON.stringify(result.payload) !== JSON.stringify(payload))
+        throw Error('PRIVATE_RECORD_CONTEXT');
+    }
+    title.value = payload.body.title;
+    description.value = payload.body.description;
+    summary.value = payload.body.summary ?? '';
+    branding.value = { ...payload.body.branding };
     resumeMessage.value = 'Unfinished edit restored for review. Save to finish its publication.';
   } catch (cause) {
     if (started === generation) error.value = friendlyError(cause);
@@ -249,9 +294,19 @@ async function save() {
       them.
     </p>
     <p v-if="error" class="alert" role="alert">{{ error }}</p>
-    <button type="button" class="secondary" :disabled="busy || !ready" @click="resume">
+    <button type="button" class="secondary" :disabled="busy || !ready" @click="resume()">
       Review unfinished encrypted edit
     </button>
+    <details>
+      <summary>Recover an unfinished edit after key changes</summary>
+      <p>
+        Re-encrypt the unlinked revision using your original grants, then review it before saving.
+        Earlier ciphertext remains tracked and may still use storage.
+      </p>
+      <button type="button" class="secondary" :disabled="busy || !ready" @click="resume(true)">
+        Reprepare encrypted edit
+      </button>
+    </details>
     <p v-if="resumeMessage" role="status">{{ resumeMessage }}</p>
     <form @submit.prevent="save">
       <fieldset :disabled="busy || !ready">

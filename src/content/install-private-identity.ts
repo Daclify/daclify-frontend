@@ -3,14 +3,22 @@ import {
   PrivateMetadataSchema,
   daoPaymentKey,
   type CreationOrderView,
+  type PrivateRecordPayload,
+  type PrivateRecordReference,
 } from '@daclify/core-protocol';
 import { api } from '../api/client';
 import { useWorkspace } from '../state/workspace';
 import { recoveryContextGuard, vaultUnlocked } from '../auth/session';
 import { openPrivateFounder, openPrivateFounderAgent } from './private-identity-setup';
-import { publishPrivateRecord, sendPrivateAction } from './publish-private-record';
+import { readPrivateRecord } from './private-records';
+import { repreparePrivateRecord } from './reprepare-private-record';
+import {
+  pendingPrivateRecord,
+  publishPrivateRecord,
+  sendPrivateAction,
+} from './publish-private-record';
 
-export async function installPrivateIdentity(order: CreationOrderView) {
+export async function installPrivateIdentity(order: CreationOrderView, reprepare = false) {
   const dao = order.dao,
     setup = order.setup.privateSetup,
     account = AccountSchema.parse(useWorkspace().account);
@@ -59,11 +67,39 @@ export async function installPrivateIdentity(order: CreationOrderView) {
     )
   )
     throw Error('PRIVATE_INITIALIZATION_CHANGED');
-  const reference = await publishPrivateRecord(dao, '1', setup.documentId, 1, payload, true);
-  check();
+  const staged = async (
+    value: PrivateRecordPayload,
+    documentId: string,
+    attached: PrivateRecordReference | null,
+  ) => {
+    const records = await api.content(dao.daoId);
+    check();
+    if (attached) {
+      if (attached.documentId !== documentId) throw Error('PRIVATE_INITIALIZATION_CHANGED');
+      const opened = await readPrivateRecord(dao, '1', attached, records, value);
+      check();
+      if (JSON.stringify(opened) !== JSON.stringify(value))
+        throw Error('PRIVATE_INITIALIZATION_CHANGED');
+      return attached;
+    }
+    if (
+      reprepare &&
+      ((await pendingPrivateRecord(dao, '1', records)) ||
+        records.documents.some((row) => row.document_id === documentId))
+    ) {
+      const prepared = await repreparePrivateRecord(dao, '1', value, documentId);
+      check();
+      if (JSON.stringify(prepared.payload) !== JSON.stringify(value))
+        throw Error('PRIVATE_INITIALIZATION_CHANGED');
+      return prepared.reference;
+    }
+    return publishPrivateRecord(dao, '1', documentId, 1, value, true);
+  };
   const snapshot = await api.privateIdentity(dao);
   check();
   const metadata = PrivateMetadataSchema.parse(snapshot.metadata);
+  const reference = await staged(payload, setup.documentId, metadata.privateIdentity);
+  check();
   if (metadata.privateIdentity) {
     if (JSON.stringify(metadata.privateIdentity) !== JSON.stringify(reference))
       throw Error('PRIVATE_METADATA_CHANGED');
@@ -86,16 +122,9 @@ export async function installPrivateIdentity(order: CreationOrderView) {
   if (setup.agentDescription) {
     const payload = await openPrivateFounderAgent(dao, setup, order.setup);
     check();
-    const reference = await publishPrivateRecord(
-      dao,
-      '1',
-      setup.agentDescription.documentId,
-      1,
-      payload,
-      true,
-    );
-    check();
     const saved = await api.privateAgent(dao, '1');
+    check();
+    const reference = await staged(payload, setup.agentDescription.documentId, saved.reference);
     check();
     if (saved.reference) {
       if (JSON.stringify(saved.reference) !== JSON.stringify(reference))

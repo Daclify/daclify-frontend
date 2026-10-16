@@ -388,6 +388,13 @@ test('grants private history, verifies it on another device, and preserves it af
       });
     });
     await target.goto('/account');
+    await target.getByRole('tab', { name: 'Access & recovery', exact: true }).click();
+    const keys = target.getByText('Account keys and recovery', { exact: true });
+    if (
+      (await keys.isVisible()) &&
+      !(await target.getByLabel('Vault password', { exact: true }).isVisible())
+    )
+      await keys.click();
     await target.getByLabel('Vault password', { exact: true }).fill(password);
     await target.getByRole('button', { name: 'Unlock and sign in', exact: true }).click();
     await expect(target.getByText('Keys unlocked', { exact: true })).toBeVisible();
@@ -402,6 +409,13 @@ test('grants private history, verifies it on another device, and preserves it af
   }
   async function openExit(target: Page) {
     await target.goto('/account');
+    await target.getByRole('tab', { name: 'Access & recovery', exact: true }).click();
+    const keys = target.getByText('Account keys and recovery', { exact: true });
+    if (
+      (await keys.isVisible()) &&
+      !(await target.getByLabel('Vault password', { exact: true }).isVisible())
+    )
+      await keys.click();
     await target.getByLabel('Vault password', { exact: true }).fill(password);
     await target.getByRole('button', { name: 'Unlock and sign in', exact: true }).click();
     await expect(target.getByText('Keys unlocked', { exact: true })).toBeVisible();
@@ -517,3 +531,136 @@ test('grants private history, verifies it on another device, and preserves it af
   );
   await context.close();
 });
+
+for (const lostConfirmation of [false, true])
+  test(`signs an opt-in privacy successor with original keys (${lostConfirmation ? 'lost confirmation' : 'normal'})`, async ({
+    page,
+  }) => {
+    test.setTimeout(150000);
+    const { readFileSync } = await import('node:fs');
+    const owner = z
+      .object({ token: z.string() })
+      .parse(
+        JSON.parse(
+          readFileSync('../daclify-backend-core/.artifacts/native/browser-owner.json', 'utf8'),
+        ),
+      );
+    page.on('dialog', (dialog) => void dialog.accept());
+    await page.goto('/account');
+    await page.getByRole('button', { name: 'New Account', exact: true }).click();
+    await page.getByRole('button', { name: 'Own Keys', exact: true }).click();
+    const password = 'owned legacy migration original password';
+    await page.getByLabel('Vault password', { exact: true }).fill(password);
+    await page.getByRole('button', { name: 'Create encrypted vault', exact: true }).click();
+    await page.getByLabel('I have saved my recovery kit and credential', { exact: true }).check();
+    await page.getByRole('button', { name: 'Finish account setup', exact: true }).click();
+    await expect(page.getByText('Vault unlocked', { exact: true })).toBeVisible();
+    const account = ApiRoutes.me.response.parse(
+      await (await page.request.get('/v1/sign-in/session')).json(),
+    ).account;
+    if (!account.encryptionKey) throw Error('Owned account missing');
+    const response = await page.request.post(
+      'http://localhost:' + (process.env.DACLIFY_TEST_API_PORT ?? 3008) + '/fixture/dao',
+      {
+        headers: { 'x-fixture-token': owner.token, origin: new URL(page.url()).origin },
+        data: {
+          signingKey: account.signingKey,
+          encryptionKey: account.encryptionKey,
+          legacyPrivate: true,
+        },
+      },
+    );
+    expect(response.ok()).toBe(true);
+    const created = z
+      .object({ dao: DaoRefSchema, memberId: z.string() })
+      .parse(await response.json());
+    const path = ApiRoutes.content.path.replace(':id', created.dao.daoId);
+    const before = ApiRoutes.content.response.parse(await (await page.request.get(path)).json());
+    expect(before.epochs).toHaveLength(0);
+    await page.goto('/dao/' + created.dao.daoId + '/settings');
+    await page.getByRole('button', { name: 'Review privacy upgrade', exact: true }).click();
+    await expect(
+      page.getByRole('link', {
+        name: 'Unlock original account to apply this preview',
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Sign protected successor', exact: true }),
+    ).toBeDisabled();
+    expect(
+      ApiRoutes.content.response.parse(await (await page.request.get(path)).json()).epochs,
+    ).toHaveLength(0);
+    await page.evaluate(
+      async ({ account, password }) => {
+        const path = '/src/auth/session.ts',
+          session: unknown = await import(path);
+        if (
+          !session ||
+          typeof session !== 'object' ||
+          !('unlockAndLogin' in session) ||
+          typeof session.unlockAndLogin !== 'function'
+        )
+          throw Error('FIXTURE_UNLOCK');
+        await session.unlockAndLogin(password, account, 'recover');
+      },
+      { account, password },
+    );
+    await page.getByRole('button', { name: 'Review privacy upgrade', exact: true }).click();
+    await expect(
+      page.getByText('Earlier transactions, public files and downloaded copies stay public.', {
+        exact: false,
+      }),
+    ).toBeVisible();
+    await page
+      .getByLabel(
+        'I reviewed the retained public history and unchanged governance and payment terms.',
+        { exact: true },
+      )
+      .check();
+    let commits = 0,
+      attached = 0;
+    const leaks: string[] = [];
+    await page.route('**' + ApiRoutes.relay.path, async (route) => {
+      const request = ApiRoutes.relay.input.parse(route.request().postDataJSON());
+      if (
+        Buffer.from(request.request.data, 'hex')
+          .toString('utf8')
+          .includes('Owned paid native fixture')
+      )
+        leaks.push(request.request.action);
+      if (request.request.action === 'commitepoch') commits++;
+      if (request.request.action === 'setmeta') attached++;
+      const response = await route.fetch();
+      expect(response.ok()).toBe(true);
+      if (lostConfirmation && request.request.action === 'setmeta') return route.abort('failed');
+      return route.fulfill({ response });
+    });
+    await page.getByRole('button', { name: 'Sign protected successor', exact: true }).click();
+    await expect(
+      page.getByText('Protected successor confirmed. Review remaining records to continue.', {
+        exact: true,
+      }),
+    ).toBeVisible({ timeout: 30000 });
+    expect(commits).toBe(1);
+    expect(attached).toBe(1);
+    expect(leaks).toEqual([]);
+    const after = ApiRoutes.content.response.parse(await (await page.request.get(path)).json());
+    const stable = (content: typeof before) =>
+      content.members.map(({ nonce: _nonce, ...member }) => member);
+    expect(stable(after)).toEqual(stable(before));
+    expect(after.epochs).toHaveLength(1);
+    expect(after.documents).toHaveLength(1);
+    const { PrivateRecordRoutes } = await import('@daclify/core-protocol');
+    const identity = PrivateRecordRoutes.identity.response.parse(
+      await (
+        await page.request.get(PrivateRecordRoutes.identity.path.replace(':id', created.dao.daoId))
+      ).json(),
+    );
+    expect(identity.metadata).toMatchObject({
+      schemaVersion: 4,
+      title: 'Private DAO',
+      description: '',
+    });
+    expect(identity.reference?.documentId).toBe(after.documents[0]?.document_id);
+  });

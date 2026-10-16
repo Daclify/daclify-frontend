@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { privateContentError as friendlyError } from '../content/private-errors';
+import { repreparePrivateRecord } from '../content/reprepare-private-record';
 import { useRoute, useRouter } from 'vue-router';
 import { worksDocumentHint } from '../content/document-reference';
 import ElectionPanel from './ElectionPanel.vue';
@@ -49,7 +51,7 @@ import {
   PayrollActionSchemas,
   type WorksActions,
 } from '@daclify/modules/sdk';
-import { api, friendlyError } from '../api/client';
+import { api } from '../api/client';
 import { relayInstruction, vaultUnlocked } from '../auth/session';
 import { publishPrivateRecord, pendingPrivateRecord } from '../content/publish-private-record';
 import { readPrivateBallot, type PrivateBallotRead } from '../content/private-ballots';
@@ -688,6 +690,18 @@ async function existingPrivateBallot(draft: PrivateBallotDraft) {
     ballots: draft.fields.ballot_id,
   });
   if (disposed || domain !== context.value) throw Error('RECOVERY_CONTEXT_CHANGED');
+  if (
+    daoPaymentKey(rows.dao) !== daoPaymentKey(props.dao.reference) ||
+    !rows.modules.some(
+      (row) =>
+        row.deployment.id === 'decide' &&
+        row.deployment.account === source &&
+        row.enabled &&
+        row.compatible &&
+        row.codeVerified,
+    )
+  )
+    throw Error('MODULE_UNVERIFIED');
   const existing = rows.ballots.find((row) => row.id === draft.fields.ballot_id);
   if (!existing) return false;
   if (
@@ -736,12 +750,16 @@ async function resumePrivateBallot() {
     if (disposed || domain !== context.value || readGeneration !== privateReadGeneration) return;
     let payload;
     if (pending) {
-      if (pending.upload.documentId !== saved.fields.ballot_id || pending.upload.version !== 1)
+      if (
+        pending.upload.documentId !== saved.fields.ballot_id ||
+        pending.upload.version !== (saved.contentVersion ?? 1)
+      )
         throw Error('PENDING_UPLOAD_FINISH');
       payload = pending.payload;
     } else {
       const found = records.documents.find(
-        (row) => row.document_id === saved.fields.ballot_id && row.version === 1,
+        (row) =>
+          row.document_id === saved.fields.ballot_id && row.version === (saved.contentVersion ?? 1),
       );
       if (!found) {
         if (saved.stage !== 'content') throw Error('PRIVATE_RECORD_PENDING');
@@ -809,6 +827,61 @@ async function resumePrivateBallot() {
   } catch (cause) {
     if (!disposed && domain === context.value && readGeneration === privateReadGeneration)
       error.value = friendlyError(cause);
+  } finally {
+    if (!disposed && domain === context.value) ballotPreparing.value = false;
+  }
+}
+async function reprepareUnopenedBallot() {
+  const member = props.member,
+    source = current.value?.deployment.account,
+    domain = context.value;
+  if (!member || !source || busy.value || ballotPreparing.value) return;
+  ballotPreparing.value = true;
+  error.value = '';
+  try {
+    const saved = loadPrivateBallotDraft(props.dao.reference, source, member.memberId);
+    if (!saved) throw Error('PRIVATE_RECORD_PENDING');
+    if (await existingPrivateBallot(saved)) throw Error('PRIVATE_RECORD_ALREADY_LINKED');
+    const result = await repreparePrivateRecord(props.dao.reference, member.memberId, {
+      kind: 'ballot-content',
+      source,
+      recordId: saved.fields.ballot_id,
+    });
+    if (disposed || domain !== context.value) return;
+    const state = await api.governance(props.dao.reference.daoId);
+    if (disposed || domain !== context.value) return;
+    if (
+      daoPaymentKey(state.dao) !== daoPaymentKey(props.dao.reference) ||
+      (state.policy && (state.policy.config.decide !== source || state.policy.config.kind > 2))
+    )
+      throw Error('BALLOT_POLICY');
+    const policy = state.policy?.config;
+    const fields = {
+      ...saved.fields,
+      ...(policy
+        ? {
+            kind: policy.kind,
+            duration: policy.duration,
+            quorum: policy.quorum,
+            approval: policy.approval,
+          }
+        : {}),
+      metadata: '',
+    };
+    weight.value = fields.kind === 0 ? 'member' : fields.kind === 1 ? 'credit' : 'native-stake';
+    duration.value = fields.duration;
+    quorum.value = fields.quorum;
+    approval.value = fields.approval;
+    privateDraft.value = savePrivateBallotDraft(props.dao.reference, source, member.memberId, {
+      ...saved,
+      stage: 'content',
+      fields,
+      contentVersion: result.reference.version,
+    });
+    success.value =
+      'Encrypted content prepared with the same ballot ID. Review the current voting weight, duration and thresholds again before opening. Earlier ciphertext stays tracked in Resources.';
+  } catch (cause) {
+    if (!disposed && domain === context.value) error.value = friendlyError(cause);
   } finally {
     if (!disposed && domain === context.value) ballotPreparing.value = false;
   }
@@ -914,7 +987,7 @@ async function open() {
         props.dao.reference,
         props.member.memberId,
         ballotId,
-        1,
+        saved?.contentVersion ?? 1,
         payload,
       );
       if (disposed || domain !== context.value || !vaultUnlocked.value) return;
@@ -939,7 +1012,12 @@ async function open() {
         props.dao.reference,
         current.value.deployment.account,
         props.member.memberId,
-        { stage: 'opening', action: opening, fields: openingFields },
+        {
+          stage: 'opening',
+          action: opening,
+          fields: openingFields,
+          contentVersion: saved?.contentVersion,
+        },
       );
     if (privateDraft.value && (await existingPrivateBallot(privateDraft.value))) {
       if (disposed || domain !== context.value) return;
@@ -1592,7 +1670,7 @@ async function commit() {
         props.dao.reference,
         props.member.memberId,
         fields.schedule_id,
-        1,
+        saved?.contentVersion ?? 1,
         {
           schemaVersion: 1,
           kind: 'payroll-label',
@@ -1620,7 +1698,7 @@ async function commit() {
         props.dao.reference,
         current.value.deployment.account,
         props.member.memberId,
-        { stage: 'committing', fields: committed },
+        { stage: 'committing', fields: committed, contentVersion: saved?.contentVersion },
       );
       if (!(await existingPrivatePayroll(privatePayrollDraft.value))) {
         await run(
@@ -1675,6 +1753,18 @@ async function existingPrivatePayroll(draft: PrivatePayrollDraft) {
     fields = draft.fields;
   const rows = await api.moduleState(props.dao.reference.daoId, { schedules: fields.schedule_id });
   if (disposed || domain !== context.value) throw Error('RECOVERY_CONTEXT_CHANGED');
+  if (
+    daoPaymentKey(rows.dao) !== daoPaymentKey(props.dao.reference) ||
+    !rows.modules.some(
+      (row) =>
+        row.deployment.id === 'payroll' &&
+        row.deployment.account === current.value?.deployment.account &&
+        row.enabled &&
+        row.compatible &&
+        row.codeVerified,
+    )
+  )
+    throw Error('MODULE_UNVERIFIED');
   const found = rows.schedules.find((row) => row.id === fields.schedule_id);
   if (!found) return false;
   const terms = rows.payrollTerms.find((row) => row.schedule_id === fields.schedule_id);
@@ -1729,7 +1819,9 @@ async function resumePrivatePayroll() {
     if (!vaultUnlocked.value) throw Error('VAULT_LOCKED');
     const records = await api.content(props.dao.reference.daoId),
       document = records.documents.find(
-        (row) => row.document_id === saved.fields.schedule_id && row.version === 1,
+        (row) =>
+          row.document_id === saved.fields.schedule_id &&
+          row.version === (saved.contentVersion ?? 1),
       );
     if (disposed || domain !== context.value || !vaultUnlocked.value) return;
     if (!document) throw Error('PRIVATE_RECORD_PENDING');
@@ -1772,6 +1864,43 @@ async function resumePrivatePayroll() {
     privatePayrollDraft.value = saved;
     payrollDialog.value?.showModal();
     success.value = 'Original private payroll restored. Review its exact terms before committing.';
+  } catch (cause) {
+    if (!disposed && domain === context.value) error.value = friendlyError(cause);
+  } finally {
+    if (!disposed && domain === context.value) payrollPreparing.value = false;
+  }
+}
+async function reprepareUncommittedPayroll() {
+  const member = props.member,
+    source = current.value?.deployment.account,
+    domain = context.value;
+  if (!member || !source || busy.value || payrollPreparing.value) return;
+  payrollPreparing.value = true;
+  error.value = '';
+  try {
+    const saved = loadPrivatePayrollDraft(props.dao.reference, source, member.memberId);
+    if (!saved) throw Error('PRIVATE_RECORD_PENDING');
+    if (await existingPrivatePayroll(saved)) throw Error('PRIVATE_RECORD_ALREADY_LINKED');
+    const result = await repreparePrivateRecord(props.dao.reference, member.memberId, {
+      kind: 'payroll-label',
+      source,
+      recordId: saved.fields.schedule_id,
+    });
+    if (disposed || domain !== context.value) return;
+    const { label: _label, ...fields } =
+      saved.stage === 'committing' ? saved.fields : { ...saved.fields, label: undefined };
+    const starts = Math.max(fields.starts, Math.floor(Date.now() / 1000) + 300);
+    privatePayrollDraft.value = savePrivatePayrollDraft(
+      props.dao.reference,
+      source,
+      member.memberId,
+      { stage: 'content', fields: { ...fields, starts }, contentVersion: result.reference.version },
+    );
+    payrollStarts.value = new Date(starts * 1000).toISOString().slice(0, 19);
+    payrollConfirmed.value = false;
+    payrollReviewed.value = false;
+    success.value =
+      'Encrypted name prepared with the same payroll ID. Review the start time and exact payments again. Earlier ciphertext stays tracked in Resources.';
   } catch (cause) {
     if (!disposed && domain === context.value) error.value = friendlyError(cause);
   } finally {
@@ -2283,6 +2412,21 @@ const selectedProject = computed(() =>
           >
             Review unfinished private ballot
           </button>
+          <details v-if="privateDraft">
+            <summary>Reprepare after key or policy changes</summary>
+            <p>
+              This keeps the same ballot ID. Earlier ciphertext may still use storage until verified
+              cleanup in Resources.
+            </p>
+            <button
+              type="button"
+              class="secondary"
+              :disabled="busy || ballotPreparing || !vaultUnlocked"
+              @click="reprepareUnopenedBallot"
+            >
+              Reprepare unopened ballot
+            </button>
+          </details>
           <button
             v-if="emptyPrivateDraft"
             type="button"
@@ -3353,6 +3497,21 @@ const selectedProject = computed(() =>
       >
         Resume an unfinished private payroll
       </button>
+      <details v-if="privatePayrollDraft">
+        <summary>Reprepare after key or policy changes</summary>
+        <p>
+          This keeps the same payroll ID and payments. Review any expired start time again. Earlier
+          ciphertext may still use storage until verified cleanup in Resources.
+        </p>
+        <button
+          type="button"
+          class="secondary"
+          :disabled="busy || payrollPreparing || !vaultUnlocked"
+          @click="reprepareUncommittedPayroll"
+        >
+          Reprepare uncommitted payroll
+        </button>
+      </details>
       <details v-if="privatePayroll && member?.admin">
         <summary>Discard an empty local draft</summary>
         <p>This only removes a draft if no encrypted name or schedule was published.</p>

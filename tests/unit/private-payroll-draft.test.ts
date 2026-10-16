@@ -87,5 +87,12 @@ it('refuses plaintext, changed actors and a protected label belonging to another
       fields: { ...fields, label: { ...label, document_id: '10' } },
     }),
   ).toThrow();
+  expect(() =>
+    savePrivatePayrollDraft(dao, 'payroll', '1', {
+      stage: 'committing',
+      contentVersion: 2,
+      fields: { ...fields, label },
+    }),
+  ).toThrow('PRIVATE_PAYROLL_PARENT');
   expect([...values.values()].join('')).not.toContain('secret payroll name canary');
 });

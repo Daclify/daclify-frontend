@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { privateContentError as friendlyError } from '../content/private-errors';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ArrowUp, ArrowDown, Plus, Check, RefreshCw } from '@lucide/vue';
@@ -25,7 +26,7 @@ import {
   quickResponseContext,
   QuickBallotActionSchemas,
 } from '@daclify/modules/quick-ballots';
-import { api, friendlyError, ApiFailure } from '../api/client';
+import { api, ApiFailure } from '../api/client';
 import { resolveApiUrl } from '../api/networks';
 import { useWorkspace } from '../state/workspace';
 import { canSignMember, dispatchInstruction, selectedSigner } from '../auth/action-signer';
@@ -52,6 +53,7 @@ import {
 import { receiptDeviceKey } from '../quick-ballots/device-key';
 import ActionSigner from '../components/ActionSigner.vue';
 import PrivateQuickQuestion from '../components/PrivateQuickQuestion.vue';
+import { repreparePrivateRecord } from '../content/reprepare-private-record';
 import { publishPrivateRecord, pendingPrivateRecord } from '../content/publish-private-record';
 import { readPrivateRecord } from '../content/private-records';
 import {
@@ -541,7 +543,8 @@ async function publish() {
           },
         );
       const version =
-        saved?.stage === 'opening' ? quickQuestionReference(saved.fields.definition)?.version : 1;
+        saved?.contentVersion ??
+        (saved?.stage === 'opening' ? quickQuestionReference(saved.fields.definition)?.version : 1);
       if (!version) throw Error('QUICK_QUESTION_REFERENCE');
       const reference = await publishPrivateRecord(member.dao, member.memberId, ballotId, version, {
         schemaVersion: 1,
@@ -628,7 +631,7 @@ async function publish() {
         member.dao,
         source.deployment.account,
         member.memberId,
-        { stage: 'opening', fields: payload },
+        { stage: 'opening', fields: payload, contentVersion: saved?.contentVersion },
       );
     const current = (await api.memberships()).find(
       (row) =>
@@ -692,13 +695,14 @@ async function resumePrivateQuestion() {
       saved.stage === 'opening' ? quickQuestionReference(saved.fields.definition) : undefined;
     const document = records.documents.find(
       (row) =>
-        row.document_id === saved.fields.ballot_id && row.version === (reference?.version ?? 1),
+        row.document_id === saved.fields.ballot_id &&
+        row.version === (saved.contentVersion ?? reference?.version ?? 1),
     );
     let payload: PrivateRecordPayload;
     if (pending) {
       if (
         pending.upload.documentId !== saved.fields.ballot_id ||
-        pending.upload.version !== (reference?.version ?? 1)
+        pending.upload.version !== (saved.contentVersion ?? reference?.version ?? 1)
       )
         throw Error('PENDING_UPLOAD_FINISH');
       payload = pending.payload;
@@ -741,6 +745,54 @@ async function resumePrivateQuestion() {
     privateDraft.value = saved;
     message.value =
       'Original encrypted question restored. Review its audience, deadline and fixed vote readers before publishing.';
+  });
+}
+async function reprepareQuestion() {
+  await perform(async (check) => {
+    const member = originMember.value,
+      source = module.value?.deployment.account,
+      snapshot = readers.value;
+    if (!member || !source || !snapshot) throw Error('MEMBER_REQUIRED');
+    const saved = loadPrivateQuickDraft(member.dao, source, member.memberId);
+    if (!saved) throw Error('PRIVATE_RECORD_PENDING');
+    if (await existingPrivateQuick(saved, source)) throw Error('PRIVATE_RECORD_ALREADY_LINKED');
+    const result = await repreparePrivateRecord(member.dao, member.memberId, {
+      kind: 'quick-question',
+      source,
+      recordId: saved.fields.ballot_id,
+    });
+    check();
+    const {
+      definition: _definition,
+      key: _key,
+      possession: _possession,
+      grants: _grants,
+      ...fields
+    } = saved.stage === 'opening'
+      ? saved.fields
+      : {
+          ...saved.fields,
+          definition: undefined,
+          key: undefined,
+          possession: undefined,
+          grants: undefined,
+        };
+    const prior = saved.stage === 'opening' ? saved.fields.definition : saved.settings;
+    const {
+      question: _question,
+      explanation: _explanation,
+      ...settings
+    } = { ...prior, question: '', explanation: '' };
+    const closes = deadline.value ? Math.floor(new Date(deadline.value).getTime() / 1000) : 0;
+    if (closes && closes <= Math.floor(Date.now() / 1000)) throw Error('QUICK_DEADLINE');
+    privateDraft.value = savePrivateQuickDraft(member.dao, source, member.memberId, {
+      stage: 'content',
+      fields,
+      settings: { ...settings, closes, readers: snapshot.readers },
+      contentVersion: result.reference.version,
+    });
+    message.value =
+      'Encrypted question prepared with the same ballot ID. Review its fixed vote readers before publishing. Earlier ciphertext stays tracked in Resources.';
   });
 }
 async function discardEmptyQuestion() {
@@ -1124,6 +1176,21 @@ async function resume() {
         >
           Resume an unfinished private question
         </button>
+        <details v-if="privateDraft">
+          <summary>Reprepare after key or reader changes</summary>
+          <p>
+            This keeps the same ballot ID. Earlier ciphertext may still use storage until verified
+            cleanup in Resources.
+          </p>
+          <button
+            type="button"
+            class="secondary"
+            :disabled="busy || readerLoading || !vaultUnlocked"
+            @click="reprepareQuestion"
+          >
+            Reprepare unopened question
+          </button>
+        </details>
         <details v-if="originDao?.privacy !== 'public' && originMember && module">
           <summary>Discard an empty local draft</summary>
           <p>Only a draft with no published document or ballot can be removed here.</p>

@@ -14,18 +14,18 @@ const opening = QuickBallotActionSchemas.open;
 const schema = z.discriminatedUnion('stage', [
   z.strictObject({
     stage: z.literal('content'),
+    contentVersion: z.int().min(1).max(4294967295).optional(),
     fields: opening.omit({ definition: true, key: true, possession: true, grants: true }),
-    settings: opening.shape.definition
-      .omit({ question: true, explanation: true })
-      .extend({
-        protocol: z.literal(2),
-        all_accounts: z.literal(false),
-        audience: z.array(IdSchema).length(1),
-        readers: QuickBallotDefinitionSchema.shape.readers,
-      }),
+    settings: opening.shape.definition.omit({ question: true, explanation: true }).extend({
+      protocol: z.literal(2),
+      all_accounts: z.literal(false),
+      audience: z.array(IdSchema).length(1),
+      readers: QuickBallotDefinitionSchema.shape.readers,
+    }),
   }),
   z.strictObject({
     stage: z.literal('opening'),
+    contentVersion: z.int().min(1).max(4294967295).optional(),
     fields: opening.extend({ definition: QuickBallotDefinitionSchema }),
   }),
 ]);
@@ -60,7 +60,9 @@ function parse(dao: DaoRef, memberId: string, value: unknown) {
     throw Error('QUICK_QUESTION_AUDIENCE');
   if (
     draft.stage === 'opening' &&
-    quickQuestionReference(draft.fields.definition)?.documentId !== fields.ballot_id
+    (quickQuestionReference(draft.fields.definition)?.documentId !== fields.ballot_id ||
+      (draft.contentVersion !== undefined &&
+        quickQuestionReference(draft.fields.definition)?.version !== draft.contentVersion))
   )
     throw Error('QUICK_QUESTION_PARENT');
   return draft;

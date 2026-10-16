@@ -63,6 +63,9 @@ it('retains only scoped technical preparation and an exact signed-opening candid
       grants: ['ef'.repeat(48)],
     },
   };
+  expect(() =>
+    savePrivateQuickDraft(dao, 'quickvote', '1', { ...opening, contentVersion: 2 }),
+  ).toThrow('QUICK_QUESTION_PARENT');
   savePrivateQuickDraft(dao, 'quickvote', '1', opening);
   expect(loadPrivateQuickDraft(dao, 'quickvote', '1')).toEqual(opening);
   clearPrivateQuickDraft(dao, 'quickvote', '1');

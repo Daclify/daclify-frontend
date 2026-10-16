@@ -42,6 +42,8 @@ export async function updatePrivateIdentity(
   const latest = records.documents
     .filter((row) => row.document_id === previous.documentId)
     .sort((a, b) => b.version - a.version)[0];
+  const summary = await api.dao(dao.daoId);
+  check();
   let version = Math.max(previous.version, latest?.version ?? 0) + 1;
   if (pending) version = pending.upload.version;
   else if (latest && latest.version > previous.version) {
@@ -58,7 +60,8 @@ export async function updatePrivateIdentity(
       payload,
     );
     check();
-    if (JSON.stringify(opened) === JSON.stringify(payload)) version = latest.version;
+    if (latest.key_epoch === summary.keyEpoch && JSON.stringify(opened) === JSON.stringify(payload))
+      version = latest.version;
   }
   const reference = await publishPrivateRecord(
     dao,

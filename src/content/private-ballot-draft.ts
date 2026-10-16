@@ -12,6 +12,7 @@ import { resolveApiUrl } from '../api/networks';
 import { useWorkspace } from '../state/workspace';
 const DraftSchema = z.strictObject({
   stage: z.enum(['content', 'opening']),
+  contentVersion: z.int().min(1).max(4294967295).optional(),
   action: z.enum(['open', 'openpoll']),
   fields: DecideActionSchemas.open,
 });
@@ -41,6 +42,8 @@ function parse(dao: DaoRef, memberId: string, value: unknown) {
     const metadata = BallotMetadataV4Schema.parse(JSON.parse(fields.metadata));
     if (
       metadata.privateContent.documentId !== fields.ballot_id ||
+      (draft.contentVersion !== undefined &&
+        metadata.privateContent.version !== draft.contentVersion) ||
       metadata.options.length !== fields.choices ||
       metadata.semantics !== (draft.action === 'open' ? 'proposal' : 'poll')
     )

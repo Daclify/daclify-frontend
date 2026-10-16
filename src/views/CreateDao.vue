@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { privateContentError as friendlyError } from '../content/private-errors';
 import { ref, computed, watch, onBeforeUnmount } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { ArrowRight } from '@lucide/vue';
@@ -16,7 +17,7 @@ import {
   type PlatformStatus,
 } from '@daclify/core-protocol';
 import { useWorkspace } from '../state/workspace';
-import { api, ApiFailure, friendlyError } from '../api/client';
+import { api, ApiFailure } from '../api/client';
 import { createdDaoLocation } from '../auth/destination';
 import { vaultUnlocked } from '../auth/session';
 import { sealPrivateCreation, openPrivateFounder } from '../content/private-identity-setup';
@@ -402,13 +403,13 @@ async function completeOrder() {
     if (request === orderSequence) busy.value = false;
   }
 }
-async function finishPrivateSetup() {
+async function finishPrivateSetup(reprepare = false) {
   if (!order.value || busy.value) return;
   const request = ++orderSequence;
   busy.value = true;
   error.value = '';
   try {
-    await installPrivateIdentity(order.value);
+    await installPrivateIdentity(order.value, reprepare);
     if (request !== orderSequence) return;
     const dao = order.value.dao;
     await state.refresh();
@@ -700,7 +701,17 @@ onBeforeUnmount(() => {
         Finish saving the encrypted DAO details with your original account keys. Your saved setup
         can be resumed; no private text is published.
       </p>
-      <button v-if="vaultUnlocked" :disabled="busy" @click="finishPrivateSetup">
+      <details v-if="vaultUnlocked">
+        <summary>Recover setup after DAO key changes</summary>
+        <p>
+          Use the same account, DAO and staged content. Earlier ciphertext remains tracked and may
+          still use storage until verified cleanup.
+        </p>
+        <button type="button" class="secondary" :disabled="busy" @click="finishPrivateSetup(true)">
+          Reprepare encrypted setup
+        </button>
+      </details>
+      <button v-if="vaultUnlocked" :disabled="busy" @click="finishPrivateSetup()">
         {{ busy ? 'Saving encrypted details…' : 'Finish private DAO setup' }}
       </button>
       <RouterLink

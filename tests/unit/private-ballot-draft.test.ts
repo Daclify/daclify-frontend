@@ -84,6 +84,9 @@ it('refuses plaintext, another actor and substituted private document parents at
   };
   savePrivateBallotDraft(dao, 'decide', '1', draft);
   expect(loadPrivateBallotDraft(dao, 'decide', '1')).toEqual(draft);
+  expect(() => savePrivateBallotDraft(dao, 'decide', '1', { ...draft, contentVersion: 2 })).toThrow(
+    'PRIVATE_BALLOT_CONTEXT',
+  );
   expect(JSON.stringify([...values.values()])).not.toContain('Private canary');
   expect(() =>
     savePrivateBallotDraft(dao, 'decide', '1', {

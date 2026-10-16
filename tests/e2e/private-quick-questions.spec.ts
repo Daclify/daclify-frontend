@@ -3,10 +3,8 @@ import { ApiRoutes } from '@daclify/core-protocol';
 import { QuickBallotRoutes } from '@daclify/modules';
 import { payCreation } from './creation-payment';
 test.use({ actionTimeout: 15000 });
-for (const lostSuccess of [false, true])
-  test(`publishes and reads an encrypted Quick question (${lostSuccess ? 'lost success' : 'normal'})`, async ({
-    page,
-  }) => {
+for (const mode of ['normal', 'lost success', 'key change'])
+  test(`publishes and reads an encrypted Quick question (${mode})`, async ({ page }) => {
     test.setTimeout(150000);
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
@@ -76,17 +74,61 @@ for (const lostSuccess of [false, true])
     await page.getByLabel('Question', { exact: true }).fill(question);
     await page.getByLabel('Details (optional)', { exact: true }).fill(explanation);
     await expect(page.getByLabel('Publish question publicly', { exact: true })).not.toBeChecked();
-    let openings = 0;
+    let openings = 0,
+      attempts = 0;
     await page.route('**' + ApiRoutes.relay.path, async (route) => {
       const input = ApiRoutes.relay.input.parse(route.request().postDataJSON());
       if (input.request.action !== 'open') return route.continue();
+      attempts++;
+      if (mode === 'key change' && attempts === 1)
+        return route.fulfill({
+          status: 503,
+          json: { code: 'SERVICE_UNAVAILABLE', message: 'Owned interrupted opening' },
+        });
       openings++;
       const response = await route.fetch();
       expect(response.ok()).toBe(true);
-      if (lostSuccess) return route.abort('failed');
+      if (mode === 'lost success') return route.abort('failed');
       return route.fulfill({ response });
     });
     await page.getByRole('button', { name: 'Publish question', exact: true }).click();
+    if (mode === 'key change') {
+      await expect(page.getByRole('alert')).toBeVisible();
+      await page.evaluate(
+        async ({ daoId, network }) => {
+          const publishPath = '/src/content/publish-private-record.ts',
+            sessionPath = '/src/auth/session.ts';
+          const publication: unknown = await import(publishPath),
+            session: unknown = await import(sessionPath);
+          if (
+            !publication ||
+            typeof publication !== 'object' ||
+            !('sendPrivateAction' in publication) ||
+            typeof publication.sendPrivateAction !== 'function' ||
+            !session ||
+            typeof session !== 'object' ||
+            !('preparePrivateEpoch' in session) ||
+            typeof session.preparePrivateEpoch !== 'function'
+          )
+            throw Error('FIXTURE_MODULE');
+          const dao = {
+            chainId: network.chainId,
+            contract: network.runtime,
+            daoId,
+            interfaceVersion: 1,
+          };
+          const actor = { runtime: dao.contract, dao_id: daoId, member_id: '1' };
+          await publication.sendPrivateAction(dao, '1', 'rotateepoch', actor, true);
+        },
+        { daoId, network },
+      );
+      await page.getByText('Reprepare after key or reader changes', { exact: true }).click();
+      await page.getByRole('button', { name: 'Reprepare unopened question', exact: true }).click();
+      await expect(
+        page.getByText('Encrypted question prepared with the same ballot ID.', { exact: false }),
+      ).toBeVisible();
+      await page.getByRole('button', { name: 'Publish question', exact: true }).click();
+    }
     await expect.poll(() => new URL(page.url()).pathname).toMatch(/^\/quick-ballots\/\d+$/);
     const id = new URL(page.url()).pathname.split('/')[2];
     if (!id) throw Error('Owned ballot missing');
@@ -102,6 +144,11 @@ for (const lostSuccess of [false, true])
       explanation: '',
     });
     expect(JSON.stringify(detail)).not.toContain(question);
+    if (mode === 'key change')
+      expect(JSON.parse(detail.ballot.definition.question)).toMatchObject({
+        version: 2,
+        keyEpoch: '2',
+      });
     await expect(page.getByRole('heading', { name: question, exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: 'Read private question', exact: true }).click();
     await expect(page.getByRole('heading', { name: question, exact: true })).toBeVisible();

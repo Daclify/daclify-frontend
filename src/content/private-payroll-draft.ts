@@ -13,9 +13,14 @@ import { resolveApiUrl } from '../api/networks';
 const schema = z.discriminatedUnion('stage', [
   z.strictObject({
     stage: z.literal('content'),
+    contentVersion: z.int().min(1).max(4294967295).optional(),
     fields: PayrollActionSchemas.commitpriv.omit({ label: true }),
   }),
-  z.strictObject({ stage: z.literal('committing'), fields: PayrollActionSchemas.commitpriv }),
+  z.strictObject({
+    stage: z.literal('committing'),
+    contentVersion: z.int().min(1).max(4294967295).optional(),
+    fields: PayrollActionSchemas.commitpriv,
+  }),
 ]);
 export type PrivatePayrollDraft = z.infer<typeof schema>;
 function key(dao: DaoRef, source: string, memberId: string) {
@@ -46,7 +51,11 @@ function parse(dao: DaoRef, memberId: string, value: unknown) {
       commitment: label.commitment,
       keyEpoch: label.key_epoch,
     });
-    if (label.document_id !== fields.schedule_id) throw Error('PRIVATE_PAYROLL_PARENT');
+    if (
+      label.document_id !== fields.schedule_id ||
+      (draft.contentVersion !== undefined && label.version !== draft.contentVersion)
+    )
+      throw Error('PRIVATE_PAYROLL_PARENT');
   }
   return draft;
 }

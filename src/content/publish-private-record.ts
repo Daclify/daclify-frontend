@@ -9,6 +9,7 @@ import {
   daoPaymentKey,
   type DaoRef,
   type PrivateRecordReference,
+  type HostedUpload,
 } from '@daclify/core-protocol';
 import { encodeAction, makeInstruction, RuntimeActionSchemas } from '@daclify/core-protocol/sdk';
 import { api, ApiFailure } from '../api/client';
@@ -25,7 +26,8 @@ import {
 } from '../auth/session';
 import { readPrivateRecord, privateRecordAccess } from './private-records';
 
-type PrivateAction = 'commitepoch' | 'putjson' | 'putdoc' | 'setmeta' | 'setagentdesc';
+type PrivateAction =
+  'commitepoch' | 'rotateepoch' | 'putjson' | 'putdoc' | 'setmeta' | 'setagentdesc';
 export async function sendPrivateAction(
   dao: DaoRef,
   memberId: string,
@@ -93,6 +95,7 @@ export async function publishPrivateRecord(
   version: number,
   value: unknown,
   root = false,
+  replacement?: HostedUpload,
 ): Promise<PrivateRecordReference> {
   dao = DaoRefSchema.parse(dao);
   IdSchema.parse(memberId);
@@ -109,13 +112,20 @@ export async function publishPrivateRecord(
   check();
   const checkContent = () => privateRecordAccess(dao, memberId, content).check();
   checkContent();
-  const pending = await pendingPrivateRecord(dao, memberId, content);
+  const originalPending = await pendingPrivateRecord(dao, memberId, content);
   check();
+  const replacing =
+    !!replacement &&
+    !!originalPending &&
+    JSON.stringify(originalPending.upload) ===
+      JSON.stringify(HostedUploadSchema.parse(replacement));
+  if (replacement && !replacing) throw Error('PENDING_UPLOAD_FINISH');
+  const pending = replacing ? undefined : originalPending;
   if (
-    pending &&
-    (pending.upload.documentId !== documentId ||
-      pending.upload.version !== version ||
-      JSON.stringify(pending.payload) !== serialized)
+    originalPending &&
+    (originalPending.upload.documentId !== documentId ||
+      (!replacing && originalPending.upload.version !== version) ||
+      JSON.stringify(originalPending.payload) !== serialized)
   )
     throw Error('PENDING_UPLOAD_FINISH');
   async function existing() {
@@ -136,7 +146,7 @@ export async function publishPrivateRecord(
   }
   const prior = await existing();
   if (prior) {
-    if (pending) sessionStorage.removeItem(pendingKey(dao));
+    if (pending || replacing) sessionStorage.removeItem(pendingKey(dao));
     return prior;
   }
   if (!useWorkspace().network?.capabilities.includes('private-records-v1'))
@@ -156,7 +166,7 @@ export async function publishPrivateRecord(
     ? ''
     : await encryptDaoJson(dao, memberId, documentId, version, epoch, content, serialized);
   check();
-  if (!pending && new TextEncoder().encode(encrypted).length <= 4096) {
+  if (!pending && !replacing && new TextEncoder().encode(encrypted).length <= 4096) {
     await sendPrivateAction(
       dao,
       memberId,
@@ -194,6 +204,7 @@ export async function publishPrivateRecord(
         version,
         keyEpoch: epoch,
       });
+      // setItem replaces atomically: retain old ciphertext until its verified replacement is durable.
       sessionStorage.setItem(pendingKey(dao), JSON.stringify(upload));
     }
     let receipt;
