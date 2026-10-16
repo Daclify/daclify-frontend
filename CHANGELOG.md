@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.15.0-alpha.46
+
+- Open the DAO workspace after successful creation, resumed creation or claiming, with approval setup available from the workspace when keys are locked.
+- Order account sections as Profile, Sign-in methods, Access & recovery, then Payment history. Signed-in settings opens Profile; account entry, unlock/device approval and payment returns keep their relevant section.
+
 ## 0.15.0-alpha.45
 
 - Replace the saved-order self-link with a copyable owner-only address and a manual-copy fallback.

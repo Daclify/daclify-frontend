@@ -1,6 +1,3 @@
-import { useWorkspace } from '../state/workspace';
-import { canSignMember } from './action-signer';
-
 export function accountDestination(value: unknown): string | undefined {
   if (
     typeof value !== 'string' ||
@@ -24,15 +21,5 @@ export function approvalSetupLocation(returnTo: string, daoId?: string) {
   };
 }
 export function createdDaoLocation(daoId: string) {
-  const state = useWorkspace(),
-    destination = '/dao/' + daoId;
-  const member = state.memberships.find(
-    (row) =>
-      row.dao.daoId === daoId &&
-      row.dao.chainId === state.network?.chainId &&
-      row.dao.contract === state.network.runtime,
-  );
-  return member?.active && !canSignMember(member)
-    ? approvalSetupLocation(destination, daoId)
-    : destination;
+  return '/dao/' + daoId;
 }

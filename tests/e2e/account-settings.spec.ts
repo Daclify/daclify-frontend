@@ -88,10 +88,20 @@ test('keeps account tasks compact and all paired methods reachable by keyboard',
     );
   });
   await page.goto('/account');
+  await expect(page.getByRole('tab')).toHaveText([
+    'Profile',
+    'Sign-in methods',
+    'Access & recovery',
+    'Payment history',
+  ]);
+  const profile = page.getByRole('tab', { name: 'Profile', exact: true });
+  await expect(profile).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByText('Join or create a DAO to publish a profile.')).toBeVisible();
   await expect(page.getByRole('tab', { name: 'Access & recovery', exact: true })).toBeVisible();
-  await page.screenshot({ path: test.info().outputPath('account-access.png'), fullPage: true });
   await expect(page.getByRole('tab')).toHaveCount(4);
   const access = page.getByRole('tab', { name: 'Access & recovery', exact: true });
+  await access.click();
+  await page.screenshot({ path: test.info().outputPath('account-access.png'), fullPage: true });
   await expect(access).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('heading', { name: 'This device', exact: true })).toBeVisible();
   await expect(page.getByText(account.signingKey ?? '', { exact: true })).toBeHidden();
@@ -104,7 +114,7 @@ test('keeps account tasks compact and all paired methods reachable by keyboard',
   expect(identity.signingKey).toBe(account.signingKey);
   await page.getByText('Public join identity', { exact: true }).click();
   await access.focus();
-  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowLeft');
   await expect(page.getByRole('tab', { name: 'Sign-in methods', exact: true })).toBeFocused();
   await expect(page.getByLabel('Sign-in email', { exact: true })).toBeHidden();
   await page.screenshot({
@@ -165,6 +175,7 @@ test('keeps account tasks compact and all paired methods reachable by keyboard',
   );
   await page.reload();
   await expect(page.getByText('Recovery status unavailable', { exact: true })).toBeVisible();
+  await access.click();
   await page.getByText('Public join identity', { exact: true }).click();
   await expect(page.getByRole('button', { name: 'Copy public join identity' })).toBeDisabled();
   await page.getByRole('tab', { name: 'Profile', exact: true }).click();
@@ -175,7 +186,9 @@ test('keeps account tasks compact and all paired methods reachable by keyboard',
   await page.keyboard.press('End');
   await expect(page.getByRole('tab', { name: 'Payment history', exact: true })).toBeFocused();
   await page.keyboard.press('Home');
-  await expect(access).toBeFocused();
+  await expect(profile).toBeFocused();
+  await expect(profile).toHaveAttribute('aria-selected', 'true');
+  await access.click();
   await page.setViewportSize({ width: 320, height: 720 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await expect(

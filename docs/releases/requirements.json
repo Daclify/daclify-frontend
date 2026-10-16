@@ -1,6 +1,14 @@
 {
   "requirements": [
     {
+      "id": "ACCOUNT-SECTION-ORDER-AND-POST-CREATION-DAO-DESTINATION",
+      "tests": [
+        "tests/e2e/account-settings.spec.ts",
+        "tests/e2e/saved-order-claim.spec.ts",
+        "tests/e2e/creation-resume.spec.ts"
+      ]
+    },
+    {
       "id": "SAVED-ORDER-COPY-AND-FREE-SETUP-CLAIM-INVITATION",
       "tests": ["tests/e2e/saved-order-claim.spec.ts"]
     },

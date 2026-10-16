@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import {
   AccountControlRequestSchema,
   AccountControlMessageSchema,
+  ApiRoutes,
   CreationOrderViewSchema,
   DaoClaimIssueSchema,
   defaultDaoSetup,
@@ -183,6 +184,11 @@ test('retains the saved order when opening account access for claim approval', a
   );
   await link.click();
   await expect(page).toHaveURL(/\/account\?/);
+  await expect(page.getByRole('tab', { name: 'Access & recovery', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(page.getByLabel('Vault password', { exact: true })).toBeVisible();
   await page.goBack();
   await expect(
     page.getByRole('heading', { name: order.setup.metadata.title, exact: true }),
@@ -203,3 +209,71 @@ for (const mode of ['non-executive', 'paid-receipt', 'reserved-claim'] as const)
     expect(writes).toEqual([]);
   });
 }
+
+for (const action of ['create', 'resume'] as const) {
+  test(`opens the DAO after ${action} with locked keys and offers approval setup in the workspace`, async ({
+    page,
+  }) => {
+    const { order } = await savedOrder(page);
+    const created = CreationOrderViewSchema.parse({
+      ...order,
+      state: 'created',
+      dao: {
+        chainId: order.network.chainId,
+        contract: order.network.runtime,
+        daoId: '1',
+        interfaceVersion: 1,
+      },
+    });
+    if (action === 'create') {
+      await page.route(
+        '**' + ApiRoutes.creationFulfill.path.replace(':id', order.requestId),
+        (route) => route.fulfill({ json: created }),
+      );
+      await page.getByRole('button', { name: 'Create this DAO', exact: true }).click();
+    } else {
+      await page.route('**/v1/dao-orders/' + order.requestId, (route) =>
+        route.fulfill({ json: created }),
+      );
+      await page.reload();
+    }
+    await expect(page).toHaveURL(/\/dao\/1$/);
+    await expect(
+      page.getByRole('region', { name: 'Workspace overview', exact: true }),
+    ).toBeVisible();
+    await page
+      .getByRole('complementary', { name: 'Account access', exact: true })
+      .getByRole('link', { name: 'Set up approvals', exact: true })
+      .click();
+    await expect(page).toHaveURL(/\/account\?setup=approvals/);
+    await expect(page.getByRole('tab', { name: 'Access & recovery', exact: true })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    await expect(page.getByRole('heading', { name: 'Approval setup', exact: true })).toBeVisible();
+    const back = page.getByRole('link', { name: 'Return to your DAO or setup', exact: true });
+    await expect(back).toHaveAttribute('href', '/dao/1');
+    await back.click();
+    await expect(page).toHaveURL(/\/dao\/1$/);
+  });
+}
+
+test('keeps account entry links on their requested section', async ({ page }) => {
+  await legalFixture(page);
+  for (const [url, section] of [
+    ['/account', 'Profile'],
+    ['/account?returnTo=/create', 'Access & recovery'],
+    ['/account?setup=approvals&dao=1&returnTo=/dao/1', 'Access & recovery'],
+    ['/account?deviceApproval=22222222-2222-4222-8222-222222222222', 'Access & recovery'],
+    ['/account?billing=submitted', 'Payment history'],
+    ['/account?billing=cancelled', 'Payment history'],
+    ['/account?telegramPair=22222222-2222-4222-8222-222222222222', 'Sign-in methods'],
+    ['/account?returnTo=https://example.test', 'Profile'],
+  ] as const) {
+    await page.goto(url);
+    await expect(page.getByRole('tab', { name: section, exact: true })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+  }
+});

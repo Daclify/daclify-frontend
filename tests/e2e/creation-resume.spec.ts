@@ -38,6 +38,11 @@ test('checks preflight, retains immutable order review and requires explicit fre
   await expect(page.getByRole('button', { name: 'Create this DAO', exact: true })).toBeVisible();
   await expect(page).toHaveURL(new RegExp(order.requestId));
   await page.getByRole('button', { name: 'Create this DAO', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Workspace overview', exact: true })).toBeVisible();
+  await page
+    .getByRole('complementary', { name: 'Account access', exact: true })
+    .getByRole('link', { name: 'Set up approvals', exact: true })
+    .click();
   await expect(page.getByRole('heading', { name: 'Approval setup', exact: true })).toBeVisible();
   await page.getByLabel('Vault password', { exact: true }).fill('creation resume fixture password');
   await page.getByRole('button', { name: 'Unlock and sign in', exact: true }).click();

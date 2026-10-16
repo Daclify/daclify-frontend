@@ -57,9 +57,9 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ 'profile-updated': [] }>();
 const accountTabs = [
-  { id: 'keys', label: 'Access & recovery', icon: ShieldCheck },
-  { id: 'sign-in', label: 'Sign-in methods', icon: FingerprintPattern },
   { id: 'profile', label: 'Profile', icon: UserRound },
+  { id: 'sign-in', label: 'Sign-in methods', icon: FingerprintPattern },
+  { id: 'keys', label: 'Access & recovery', icon: ShieldCheck },
   { id: 'service', label: 'Payment history', icon: CreditCard },
 ] as const;
 const visibleAccountTabs = computed(() =>
@@ -82,6 +82,13 @@ const approvalRecoveryRequested = ref(false);
 const router = useRouter();
 const destination = computed(() =>
   props.accessSetup ? undefined : accountDestination(route.query.returnTo),
+);
+const accessRequested = computed(
+  () =>
+    props.accessSetup ||
+    approvalSetup.value ||
+    !!destination.value ||
+    typeof route.query.deviceApproval === 'string',
 );
 const state = useWorkspace();
 const walletApprovalsReady = computed(() =>
@@ -170,12 +177,18 @@ async function copyJoinIdentity() {
 }
 
 const tab = ref<AccountTab>(
-  props.embedded ? 'profile' : billingTab(route.query.billing) ? 'service' : 'keys',
+  props.embedded
+    ? 'profile'
+    : billingTab(route.query.billing)
+      ? 'service'
+      : accessRequested.value || !state.account
+        ? 'keys'
+        : 'profile',
 );
 const opened = ref<Record<AccountTab, boolean>>({
   keys: true,
   'sign-in': false,
-  profile: !!props.embedded,
+  profile: tab.value === 'profile',
   service: true,
 });
 function openTab(next: AccountTab) {
@@ -215,9 +228,10 @@ onMounted(async () => {
   }
 });
 watch(
-  () => route.query.billing,
-  (value) => {
-    if (billingTab(value)) openTab('service');
+  () => [route.query.billing, accessRequested.value],
+  () => {
+    if (billingTab(route.query.billing)) openTab('service');
+    else if (accessRequested.value) openTab('keys');
   },
 );
 const saved = ref(savedVault());
