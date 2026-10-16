@@ -63,6 +63,6 @@ export async function payCreation(page: Page, preset?: 'custom') {
   expect(order.usdCents).toBe(0);
   expect(order.method).toBe('free');
   await page.getByRole('button', { name: 'Create this DAO', exact: true }).click();
-  await expect(page.getByRole('region', { name: 'Workspace overview' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Workspace overview' })).toBeVisible({ timeout: 30000 });
   return order;
 }

@@ -156,6 +156,18 @@ async function fixture(value: unknown = payload) {
     reference: { documentId: '41', version: 2, commitment: document.commitment, keyEpoch: '1' },
   };
 }
+it('reads a private Quick question with DAO grants as a non-executive and refuses missing grants or copied contexts', async () => {
+  const expected = { kind: 'quick-question' as const, source: 'quickvote', recordId: '41' };
+  const value = { schemaVersion: 1, ...expected, body: { question: 'Hidden Quick question canary', explanation: 'Only DAO content readers may see this.' } };
+  const f = await fixture(value);
+  const member = f.records.members[0]; if (!member) throw Error('fixture member missing'); member.admin = false;
+  await expect(readPrivateRecord(dao, '1', f.reference, { ...f.records, keyGrants: [] }, expected)).rejects.toThrow();
+  await expect(readPrivateRecord(dao, '1', f.reference, f.records, expected)).resolves.toEqual(value);
+  await expect(readPrivateRecord(dao, '1', f.reference, f.records, { ...expected, source: 'foreign' })).rejects.toThrow('PRIVATE_RECORD_CONTEXT');
+  await expect(readPrivateRecord(dao, '1', f.reference, f.records, { ...expected, recordId: '42' })).rejects.toThrow('PRIVATE_RECORD_CONTEXT');
+  lockVault();
+  await expect(readPrivateRecord(dao, '1', f.reference, f.records, expected)).rejects.toThrow('VAULT_LOCKED');
+});
 
 it('opens only a frozen private ballot and refuses copied parents, semantics and missing definitions', async () => {
   const value = {

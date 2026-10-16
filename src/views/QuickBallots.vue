@@ -8,16 +8,24 @@ import {
   EncryptionPublicKeySchema,
   type QuickAccountContext,
   type GovernanceState,
+  type DaoSummary,
+  type PrivateRecordPayload,
+  daoPaymentKey,
 } from '@daclify/core-protocol';
 import { encodeQuickAnchor, decodeQuickAnchor, makeInstruction } from '@daclify/core-protocol/sdk';
-import { QuickBallotDefinitionSchema, type QuickBallotResponse } from '@daclify/modules';
+import {
+  QuickBallotDefinitionSchema,
+  quickQuestionReference,
+  type QuickBallotResponse,
+} from '@daclify/modules';
 import {
   encodeQuickBallot,
   quickBallotDefinitionHash,
   quickKeyContext,
   quickResponseContext,
+  QuickBallotActionSchemas,
 } from '@daclify/modules/quick-ballots';
-import { api, friendlyError } from '../api/client';
+import { api, friendlyError, ApiFailure } from '../api/client';
 import { resolveApiUrl } from '../api/networks';
 import { useWorkspace } from '../state/workspace';
 import { canSignMember, dispatchInstruction, selectedSigner } from '../auth/action-signer';
@@ -43,6 +51,15 @@ import {
 } from '../quick-ballots/receipts';
 import { receiptDeviceKey } from '../quick-ballots/device-key';
 import ActionSigner from '../components/ActionSigner.vue';
+import PrivateQuickQuestion from '../components/PrivateQuickQuestion.vue';
+import { publishPrivateRecord, pendingPrivateRecord } from '../content/publish-private-record';
+import { readPrivateRecord } from '../content/private-records';
+import {
+  loadPrivateQuickDraft,
+  savePrivateQuickDraft,
+  clearPrivateQuickDraft,
+  type PrivateQuickDraft,
+} from '../content/private-quick-draft';
 const state = useWorkspace(),
   route = useRoute(),
   router = useRouter();
@@ -72,6 +89,24 @@ const readers = ref<Awaited<ReturnType<typeof api.quickReaders>>>(),
   module = ref<Awaited<ReturnType<typeof api.moduleState>>['modules'][number]>(),
   governance = ref<GovernanceState>(),
   readerLoading = ref(false);
+const originDao = ref<DaoSummary>(),
+  publicQuestion = ref(false),
+  privateDraft = ref<PrivateQuickDraft>(),
+  readQuestionHash = ref('');
+const privateQuestion = computed(
+  () => !!originDao.value && originDao.value.privacy !== 'public' && !publicQuestion.value,
+);
+const questionReference = computed(() =>
+  detail.value ? quickQuestionReference(detail.value.ballot.definition) : undefined,
+);
+const questionReady = computed(
+  () =>
+    detail.value?.ballot.definition.protocol !== 2 ||
+    (vaultUnlocked.value && readQuestionHash.value === detail.value.ballot.definition_hash),
+);
+const privateAudience = computed(
+  () => !allAccounts.value && audience.value.length === 1 && audience.value[0] === origin.value,
+);
 const now = ref(Math.floor(Date.now() / 1000)),
   clock = setInterval(() => {
     now.value = Math.floor(Date.now() / 1000);
@@ -145,9 +180,10 @@ const eligible = computed(
         detail.value?.ballot.definition.audience.includes(member.dao.daoId),
       )),
 );
-const ready = computed(
+const approvalReady = computed(
   () => verified.value && open.value && !!context.value?.record?.active && !busy.value,
 );
+const ready = computed(() => approvalReady.value && questionReady.value);
 function name(daoId: string) {
   return daos.value.find((dao) => dao.reference.daoId === daoId)?.title ?? 'DAO ' + daoId;
 }
@@ -181,11 +217,18 @@ function scope() {
   return JSON.stringify([
     state.account?.id,
     state.account?.signingKey,
+    state.account?.encryptionKey,
     state.network?.chainId,
     state.network?.runtime,
     resolveApiUrl('/'),
     route.fullPath,
     vaultUnlocked.value,
+    memberships.value.map((member) => [
+      member.dao,
+      member.memberId,
+      member.active,
+      member.signingKey,
+    ]),
   ]);
 }
 async function loadOwn(check: () => void) {
@@ -228,6 +271,7 @@ async function load() {
   verified.value = false;
   result.value = null;
   detail.value = undefined;
+  readQuestionHash.value = '';
   governance.value = undefined;
   try {
     if (!available.value) return;
@@ -239,6 +283,13 @@ async function load() {
     if (!id.value) return;
     const value = await api.quickDetail(id.value);
     check();
+    if (
+      value.chainId !== state.network?.chainId ||
+      value.runtime !== state.network.runtime ||
+      value.source !== list.value.domain?.source ||
+      value.ballot.id !== id.value
+    )
+      throw Error('DAO_REFERENCE');
     detail.value = value;
     const inspected = await quickCrypto(
       {
@@ -279,6 +330,11 @@ watch(
     own.value = null;
     progress.value = '';
     message.value = '';
+    readQuestionHash.value = '';
+    privateDraft.value = undefined;
+    publicQuestion.value = false;
+    question.value = '';
+    explanation.value = '';
     if (state.account) restoreQuickPending();
     else pendingQuick.value = undefined;
     void load();
@@ -289,6 +345,11 @@ watch([origin, editor], async () => {
   const current = ++readerRevision;
   readers.value = undefined;
   module.value = undefined;
+  originDao.value = undefined;
+  privateDraft.value = undefined;
+  publicQuestion.value = false;
+  question.value = '';
+  explanation.value = '';
   if (!editor.value) {
     if (id.value) void load();
     return;
@@ -297,15 +358,18 @@ watch([origin, editor], async () => {
   readerLoading.value = true;
   error.value = '';
   try {
-    const [snapshot, modules, offices] = await Promise.all([
+    const [snapshot, modules, offices, dao] = await Promise.all([
       api.quickReaders(origin.value),
       api.moduleState(origin.value),
       api.governance(origin.value),
+      api.dao(origin.value),
     ]);
     if (current !== readerRevision) return;
     readers.value = snapshot;
     module.value = modules.modules.find((row) => row.deployment.id === 'quick-ballots');
     governance.value = offices;
+    if (daoPaymentKey(snapshot.dao) !== daoPaymentKey(dao.reference)) throw Error('DAO_REFERENCE');
+    originDao.value = dao;
     if (!audience.value.length) audience.value = [origin.value];
   } catch (cause) {
     if (current === readerRevision) error.value = friendlyError(cause);
@@ -318,6 +382,10 @@ onBeforeUnmount(() => {
   ++readerRevision;
   controller.abort();
   clearInterval(clock);
+  question.value = '';
+  explanation.value = '';
+  readQuestionHash.value = '';
+  privateDraft.value = undefined;
 });
 async function perform(action: (check: () => void, signal: AbortSignal) => Promise<void>) {
   if (busy.value) return;
@@ -355,6 +423,40 @@ function create() {
   editor.value = true;
   origin.value = memberships.value[0]?.dao.daoId ?? '';
 }
+async function existingPrivateQuick(saved: PrivateQuickDraft, source: string) {
+  const stamp = scope();
+  let value: Awaited<ReturnType<typeof api.quickDetail>>;
+  try {
+    value = await api.quickDetail(saved.fields.ballot_id);
+  } catch (cause) {
+    if (cause instanceof ApiFailure && cause.code === 'QUICK_BALLOT_UNKNOWN') return false;
+    throw cause;
+  }
+  if (stamp !== scope()) throw Error('QUICK_CANCELLED');
+  if (saved.stage !== 'opening') throw Error('QUICK_DEFINITION');
+  const fields = saved.fields;
+  const expected = quickBallotDefinitionHash({
+    chainId: state.network?.chainId,
+    runtime: fields.runtime,
+    source,
+    ballotId: fields.ballot_id,
+    daoId: fields.dao_id,
+    creatorId: fields.member_id,
+    definition: fields.definition,
+  });
+  if (
+    value.chainId !== state.network?.chainId ||
+    value.runtime !== fields.runtime ||
+    value.source !== source ||
+    value.ballot.id !== fields.ballot_id ||
+    value.ballot.definition_hash !== expected ||
+    value.ballot.key !== fields.key ||
+    value.ballot.key_proof !== fields.possession ||
+    (value.grants && JSON.stringify(value.grants.grants) !== JSON.stringify(fields.grants))
+  )
+    throw Error('QUICK_DEFINITION');
+  return true;
+}
 async function publish() {
   await perform(async (check, signal) => {
     const member = originMember.value,
@@ -370,14 +472,36 @@ async function publish() {
       !canSignMember(member)
     )
       throw Error('EXECUTIVE_REQUIRED');
+    if (!originDao.value || daoPaymentKey(originDao.value.reference) !== daoPaymentKey(member.dao))
+      throw Error('DAO_REFERENCE');
+    const privatePublication = privateQuestion.value;
+    if (privatePublication && (!privateAudience.value || !vaultUnlocked.value))
+      throw Error(privateAudience.value ? 'VAULT_LOCKED' : 'QUICK_QUESTION_AUDIENCE');
+    if (privatePublication && !state.network?.capabilities.includes('private-quick-question-v1'))
+      throw Error('PRIVATE_QUICK_UNSUPPORTED');
+    if (!privatePublication && !publicQuestion.value) throw Error('PRIVATE_QUICK_REQUIRED');
+    const saved = loadPrivateQuickDraft(member.dao, source.deployment.account, member.memberId);
+    if (
+      saved &&
+      (!privatePublication || JSON.stringify(saved) !== JSON.stringify(privateDraft.value))
+    )
+      throw Error('PENDING_UPLOAD_FINISH');
+    if (saved && (await existingPrivateQuick(saved, source.deployment.account))) {
+      check();
+      clearPrivateQuickDraft(member.dao, source.deployment.account, member.memberId);
+      privateDraft.value = undefined;
+      editor.value = false;
+      await router.push('/quick-ballots/' + saved.fields.ballot_id);
+      return;
+    }
     const values = crypto.getRandomValues(new Uint32Array(2)),
-      ballotId = ((BigInt(values[0] ?? 0) << 32n) | BigInt(values[1] ?? 0) || 1n).toString();
+      ballotId =
+        saved?.fields.ballot_id ??
+        ((BigInt(values[0] ?? 0) << 32n) | BigInt(values[1] ?? 0) || 1n).toString();
     const closes = deadline.value ? Math.floor(new Date(deadline.value).getTime() / 1000) : 0;
     if (closes && closes <= Math.floor(Date.now() / 1000)) throw Error('QUICK_DEADLINE');
-    const definition = QuickBallotDefinitionSchema.parse({
-      protocol: 1,
-      question: question.value.trim(),
-      explanation: explanation.value.trim(),
+    const settings = {
+      protocol: privatePublication ? (2 as const) : (3 as const),
       all_accounts: allAccounts.value,
       audience: allAccounts.value
         ? []
@@ -386,7 +510,63 @@ async function publish() {
           ),
       closes,
       readers: snapshot.readers,
-    });
+    };
+    let definition: ReturnType<typeof QuickBallotDefinitionSchema.parse>;
+    if (privatePublication) {
+      const prior = saved?.stage === 'content' ? saved.settings : saved?.fields.definition;
+      if (prior) {
+        const {
+          question: _question,
+          explanation: _explanation,
+          ...previous
+        } = saved?.stage === 'opening'
+          ? saved.fields.definition
+          : { ...prior, question: '', explanation: '' };
+        if (JSON.stringify(previous) !== JSON.stringify(settings)) throw Error('QUICK_READERS');
+      }
+      if (!saved)
+        privateDraft.value = savePrivateQuickDraft(
+          member.dao,
+          source.deployment.account,
+          member.memberId,
+          {
+            stage: 'content',
+            fields: {
+              runtime: member.dao.contract,
+              dao_id: member.dao.daoId,
+              member_id: member.memberId,
+              ballot_id: ballotId,
+            },
+            settings,
+          },
+        );
+      const version =
+        saved?.stage === 'opening' ? quickQuestionReference(saved.fields.definition)?.version : 1;
+      if (!version) throw Error('QUICK_QUESTION_REFERENCE');
+      const reference = await publishPrivateRecord(member.dao, member.memberId, ballotId, version, {
+        schemaVersion: 1,
+        kind: 'quick-question',
+        source: source.deployment.account,
+        recordId: ballotId,
+        body: { question: question.value.trim(), explanation: explanation.value.trim() },
+      });
+      check();
+      definition = QuickBallotDefinitionSchema.parse({
+        ...settings,
+        question: JSON.stringify(reference),
+        explanation: '',
+      });
+      if (
+        saved?.stage === 'opening' &&
+        JSON.stringify(saved.fields.definition) !== JSON.stringify(definition)
+      )
+        throw Error('QUICK_DEFINITION');
+    } else
+      definition = QuickBallotDefinitionSchema.parse({
+        ...settings,
+        question: question.value.trim(),
+        explanation: explanation.value.trim(),
+      });
     const domain = {
       chainId: member.dao.chainId,
       runtime: member.dao.contract,
@@ -400,30 +580,56 @@ async function publish() {
       definition,
     });
     progress.value = 'Preparing encrypted ballot…';
-    const key = await quickCrypto(
-      {
-        task: 'key',
-        context: quickKeyContext({
-          chainId: domain.chainId,
-          runtime: domain.runtime,
-          ballotId,
-          definitionHash,
-        }),
-      },
-      signal,
-    );
-    check();
-    if (key.task !== 'key') throw Error('QUICK_CRYPTO_FAILED');
-    const grants = await Promise.all(
-      definition.readers.map((reader) =>
-        createBallotGrant(
-          { ...domain, ballotId, definitionHash, memberId: reader.member_id },
-          reader.encryption_key,
-          key.secret,
+    let publicKey: string, possession: string, grants: string[];
+    if (saved?.stage === 'opening') {
+      publicKey = saved.fields.key;
+      possession = saved.fields.possession;
+      grants = saved.fields.grants;
+    } else {
+      const key = await quickCrypto(
+        {
+          task: 'key',
+          context: quickKeyContext({
+            chainId: domain.chainId,
+            runtime: domain.runtime,
+            ballotId,
+            definitionHash,
+          }),
+        },
+        signal,
+      );
+      check();
+      if (key.task !== 'key') throw Error('QUICK_CRYPTO_FAILED');
+      grants = await Promise.all(
+        definition.readers.map((reader) =>
+          createBallotGrant(
+            { ...domain, ballotId, definitionHash, memberId: reader.member_id },
+            reader.encryption_key,
+            key.secret,
+          ),
         ),
-      ),
-    );
-    check();
+      );
+      check();
+      publicKey = key.publicKey;
+      possession = key.proof;
+    }
+    const payload = QuickBallotActionSchemas.open.parse({
+      runtime: domain.runtime,
+      dao_id: member.dao.daoId,
+      member_id: member.memberId,
+      ballot_id: ballotId,
+      definition,
+      key: publicKey,
+      possession,
+      grants,
+    });
+    if (privatePublication)
+      privateDraft.value = savePrivateQuickDraft(
+        member.dao,
+        source.deployment.account,
+        member.memberId,
+        { stage: 'opening', fields: payload },
+      );
     const current = (await api.memberships()).find(
       (row) =>
         row.dao.daoId === member.dao.daoId &&
@@ -433,37 +639,134 @@ async function publish() {
     );
     check();
     if (!current?.active) throw Error('MEMBER_INACTIVE');
-    await dispatchInstruction(
-      makeInstruction(
-        current.dao,
-        current.memberId,
-        current.nonce,
-        Math.floor(Date.now() / 1000) + 120,
-        domain.source,
-        'open',
-        encodeQuickBallot('open', {
-          runtime: domain.runtime,
-          dao_id: current.dao.daoId,
-          member_id: current.memberId,
-          ballot_id: ballotId,
-          definition,
-          key: key.publicKey,
-          possession: key.proof,
-          grants,
-        }),
-      ),
-    );
+    try {
+      await dispatchInstruction(
+        makeInstruction(
+          current.dao,
+          current.memberId,
+          current.nonce,
+          Math.floor(Date.now() / 1000) + 120,
+          domain.source,
+          'open',
+          encodeQuickBallot('open', payload),
+        ),
+      );
+    } catch (cause) {
+      if (!privateDraft.value || !(await existingPrivateQuick(privateDraft.value, domain.source)))
+        throw cause;
+    }
     check();
+    if (privatePublication) {
+      clearPrivateQuickDraft(member.dao, source.deployment.account, member.memberId);
+      privateDraft.value = undefined;
+    }
     editor.value = false;
     question.value = '';
     explanation.value = '';
     await router.push('/quick-ballots/' + ballotId);
   });
 }
+async function resumePrivateQuestion() {
+  await perform(async (check) => {
+    const member = originMember.value,
+      source = module.value?.deployment.account;
+    if (!member || !source) throw Error('MEMBER_REQUIRED');
+    const saved = loadPrivateQuickDraft(member.dao, source, member.memberId);
+    if (!saved) {
+      message.value = 'No unfinished private question on this browser.';
+      return;
+    }
+    if (await existingPrivateQuick(saved, source)) {
+      check();
+      clearPrivateQuickDraft(member.dao, source, member.memberId);
+      privateDraft.value = undefined;
+      editor.value = false;
+      await router.push('/quick-ballots/' + saved.fields.ballot_id);
+      return;
+    }
+    if (!vaultUnlocked.value) throw Error('VAULT_LOCKED');
+    const records = await api.content(member.dao.daoId),
+      pending = await pendingPrivateRecord(member.dao, member.memberId, records);
+    check();
+    const reference =
+      saved.stage === 'opening' ? quickQuestionReference(saved.fields.definition) : undefined;
+    const document = records.documents.find(
+      (row) =>
+        row.document_id === saved.fields.ballot_id && row.version === (reference?.version ?? 1),
+    );
+    let payload: PrivateRecordPayload;
+    if (pending) {
+      if (
+        pending.upload.documentId !== saved.fields.ballot_id ||
+        pending.upload.version !== (reference?.version ?? 1)
+      )
+        throw Error('PENDING_UPLOAD_FINISH');
+      payload = pending.payload;
+    } else if (document)
+      payload = await readPrivateRecord(
+        member.dao,
+        member.memberId,
+        {
+          documentId: document.document_id,
+          version: document.version,
+          commitment: document.commitment,
+          keyEpoch: document.key_epoch,
+        },
+        records,
+        { kind: 'quick-question', source, recordId: saved.fields.ballot_id },
+      );
+    else {
+      privateDraft.value = saved;
+      message.value =
+        'No encrypted question was found. Retry recovery or discard the empty local draft.';
+      return;
+    }
+    check();
+    if (
+      payload.kind !== 'quick-question' ||
+      payload.source !== source ||
+      payload.recordId !== saved.fields.ballot_id
+    )
+      throw Error('QUICK_QUESTION_REFERENCE');
+    const settings = saved.stage === 'content' ? saved.settings : saved.fields.definition;
+    question.value = payload.body.question;
+    explanation.value = payload.body.explanation;
+    publicQuestion.value = false;
+    allAccounts.value = false;
+    audience.value = [...settings.audience];
+    const date = new Date(settings.closes * 1000);
+    deadline.value = settings.closes
+      ? new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 19)
+      : '';
+    privateDraft.value = saved;
+    message.value =
+      'Original encrypted question restored. Review its audience, deadline and fixed vote readers before publishing.';
+  });
+}
+async function discardEmptyQuestion() {
+  await perform(async (check) => {
+    const member = originMember.value,
+      source = module.value?.deployment.account;
+    if (!member || !source) throw Error('MEMBER_REQUIRED');
+    const saved = loadPrivateQuickDraft(member.dao, source, member.memberId);
+    if (!saved || saved.stage !== 'content' || (await existingPrivateQuick(saved, source)))
+      throw Error('PENDING_UPLOAD_FINISH');
+    const records = await api.content(member.dao.daoId),
+      pending = await pendingPrivateRecord(member.dao, member.memberId, records);
+    check();
+    if (pending || records.documents.some((row) => row.document_id === saved.fields.ballot_id))
+      throw Error('PENDING_UPLOAD_FINISH');
+    clearPrivateQuickDraft(member.dao, source, member.memberId);
+    privateDraft.value = undefined;
+    message.value =
+      'Empty local draft discarded. No document, ballot or on-chain record was deleted.';
+  });
+}
 async function vote(value: 0 | 1) {
   await perform(async (check, signal) => {
     const currentDetail = detail.value;
     if (!currentDetail || !verified.value || !open.value) throw Error('QUICK_CLOSED');
+    if (!questionReady.value) throw Error('QUICK_QUESTION_UNREAD');
     if (!eligible.value) throw Error('QUICK_AUDIENCE');
     const status = await api.quickAccountStatus();
     check();
@@ -720,8 +1023,9 @@ async function resume() {
     <p v-if="!available" class="notice">Quick ballots are unavailable on this deployment.</p>
     <template v-else>
       <p class="field-help">
-        Experimental testnet feature. Questions and participation are public. Individual choices are
-        encrypted for the originating DAO’s fixed readers.
+        Experimental testnet feature. Participation is public. Questions may use the originating
+        DAO’s content grants or be explicitly published. Individual choices are encrypted for its
+        fixed readers.
         <RouterLink to="/docs/quick-ballots">Privacy and verification</RouterLink>
       </p>
       <p v-if="error" class="alert" role="alert">{{ error }}</p>
@@ -763,6 +1067,20 @@ async function resume() {
           />
           <label for="quick-explanation">Details (optional)</label
           ><textarea id="quick-explanation" v-model="explanation" maxlength="4096" rows="3" />
+          <label class="checkbox"
+            ><input v-model="publicQuestion" type="checkbox" />Publish question publicly</label
+          >
+          <p v-if="publicQuestion" class="notice">
+            The question and details will be permanently public on chain. Individual votes stay
+            encrypted for the fixed executive readers.
+          </p>
+          <p v-else-if="originDao?.privacy !== 'public'" class="notice">
+            The question and details are encrypted for this DAO’s permitted content readers.
+            Individual vote keys remain separate.
+          </p>
+          <p v-else class="notice">
+            This DAO has public content. Review public publication to continue.
+          </p>
           <label for="quick-audience">Who may respond?</label
           ><select id="quick-audience" v-model="allAccounts">
             <option :value="false">Members of selected DAOs</option>
@@ -777,9 +1095,47 @@ async function resume() {
             </select></template
           >
           <label for="quick-deadline">Closes at (optional)</label
-          ><input id="quick-deadline" v-model="deadline" type="datetime-local" />
+          ><input id="quick-deadline" v-model="deadline" type="datetime-local" step="1" />
           <p class="field-help">Without a deadline, a current executive closes it.</p>
         </fieldset>
+        <p v-if="privateQuestion && !privateAudience" class="notice">
+          Private questions currently support only the originating DAO. Choose that DAO alone, or
+          explicitly review public publication for a wider audience.
+        </p>
+        <p v-if="privateQuestion && !vaultUnlocked" class="notice">
+          <RouterLink :to="{ path: '/account', query: { unlock: '1', returnTo: route.fullPath } }"
+            >Unlock account to encrypt the question</RouterLink
+          >
+        </p>
+        <p
+          v-if="
+            privateQuestion && !state.network?.capabilities.includes('private-quick-question-v1')
+          "
+          class="notice"
+        >
+          Private questions are unavailable on this deployment. No public fallback will be sent.
+        </p>
+        <button
+          v-if="originDao?.privacy !== 'public' && originMember && module"
+          type="button"
+          class="secondary"
+          :disabled="busy || readerLoading"
+          @click="resumePrivateQuestion"
+        >
+          Resume an unfinished private question
+        </button>
+        <details v-if="originDao?.privacy !== 'public' && originMember && module">
+          <summary>Discard an empty local draft</summary>
+          <p>Only a draft with no published document or ballot can be removed here.</p>
+          <button
+            type="button"
+            class="secondary"
+            :disabled="busy || readerLoading"
+            @click="discardEmptyQuestion"
+          >
+            Discard empty question draft
+          </button>
+        </details>
         <p v-if="readers" class="field-help">
           Individual votes may be read by the {{ readers.readers.length }} executives listed when
           this ballot opens. Later executive appointments do not change that list.
@@ -793,6 +1149,11 @@ async function resume() {
               !exec ||
               !module?.enabled ||
               !question.trim() ||
+              (!publicQuestion && !privateQuestion) ||
+              (privateQuestion &&
+                (!privateAudience ||
+                  !vaultUnlocked ||
+                  !state.network?.capabilities.includes('private-quick-question-v1'))) ||
               (!allAccounts && !audience.length) ||
               audience.length > 20
             "
@@ -806,8 +1167,29 @@ async function resume() {
       </form>
       <article v-if="detail" class="panel quick-card" :aria-busy="busy || loading">
         <p class="eyebrow">{{ name(detail.ballot.dao_id) }} · {{ open ? 'OPEN' : 'CLOSED' }}</p>
-        <h2>{{ detail.ballot.definition.question }}</h2>
-        <p v-if="detail.ballot.definition.explanation" class="explanation">
+        <h2>
+          {{
+            questionReference
+              ? 'Private question ' + detail.ballot.id
+              : detail.ballot.definition.question
+          }}
+        </h2>
+        <PrivateQuickQuestion
+          v-if="questionReference && verified"
+          :dao="{
+            chainId: detail.chainId,
+            contract: detail.runtime,
+            daoId: detail.ballot.dao_id,
+            interfaceVersion: 1,
+          }"
+          :member="ballotMember"
+          :source="detail.source"
+          :ballot-id="detail.ballot.id"
+          :reference="questionReference"
+          :definition-hash="detail.ballot.definition_hash"
+          @read="readQuestionHash = $event ?? ''"
+        />
+        <p v-if="!questionReference && detail.ballot.definition.explanation" class="explanation">
           {{ detail.ballot.definition.explanation }}
         </p>
         <p>
@@ -877,7 +1259,7 @@ async function resume() {
                 ><button
                   v-if="own?.active"
                   class="text-button"
-                  :disabled="!ready"
+                  :disabled="!approvalReady"
                   @click="removeVote"
                 >
                   Remove response
@@ -951,7 +1333,9 @@ async function resume() {
           <p class="eyebrow">{{ name(ballot.dao_id) }}</p>
           <h2>
             <RouterLink :to="'/quick-ballots/' + ballot.id">{{
-              ballot.definition.question
+              ballot.definition.protocol === 2
+                ? 'Private question ' + ballot.id
+                : ballot.definition.question
             }}</RouterLink>
           </h2>
           <p>{{ ballot.count }} responses · {{ ballot.closed_at ? 'Closed' : 'Open' }}</p>

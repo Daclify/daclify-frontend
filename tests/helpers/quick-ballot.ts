@@ -1,5 +1,9 @@
 import { ABI, Bytes, Checksum256, Serializer } from '@wharfkit/antelope';
-import { QuickBallotRowSchema, QuickBallotResponseSchema } from '@daclify/modules';
+import {
+  QuickBallotRowSchema,
+  QuickBallotResponseSchema,
+  QuickBallotDefinitionSchema,
+} from '@daclify/modules';
 import {
   quickvoteAbi,
   quickBallotDefinitionHash,
@@ -19,10 +23,11 @@ export function quickBallotFixture(
   closed = false,
   selectedDaos: string[] = [],
   readerKey = 'fixture-reader',
+  protectedDefinition?: ReturnType<typeof QuickBallotDefinitionSchema.parse>,
 ) {
   const domain = { chainId: '11'.repeat(32), runtime: 'daclifycore1', source: 'quickvote' },
     id = '7';
-  const definition = {
+  const definition = protectedDefinition ?? {
     protocol: 1 as const,
     question: 'Should we plant more trees?',
     explanation: 'An advisory question.',

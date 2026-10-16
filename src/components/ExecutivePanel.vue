@@ -7,6 +7,7 @@ import {
   IdSchema,
   NativeAccountSchema,
   SigningPublicKeySchema,
+  daoPaymentKey,
   type DaoContent,
   type GovernanceState,
   type DaoSummary,
@@ -221,11 +222,21 @@ async function run(action: 'heartbeat' | 'setexecs' | 'setvoter' | 'refreshgov',
   error.value = '';
   notice.value = '';
   try {
+    const reference = daoPaymentKey(props.dao.reference),
+      member = props.member,
+      generation = readGeneration;
+    const fresh = (await api.memberships()).find(
+      (row) =>
+        row.active && row.memberId === member.memberId && daoPaymentKey(row.dao) === reference,
+    );
+    if (generation !== readGeneration || reference !== daoPaymentKey(props.dao.reference)) return;
+    if (!fresh || fresh.signingKey !== member.signingKey || !canSignMember(fresh))
+      throw Error('MEMBER_REQUIRED');
     await relayInstruction(
       makeInstruction(
         props.dao.reference,
         props.member.memberId,
-        props.member.nonce,
+        fresh.nonce,
         Math.floor(Date.now() / 1000) + 120,
         props.dao.reference.contract,
         action,
