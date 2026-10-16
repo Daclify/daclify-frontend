@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import { createVault } from '../../src/auth/vault';
-import { PrivateKey } from '@wharfkit/antelope';
+import { createVault, createVaultBackup } from '../../src/auth/vault';
+import { PrivateKey, Signature } from '@wharfkit/antelope';
 import {
   NetworkSchema,
   RecoveryContextSchema,
@@ -11,6 +11,7 @@ import {
   UserMembershipSchema,
   MemberProfileSchema,
   PeopleRoutes,
+  ApiRoutes,
   recoveryVaultDomain,
 } from '@daclify/core-protocol';
 import {
@@ -18,7 +19,12 @@ import {
   createRecoveryPayload,
   sealRecoveryDelivery,
 } from '@daclify/core-protocol/sdk';
-async function fixture(page: Page, withProfile = false, initiallyAuthenticated = false) {
+async function fixture(
+  page: Page,
+  withProfile = false,
+  initiallyAuthenticated = false,
+  savedPassword?: string,
+) {
   const signing = PrivateKey.generate('K1'),
     encryption = await createRecoveryRecipient();
   const account = {
@@ -26,6 +32,27 @@ async function fixture(page: Page, withProfile = false, initiallyAuthenticated =
     custody: 'user-controlled' as const,
     signingKey: signing.toPublic().toString(),
     encryptionKey: encryption.publicKey,
+  };
+  if (savedPassword) {
+    const vault = await createVaultBackup(
+      { signingKey: signing.toString(), encryptionPrivateKey: encryption.privateKey },
+      savedPassword,
+    );
+    await page.addInitScript(
+      (record) => localStorage.setItem('daclify.vault.v1', JSON.stringify(record)),
+      {
+        version: 1,
+        localEnvelope: vault.localEnvelope,
+        recoveryEnvelope: vault.recoveryEnvelope,
+        signingPublicKey: vault.signingPublicKey,
+        encryptionPublicKey: vault.encryptionPublicKey,
+      },
+    );
+  }
+  const challenge = {
+    id: crypto.randomUUID(),
+    message: 'Disposable account unlock challenge',
+    expires: new Date(Date.now() + 300000).toISOString(),
   };
   let authenticated = initiallyAuthenticated,
     context: ReturnType<typeof RecoveryContextSchema.parse> | undefined,
@@ -71,6 +98,29 @@ async function fixture(page: Page, withProfile = false, initiallyAuthenticated =
       });
     if (path === '/v1/sign-in/session')
       return route.fulfill(authenticated ? { json: { account } } : { status: 204 });
+    if (savedPassword && path === ApiRoutes.challenge.path) {
+      challenge.message = JSON.stringify({
+        domain: 'daclify.login.v3',
+        origin: new URL(page.url()).origin,
+        audience: new URL(route.request().url()).origin,
+        challenge: challenge.id,
+        expires: challenge.expires,
+        signingKey: account.signingKey,
+        encryptionKey: account.encryptionKey,
+      });
+      return route.fulfill({ json: challenge });
+    }
+    if (savedPassword && path === ApiRoutes.login.path) {
+      const input = ApiRoutes.login.input.parse(route.request().postDataJSON());
+      expect(input.challengeId).toBe(challenge.id);
+      expect(
+        Signature.from(input.signature).verifyMessage(
+          new TextEncoder().encode(challenge.message),
+          signing.toPublic(),
+        ),
+      ).toBe(true);
+      return route.fulfill({ json: { account, csrfToken: 'c'.repeat(43) } });
+    }
     if (path === '/v1/me/memberships')
       return route.fulfill({
         json: {
@@ -204,6 +254,105 @@ async function unlockProfile(page: Page) {
   await profile.getByRole('button', { name: 'Verify code and unlock', exact: true }).click();
   return profile;
 }
+async function signInOnly(page: Page) {
+  await page.route('**/v1/account/recovery', (route) =>
+    route.fulfill({
+      json: RecoveryMethodsSchema.parse({
+        methods: [
+          {
+            credentialKey: 'email:alice@example.test',
+            kind: 'email',
+            subject: 'alice@example.test',
+            chainId: null,
+            mode: null,
+            availableModes: [],
+            reason: null,
+          },
+        ],
+        assistedEver: false,
+        assistedEnabled: false,
+        configured: true,
+        reason: null,
+      }),
+    }),
+  );
+}
+test('opens the unlock controls directly from the portal header', async ({ page }) => {
+  await fixture(page, true, true);
+  await page.goto('/users/me');
+  await expect(
+    page.getByRole('button', { name: 'Edit profile & account', exact: true }),
+  ).toBeVisible();
+  await page.getByRole('link', { name: 'Unlock account', exact: true }).click();
+  await expect(page.getByRole('tab', { name: 'Profile', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(
+    page
+      .getByRole('tabpanel', { name: 'Profile', exact: true })
+      .getByRole('button', { name: 'E-Mail', exact: true }),
+  ).toBeVisible();
+  await unlockProfile(page);
+  await expect(page).toHaveURL(/\/users\/me$/);
+  await expect(page.getByRole('button', { name: 'Lock keys', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Edit profile & account', exact: true }).click();
+  await expect(
+    page
+      .getByRole('tabpanel', { name: 'Profile', exact: true })
+      .getByLabel('Full name', { exact: true }),
+  ).toHaveValue('Alice Example');
+});
+test('unlocks a locally saved account directly from its profile with its device password', async ({
+  page,
+}) => {
+  const password = 'Owned disposable profile unlock password';
+  await fixture(page, true, true, password);
+  await signInOnly(page);
+  await page.goto('/users/me');
+  await page.getByRole('button', { name: 'Edit profile & account', exact: true }).click();
+  const profile = page.getByRole('tabpanel', { name: 'Profile', exact: true });
+  const field = profile.getByLabel('Password for this device', { exact: true });
+  await page.screenshot({ path: test.info().outputPath('unlock-password.png'), fullPage: true });
+  await field.fill('Wrong disposable password');
+  await profile.getByRole('button', { name: 'Unlock account', exact: true }).click();
+  await expect(page.getByRole('alert')).toBeVisible();
+  await expect(profile.getByLabel('Full name', { exact: true })).toHaveCount(0);
+  await field.fill(password);
+  await profile.getByRole('button', { name: 'Unlock account', exact: true }).click();
+  await expect(profile.getByLabel('Full name', { exact: true })).toHaveValue('Alice Example');
+  expect(
+    await page.evaluate(() => JSON.stringify({ ...localStorage, ...sessionStorage })),
+  ).not.toContain(password);
+});
+test('shows direct device and kit recovery actions when no paired method can unlock keys', async ({
+  page,
+}) => {
+  await fixture(page, true, true);
+  await signInOnly(page);
+  await page.goto('/users/me');
+  await page.getByRole('button', { name: 'Edit profile & account', exact: true }).click();
+  const profile = page.getByRole('tabpanel', { name: 'Profile', exact: true });
+  await page.getByRole('tab', { name: 'Access & recovery', exact: true }).click();
+  await page.getByText('Account keys and recovery', { exact: true }).click();
+  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
+  await page.screenshot({ path: test.info().outputPath('unlock-recovery.png'), fullPage: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await expect(profile.getByRole('button', { name: 'E-Mail', exact: true })).toHaveCount(0);
+  await profile.getByRole('button', { name: 'Use another device', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: 'Request approval from another device', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Request approval from another device', exact: true }),
+  ).toBeFocused();
+  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
+  await profile.getByRole('button', { name: 'Use recovery kit', exact: true }).click();
+  await expect(
+    page.getByRole('dialog', { name: 'Restore your existing keys', exact: true }),
+  ).toBeVisible();
+  await expect(profile.getByLabel('Full name', { exact: true })).toHaveCount(0);
+});
 test('sends a code to the paired email from the embedded profile and focuses verification', async ({
   page,
 }) => {

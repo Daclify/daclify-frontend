@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.15.0-alpha.54
+
+- Add a clear Unlock account entry in the portal header that opens the unlock controls and returns to the original task after successful verification.
+- Show a matching saved vault's device-password form directly in Profile, and offer explicit device and recovery-kit actions when paired sign-ins cannot unlock keys.
+
 ## 0.15.0-alpha.53
 
 - Keep the current account profile and unsaved editor draft mounted when a membership refresh temporarily fails. Continue showing the connection error and retry action; confirmed sign-out and account/network changes still clear the relevant state.

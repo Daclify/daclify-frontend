@@ -302,7 +302,12 @@ onMounted(() => {
               : walletApprovalsReady
                 ? 'Wallet ready'
                 : 'Vault locked'
-          }}</span
+          }}</span>
+          <RouterLink
+            v-if="state.account && !vaultUnlocked && route.path !== '/account'"
+            class="button secondary"
+            :to="{ path: '/account', query: { unlock: '1', returnTo: accountReturn } }"
+            >Unlock account</RouterLink
           ><button v-if="vaultUnlocked" class="text-button" @click="lockVault">Lock keys</button
           ><button v-if="operator" class="secondary" @click="leaveOperator()">
             Return to Daclify Hub

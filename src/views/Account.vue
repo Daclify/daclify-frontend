@@ -122,6 +122,15 @@ function openApprovalRecovery() {
     document.getElementById(accountKit.value ? 'unlock' : 'this-device-title')?.focus(),
   );
 }
+function openDeviceRecovery() {
+  openTab('keys');
+  void nextTick(() => {
+    const heading = document.getElementById('device-approval-heading');
+    const details = heading?.closest('details');
+    if (details) details.open = true;
+    heading?.parentElement?.querySelector('button')?.focus();
+  });
+}
 const recoveryCheckFailed = ref(false);
 let recoveryRead = 0;
 async function checkRecoveryPolicy() {
@@ -183,7 +192,7 @@ async function copyJoinIdentity() {
 }
 
 const tab = ref<AccountTab>(
-  props.embedded
+  props.embedded || route.query.unlock === '1'
     ? 'profile'
     : billingTab(route.query.billing)
       ? 'service'
@@ -234,9 +243,10 @@ onMounted(async () => {
   }
 });
 watch(
-  () => [route.query.billing, accessRequested.value],
+  () => [route.query.billing, accessRequested.value, route.query.unlock],
   () => {
-    if (billingTab(route.query.billing)) openTab('service');
+    if (route.query.unlock === '1') openTab('profile');
+    else if (billingTab(route.query.billing)) openTab('service');
     else if (accessRequested.value) openTab('keys');
   },
 );
@@ -494,6 +504,11 @@ async function onSignedIn(account: Account, stayHere = false) {
   } finally {
     busy.value = false;
   }
+}
+async function onProfileSignIn(account: Account) {
+  await onSignedIn(account, true);
+  if (vaultUnlocked.value && route.query.unlock === '1' && destination.value)
+    await router.push(destination.value);
 }
 async function logout() {
   busy.value = true;
@@ -973,7 +988,9 @@ function backup() {
                 ? 'Choose an authorized approval method in Access & recovery to edit this membership’s profile.'
                 : unlockMethods?.length
                   ? 'Use a paired sign-in below to unlock and edit your profile. No vault password is needed.'
-                  : 'Unlock your account vault to read or edit your private profile.'
+                  : accountKit
+                    ? 'Enter this device’s password to unlock and edit your profile.'
+                    : 'You are signed in. Unlock your account keys to read or edit your private profile.'
             }}
           </p>
           <template v-if="tab === 'profile' && !vaultUnlocked">
@@ -983,13 +1000,13 @@ function backup() {
               :inert="busy"
               :paired-email="unlockEmail"
               :unlock-methods="unlockMethods"
-              @authenticated="(account) => onSignedIn(account, true)"
+              @authenticated="onProfileSignIn"
               @busy="providerBusy = $event"
             />
             <GoogleSignIn
               v-if="unlockMethods?.includes('google')"
               :inert="busy || providerBusy"
-              @authenticated="(account) => onSignedIn(account, true)"
+              @authenticated="onProfileSignIn"
               @busy="providerBusy = $event"
             />
             <p v-if="!recoveryInfo && !recoveryCheckFailed" role="status">
@@ -998,6 +1015,45 @@ function backup() {
             <button v-if="recoveryCheckFailed" class="secondary" @click="checkRecoveryPolicy">
               Retry unlock options
             </button>
+            <form v-if="accountKit" @submit.prevent="unlock()">
+              <label for="profile-unlock-password">Password for this device</label>
+              <input
+                id="profile-unlock-password"
+                v-model="password"
+                type="password"
+                autocomplete="current-password"
+                :disabled="busy || providerBusy"
+                required
+              />
+              <button type="submit" :disabled="busy || providerBusy">
+                {{ busy ? 'Unlocking…' : 'Unlock account' }}
+              </button>
+            </form>
+            <template v-if="recoveryInfo && !unlockMethods?.length">
+              <p v-if="!accountKit" class="field-help">
+                No paired sign-in has full access enabled. Use another unlocked device or your
+                original encrypted recovery kit. A wallet paired for DAO approvals alone cannot
+                unlock private profile keys.
+              </p>
+              <div class="button-row">
+                <button
+                  type="button"
+                  class="secondary"
+                  :disabled="busy || providerBusy"
+                  @click="openDeviceRecovery"
+                >
+                  Use another device
+                </button>
+                <button
+                  type="button"
+                  class="secondary"
+                  :disabled="busy || providerBusy"
+                  @click="restoring = true"
+                >
+                  Use recovery kit
+                </button>
+              </div>
+            </template>
           </template>
           <button class="secondary" :disabled="busy || providerBusy" @click="openTab('keys')">
             Access &amp; recovery
