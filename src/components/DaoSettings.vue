@@ -218,7 +218,7 @@ async function rename() {
         </p>
         <p v-if="error" class="alert" role="alert">{{ error }}</p>
         <form @submit.prevent="rename">
-          <label v-if="privateMode" class="checkbox-label"
+          <label v-if="privateMode" class="check-line"
             ><input v-model="publicConsent" type="checkbox" required />Publish this name publicly in
             the directory and on chain.</label
           >

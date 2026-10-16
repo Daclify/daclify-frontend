@@ -17,6 +17,9 @@ import {
 } from '@daclify/core-protocol';
 import { readPrivateRecord, readPrivateImage } from '../../src/content/private-records';
 import { publishPrivateRecord } from '../../src/content/publish-private-record';
+import { BallotMetadataV4Schema } from '@daclify/modules';
+import { ballotCommitment } from '@daclify/modules/sdk';
+import { readPrivateBallot } from '../../src/content/private-ballots';
 import { updatePrivateIdentity } from '../../src/content/dao-identity';
 import { generateVaultSecrets, sha256Hex } from '../../src/auth/vault';
 import {
@@ -154,6 +157,82 @@ async function fixture(value: unknown = payload) {
   };
 }
 
+it('opens only a frozen private ballot and refuses copied parents, semantics and missing definitions', async () => {
+  const value = {
+    schemaVersion: 1,
+    kind: 'ballot-content',
+    source: 'decide',
+    recordId: '41',
+    body: {
+      title: 'Private ballot canary',
+      description: 'Private explanation canary',
+      semantics: 'proposal',
+      options: ['Reject', 'Approve'],
+    },
+  };
+  const f = await fixture(value);
+  const ballot = {
+    id: '41',
+    dao_id: dao.daoId,
+    creator: '1',
+    kind: 0,
+    choices: 2,
+    closes: 1300,
+    quorum: 5000,
+    approval: 5001,
+    denominator: '3',
+    max_member: '3',
+    cast: '0',
+    tallies: ['0', '0'],
+    status: 0,
+    winner: -1,
+    metadata: JSON.stringify({
+      schemaVersion: 4,
+      semantics: 'proposal',
+      options: [0, 1],
+      privateContent: f.reference,
+    }),
+  };
+  function input(candidate = ballot, version = 3) {
+    const definition = {
+      ballot_id: candidate.id,
+      dao_id: dao.daoId,
+      version,
+      purpose:
+        BallotMetadataV4Schema.parse(JSON.parse(candidate.metadata)).semantics === 'poll' ? 1 : 0,
+      policy_revision: '0',
+      policy_hash: '00'.repeat(32),
+      commitment: '00'.repeat(32),
+    };
+    definition.commitment = ballotCommitment({
+      chainId: dao.chainId,
+      runtime: dao.contract,
+      decide: 'decide',
+      ballot: candidate,
+      definition,
+    });
+    return {
+      dao,
+      memberId: '1',
+      decide: 'decide',
+      ballot: candidate,
+      definitions: [definition],
+      records: f.records,
+    };
+  }
+  expect((await readPrivateBallot(input())).payload).toEqual(value);
+  await expect(readPrivateBallot(input({ ...ballot, id: '42' }, 1))).rejects.toThrow(
+    'PRIVATE_RECORD_CONTEXT',
+  );
+  await expect(readPrivateBallot({ ...input(), definitions: [] })).rejects.toThrow(
+    'BALLOT_DEFINITION_REQUIRED',
+  );
+  await expect(
+    readPrivateBallot(input({ ...ballot, metadata: ballot.metadata.replace('proposal', 'poll') })),
+  ).rejects.toThrow('PRIVATE_BALLOT_CONTEXT');
+  lockVault();
+  await expect(readPrivateBallot(input())).rejects.toThrow('VAULT_LOCKED');
+});
 it('opens exact ciphertext with original keys and never stores or sends its decrypted identity', async () => {
   const f = await fixture(),
     bytes = vi.spyOn(api, 'documentBytes');

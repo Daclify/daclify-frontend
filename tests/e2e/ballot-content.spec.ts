@@ -116,8 +116,9 @@ test('signs a poll with its explanation and exact document, then records the sel
 }) => {
   test.setTimeout(60000);
   const state = await moduleFixture(page);
-  const document=state.content.documents[0];if(!document)throw Error('Fixture document');
-  document.commitment=Checksum256.hash(new TextEncoder().encode(document.metadata)).toString();
+  const document = state.content.documents[0];
+  if (!document) throw Error('Fixture document');
+  document.commitment = Checksum256.hash(new TextEncoder().encode(document.metadata)).toString();
   const password = 'disposable ballot content fixture';
   const vault = await createVault(password);
   state.account.signingKey = vault.signingPublicKey;
@@ -178,7 +179,9 @@ test('signs a poll with its explanation and exact document, then records the sel
       data: body.request.data,
     });
     if (body.request.action === 'openpoll') {
-      const input = DecideActionSchemas.openpoll.extend(nativeIds).parse(Serializer.objectify(decoded));
+      const input = DecideActionSchemas.openpoll
+        .extend(nativeIds)
+        .parse(Serializer.objectify(decoded));
       expect(input.choices).toBe(3);
       expect(input.quorum).toBe(state.governance.policy?.config.quorum);
       expect(input.approval).toBe(state.governance.policy?.config.approval);
@@ -208,14 +211,30 @@ test('signs a poll with its explanation and exact document, then records the sel
         winner: -1,
         metadata: input.metadata,
       });
-      const poll=state.modules.ballots.find(row=>row.id===opened);
-      if(!poll)throw Error('Fixture opened ballot');
-      const definition={ballot_id:opened,dao_id:'1',version:1,purpose:1,policy_revision:'0',policy_hash:'00'.repeat(32),commitment:'00'.repeat(32)};
-      definition.commitment=ballotCommitment({chainId:state.modules.dao.chainId,runtime:state.modules.dao.contract,decide:'decide',ballot:poll,definition});
+      const poll = state.modules.ballots.find((row) => row.id === opened);
+      if (!poll) throw Error('Fixture opened ballot');
+      const definition = {
+        ballot_id: opened,
+        dao_id: '1',
+        version: 1,
+        purpose: 1,
+        policy_revision: '0',
+        policy_hash: '00'.repeat(32),
+        commitment: '00'.repeat(32),
+      };
+      definition.commitment = ballotCommitment({
+        chainId: state.modules.dao.chainId,
+        runtime: state.modules.dao.contract,
+        decide: 'decide',
+        ballot: poll,
+        definition,
+      });
       state.modules.ballotDefinitions.push(definition);
     } else {
       expect(body.request.action).toBe('votecommit');
-      const input = DecideActionSchemas.votecommit.extend(nativeIds).parse(Serializer.objectify(decoded));
+      const input = DecideActionSchemas.votecommit
+        .extend(nativeIds)
+        .parse(Serializer.objectify(decoded));
       expect(input.ballot_id).toBe(opened);
       expect(input.choice).toBe(1);
       state.modules.votes.push({ id: '21', ballot: opened, member: '1', weight: '1', choice: 1 });
@@ -225,9 +244,9 @@ test('signs a poll with its explanation and exact document, then records the sel
     return route.fulfill({ json: { transactionId: 'ab'.repeat(32) } });
   });
   await page.goto('/account');
-  await page.getByLabel('Vault password', { exact: true }).fill(password);
-  await page.getByRole('button', { name: 'Unlock and sign in', exact: true }).click();
-  await expect(page.getByText('Keys unlocked', { exact: true })).toBeVisible();
+  await page.getByLabel('Password for this device', { exact: true }).fill(password);
+  await page.getByRole('button', { name: 'Unlock account', exact: true }).click();
+  await expect(page.getByText('Vault unlocked', { exact: true })).toBeVisible();
   const menu = page.getByRole('button', { name: 'Menu', exact: true });
   if (await menu.isVisible()) await menu.click();
   await page.getByRole('link', { name: 'My DAO', exact: true }).click();
@@ -245,10 +264,12 @@ test('signs a poll with its explanation and exact document, then records the sel
     await form.getByLabel(`Choice ${i + 1}`, { exact: true }).fill(options[i] ?? '');
   await form.getByLabel('Supporting document (optional)').selectOption('11');
   await form.getByRole('button', { name: 'Open ballot', exact: true }).click();
-  await expect(page.getByText('Ballot opened', { exact: true })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: /^Ballot opened$/ })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Vote Saturday', exact: true })).toBeDisabled();
-  await page.getByRole('button',{name:'Open verified supporting document',exact:true}).click();
-  await page.getByLabel('I reviewed this document version',{exact:true}).check();
+  await page
+    .getByRole('button', { name: 'Open verified supporting document', exact: true })
+    .click();
+  await page.getByLabel('I reviewed this document version', { exact: true }).check();
   await page.getByRole('button', { name: 'Vote Saturday', exact: true }).click();
   await expect(page.getByText('Your vote: Saturday', { exact: true })).toBeVisible();
   expect(writes).toBe(2);

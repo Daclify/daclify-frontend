@@ -10,7 +10,7 @@ import DocumentReview from './DocumentReview.vue';
 import BallotTargetReview from './BallotTargetReview.vue';
 import BallotExportButton from './BallotExportButton.vue';
 import DocumentReferenceLink from './DocumentReferenceLink.vue';
-import { prepareBallotVote } from '@daclify/modules/sdk';
+import { prepareBallotVote, verifyBallotDefinition } from '@daclify/modules/sdk';
 import VotingDurationInput from './VotingDurationInput.vue';
 import PercentageInput from './PercentageInput.vue';
 import { parseWholeWorkPayments } from '../content/token-payments';
@@ -28,6 +28,8 @@ import {
   type DaoSummary,
   type UserMembership,
   type GovernanceState,
+  PrivateRecordPayloadSchema,
+  daoPaymentKey,
 } from '@daclify/core-protocol';
 import { encodeAction, makeInstruction } from '@daclify/core-protocol/sdk';
 import {
@@ -45,7 +47,16 @@ import {
   type WorksActions,
 } from '@daclify/modules/sdk';
 import { api, friendlyError } from '../api/client';
-import { relayInstruction } from '../auth/session';
+import { relayInstruction, vaultUnlocked } from '../auth/session';
+import { publishPrivateRecord, pendingPrivateRecord } from '../content/publish-private-record';
+import { readPrivateBallot, type PrivateBallotRead } from '../content/private-ballots';
+import { readPrivateRecord } from '../content/private-records';
+import {
+  loadPrivateBallotDraft,
+  savePrivateBallotDraft,
+  clearPrivateBallotDraft,
+  type PrivateBallotDraft,
+} from '../content/private-ballot-draft';
 import { canSignMember } from '../auth/action-signer';
 const signerReady = computed(() => canSignMember(props.member));
 import { useWorkspace } from '../state/workspace';
@@ -80,12 +91,38 @@ const context = computed(() =>
   ]),
 );
 const loading = ref(false);
-const busy = ref(false);
-watch(busy, (value) => emit('busy', value), { flush: 'sync' });
+const busy = ref(false),
+  ballotPreparing = ref(false);
+watch(
+  () => busy.value || ballotPreparing.value,
+  (value) => emit('busy', value),
+  { flush: 'sync' },
+);
 const error = ref('');
 const success = ref('');
 const title = ref('');
 const description = ref('');
+const publicBallot = ref(false);
+const privateDraft = ref<PrivateBallotDraft>();
+const emptyPrivateDraft = ref(false);
+const hasPrivateDraft = computed(() => {
+  if (privateDraft.value) return true;
+  if (!workspace.account || !props.member || !current.value) return false;
+  try {
+    return !!loadPrivateBallotDraft(
+      props.dao.reference,
+      current.value.deployment.account,
+      props.member.memberId,
+    );
+  } catch {
+    return true;
+  }
+});
+let privateReadGeneration = 0;
+const privateBallot = computed(() => props.dao.privacy !== 'public' && !publicBallot.value);
+const openedBallots = ref<Record<string, PrivateBallotRead>>({});
+const ballotReading = ref('');
+const ballotReadError = ref<Record<string, string>>({});
 const ballotType = ref<'proposal' | 'poll'>('proposal');
 const ballotChoices = ref(['', '', '']);
 const ballotDocument = ref('');
@@ -111,10 +148,113 @@ const visibleBallots = computed(
       .filter((ballot) => !data.value?.elections.some((election) => election.id === ballot.id))
       .map((ballot) => ({
         ...ballot,
-        definition: readBallotMetadata(ballot.metadata, ballot.choices),
+        privateReference: readBallotMetadata(ballot.metadata, ballot.choices)?.privateContent,
+        definition: ballotContent(ballot),
         reviewError: ballot.status === 3 ? '' : ballotReviewError(ballot),
       })) ?? [],
 );
+function ballotContent(ballot: ModuleState['ballots'][number]): BallotContent | undefined {
+  const metadata = readBallotMetadata(ballot.metadata, ballot.choices);
+  if (!metadata?.privateContent) return metadata;
+  const opened = openedBallots.value[ballot.id];
+  if (
+    !opened ||
+    !vaultUnlocked.value ||
+    JSON.stringify(opened.reference) !== JSON.stringify(metadata.privateContent)
+  )
+    return;
+  return opened.payload.body;
+}
+watch(
+  [context, vaultUnlocked],
+  () => {
+    privateReadGeneration++;
+    emptyPrivateDraft.value = false;
+    openedBallots.value = {};
+    ballotReadError.value = {};
+    ballotReading.value = '';
+    if (!vaultUnlocked.value && props.dao.privacy !== 'public') {
+      title.value = '';
+      description.value = '';
+      ballotChoices.value = ['', '', ''];
+      reviewedBallotDocuments.value = {};
+      reviewedBallotTargets.value = {};
+      ballotDialog.value?.close();
+    }
+  },
+  { flush: 'sync' },
+);
+async function readBallot(id: string) {
+  const member = props.member,
+    ballot = data.value?.ballots.find((row) => row.id === id),
+    domain = context.value,
+    currentGeneration = generation,
+    readGeneration = privateReadGeneration;
+  if (
+    !member?.active ||
+    !ballot ||
+    !current.value ||
+    !data.value ||
+    !vaultUnlocked.value ||
+    ballotReading.value
+  )
+    return;
+  ballotReading.value = id;
+  ballotReadError.value[id] = '';
+  try {
+    const records = await api.content(props.dao.reference.daoId);
+    if (
+      disposed ||
+      domain !== context.value ||
+      generation !== currentGeneration ||
+      readGeneration !== privateReadGeneration ||
+      !current.value ||
+      !data.value
+    )
+      return;
+    const reviewed = await readPrivateBallot({
+      dao: props.dao.reference,
+      decide: current.value.deployment.account,
+      memberId: member.memberId,
+      ballot,
+      definitions: data.value.ballotDefinitions,
+      records,
+      execution: data.value.executions.find((row) => row.ballot_id === id),
+      grantPlan: data.value.grantPlans.find((row) => row.ballot_id === id),
+      documentChange: data.value.documentChanges.find((row) => row.ballot_id === id),
+      dispute: data.value.arbitrationPlans.find((row) => row.ballot_id === id),
+      target: data.value.ballotTargets.find((row) => row.ballot_id === id),
+    });
+    if (
+      disposed ||
+      domain !== context.value ||
+      generation !== currentGeneration ||
+      readGeneration !== privateReadGeneration ||
+      !vaultUnlocked.value ||
+      data.value.ballots.find((row) => row.id === id)?.metadata !== ballot.metadata
+    )
+      return;
+    content.value = records;
+    openedBallots.value[id] = reviewed;
+  } catch (cause) {
+    if (
+      !disposed &&
+      domain === context.value &&
+      generation === currentGeneration &&
+      readGeneration === privateReadGeneration &&
+      vaultUnlocked.value
+    )
+      ballotReadError.value[id] = friendlyError(cause);
+  } finally {
+    if (
+      !disposed &&
+      domain === context.value &&
+      generation === currentGeneration &&
+      readGeneration === privateReadGeneration
+    )
+      ballotReading.value = '';
+  }
+}
 function navigateDecideTabs(event: KeyboardEvent) {
   const current = decideTabs.findIndex((tab) => tab.id === decideTab.value);
   const index =
@@ -166,6 +306,12 @@ const clock = setInterval(() => {
 }, 1000);
 onBeforeUnmount(() => {
   disposed = true;
+  privateReadGeneration++;
+  openedBallots.value = {};
+  title.value = '';
+  description.value = '';
+  ballotChoices.value = [];
+  privateDraft.value = undefined;
   emit('busy', false);
   generation++;
   choicesRequest++;
@@ -190,7 +336,9 @@ const names = {
   'grants-rounds': 'Grants rounds',
   'endorsement-admission': 'Endorsement admission',
 };
-const canSign = computed(() => !!props.member?.active && signerReady.value && !busy.value);
+const canSign = computed(
+  () => !!props.member?.active && signerReady.value && !busy.value && !ballotPreparing.value,
+);
 const current = computed(() => data.value?.modules.find((m) => m.deployment.id === props.section));
 const listedModules = computed(
   () =>
@@ -226,13 +374,14 @@ function allowed(action: string) {
   return canAct.value && !!current.value?.actions.includes(action);
 }
 function showCreationDialog() {
-  if (busy.value || !props.member?.active || !current.value?.enabled) return;
+  if (busy.value || ballotPreparing.value || !props.member?.active || !current.value?.enabled)
+    return;
   error.value = '';
   success.value = '';
   if (decideTab.value === 'elections') electionPanel.value?.showDialog();
   else ballotDialog.value?.showModal();
 }
-const canSettle = computed(() => !!workspace.account && !busy.value);
+const canSettle = computed(() => !!workspace.account && !busy.value && !ballotPreparing.value);
 function helpLink(topic: string) {
   return { path: `/docs/${topic}`, query: { dao: props.dao.reference.daoId } };
 }
@@ -386,6 +535,7 @@ watch(
     content.value = undefined;
     title.value = '';
     description.value = '';
+    publicBallot.value = false;
     ballotType.value = 'proposal';
     ballotChoices.value = ['', '', ''];
     ballotDocument.value = '';
@@ -398,6 +548,8 @@ watch(
     draftPaused.value = {};
     error.value = '';
     success.value = '';
+    privateDraft.value = undefined;
+    ballotPreparing.value = false;
     void load();
   },
   { immediate: true, flush: 'sync' },
@@ -433,11 +585,21 @@ async function run(target: string, action: string, payload: Uint8Array, message:
   error.value = '';
   success.value = '';
   try {
+    const memberships = await api.memberships();
+    if (disposed || domain !== context.value || !props.member) return;
+    const fresh = memberships.find(
+      (row) =>
+        row.active &&
+        row.memberId === props.member?.memberId &&
+        daoPaymentKey(row.dao) === daoPaymentKey(props.dao.reference),
+    );
+    if (!fresh || fresh.signingKey !== props.member.signingKey || !canSignMember(fresh))
+      throw Error('MEMBER_REQUIRED');
     await relayInstruction(
       makeInstruction(
         props.dao.reference,
         props.member.memberId,
-        props.member.nonce,
+        fresh.nonce,
         Math.floor(Date.now() / 1000) + 300,
         target,
         action,
@@ -487,14 +649,185 @@ async function disable(module: ModuleState['modules'][number]) {
     `${names[module.deployment.id]} disabled. Approved obligations remain payable.`,
   );
 }
+async function existingPrivateBallot(draft: PrivateBallotDraft) {
+  if (!current.value) throw Error('MODULE_UNVERIFIED');
+  const source = current.value.deployment.account,
+    domain = context.value;
+  const rows = await api.moduleState(props.dao.reference.daoId, {
+    ballots: draft.fields.ballot_id,
+  });
+  if (disposed || domain !== context.value) throw Error('RECOVERY_CONTEXT_CHANGED');
+  const existing = rows.ballots.find((row) => row.id === draft.fields.ballot_id);
+  if (!existing) return false;
+  if (
+    draft.stage !== 'opening' ||
+    existing.metadata !== draft.fields.metadata ||
+    existing.creator !== draft.fields.member_id ||
+    existing.kind !== draft.fields.kind ||
+    existing.choices !== draft.fields.choices ||
+    existing.quorum !== draft.fields.quorum ||
+    existing.approval !== draft.fields.approval
+  )
+    throw Error('BALLOT_DEFINITION_CHANGED');
+  verifyBallotDefinition({
+    dao: props.dao.reference,
+    decide: source,
+    ballot: existing,
+    definitions: rows.ballotDefinitions,
+  });
+  return true;
+}
+async function resumePrivateBallot() {
+  const member = props.member,
+    source = current.value?.deployment.account,
+    domain = context.value,
+    readGeneration = privateReadGeneration;
+  if (!member?.active || !source || busy.value || ballotPreparing.value) return;
+  ballotPreparing.value = true;
+  error.value = '';
+  try {
+    const saved = loadPrivateBallotDraft(props.dao.reference, source, member.memberId);
+    if (!saved) {
+      success.value = 'No unfinished private ballot on this browser.';
+      return;
+    }
+    if (await existingPrivateBallot(saved)) {
+      clearPrivateBallotDraft(props.dao.reference, source, member.memberId);
+      privateDraft.value = undefined;
+      await load();
+      if (disposed || domain !== context.value) return;
+      success.value = 'Ballot already opened';
+      return;
+    }
+    if (!vaultUnlocked.value) throw Error('VAULT_LOCKED');
+    const records = await api.content(props.dao.reference.daoId),
+      pending = await pendingPrivateRecord(props.dao.reference, member.memberId, records);
+    if (disposed || domain !== context.value || readGeneration !== privateReadGeneration) return;
+    let payload;
+    if (pending) {
+      if (pending.upload.documentId !== saved.fields.ballot_id || pending.upload.version !== 1)
+        throw Error('PENDING_UPLOAD_FINISH');
+      payload = pending.payload;
+    } else {
+      const found = records.documents.find(
+        (row) => row.document_id === saved.fields.ballot_id && row.version === 1,
+      );
+      if (!found) {
+        if (saved.stage !== 'content') throw Error('PRIVATE_RECORD_PENDING');
+        privateDraft.value = saved;
+        emptyPrivateDraft.value = true;
+        success.value =
+          'No encrypted content was found. Retry recovery, or discard this empty draft and enter it again.';
+        return;
+      }
+      payload = await readPrivateRecord(
+        props.dao.reference,
+        member.memberId,
+        {
+          documentId: found.document_id,
+          version: found.version,
+          commitment: found.commitment,
+          keyEpoch: found.key_epoch,
+        },
+        records,
+        { kind: 'ballot-content', source, recordId: saved.fields.ballot_id },
+      );
+    }
+    if (
+      disposed ||
+      domain !== context.value ||
+      readGeneration !== privateReadGeneration ||
+      !vaultUnlocked.value
+    )
+      return;
+    if (
+      payload.kind !== 'ballot-content' ||
+      payload.source !== source ||
+      payload.recordId !== saved.fields.ballot_id ||
+      payload.body.options.length !== saved.fields.choices ||
+      payload.body.semantics !== (saved.action === 'open' ? 'proposal' : 'poll')
+    )
+      throw Error('PRIVATE_BALLOT_CONTEXT');
+    const support = payload.body.document;
+    const document = support
+      ? records.documents.find(
+          (row) =>
+            row.document_id === support.documentId &&
+            row.version === support.version &&
+            row.commitment === support.commitment,
+        )
+      : undefined;
+    if (support && !document) throw Error('DOCUMENT_UNKNOWN');
+    title.value = payload.body.title;
+    description.value = payload.body.description;
+    ballotChoices.value = [...payload.body.options];
+    ballotType.value = payload.body.semantics;
+    ballotDocument.value = document?.id ?? '';
+    if (saved.fields.kind > 2) throw Error('BALLOT_PRESET');
+    weight.value =
+      saved.fields.kind === 0 ? 'member' : saved.fields.kind === 1 ? 'credit' : 'native-stake';
+    duration.value = saved.fields.duration;
+    quorum.value = saved.fields.quorum;
+    approval.value = saved.fields.approval;
+    publicBallot.value = false;
+    privateDraft.value = saved;
+    emptyPrivateDraft.value = false;
+    content.value = records;
+    success.value =
+      'Original encrypted ballot restored for review. Finish to resume its publication.';
+  } catch (cause) {
+    if (!disposed && domain === context.value && readGeneration === privateReadGeneration)
+      error.value = friendlyError(cause);
+  } finally {
+    if (!disposed && domain === context.value) ballotPreparing.value = false;
+  }
+}
+async function discardEmptyPrivateBallot() {
+  const member = props.member,
+    source = current.value?.deployment.account,
+    domain = context.value;
+  if (!member || !source || !emptyPrivateDraft.value || busy.value || ballotPreparing.value) return;
+  ballotPreparing.value = true;
+  error.value = '';
+  try {
+    const saved = loadPrivateBallotDraft(props.dao.reference, source, member.memberId);
+    if (!saved || saved.stage !== 'content' || (await existingPrivateBallot(saved)))
+      throw Error('PRIVATE_BALLOT_CONTEXT');
+    const rows = await api.content(props.dao.reference.daoId),
+      pending = await pendingPrivateRecord(props.dao.reference, member.memberId, rows);
+    if (disposed || domain !== context.value) return;
+    if (pending || rows.documents.some((row) => row.document_id === saved.fields.ballot_id))
+      throw Error('PENDING_UPLOAD_FINISH');
+    clearPrivateBallotDraft(props.dao.reference, source, member.memberId);
+    privateDraft.value = undefined;
+    emptyPrivateDraft.value = false;
+    success.value = 'Empty local draft discarded. No file or on-chain record was deleted.';
+  } catch (cause) {
+    if (!disposed && domain === context.value) error.value = friendlyError(cause);
+  } finally {
+    if (!disposed && domain === context.value) ballotPreparing.value = false;
+  }
+}
 async function open() {
-  if (!current.value || !allowed('open')) return;
+  if (!current.value || !props.member || !allowed('open') || ballotPreparing.value) return;
   const domain = context.value;
+  ballotPreparing.value = true;
   try {
     const document = content.value?.documents.find((row) => row.id === ballotDocument.value);
     if (ballotDocument.value && !document) throw new Error('DOCUMENT_UNKNOWN');
-    const metadata = encodeBallotMetadata({
-      schemaVersion: 3,
+    const saved = loadPrivateBallotDraft(
+      props.dao.reference,
+      current.value.deployment.account,
+      props.member.memberId,
+    );
+    if (
+      saved &&
+      (!privateDraft.value || JSON.stringify(saved) !== JSON.stringify(privateDraft.value))
+    )
+      throw Error('PENDING_UPLOAD_FINISH');
+    if (saved && publicBallot.value) throw Error('PENDING_UPLOAD_FINISH');
+    const ballotId = saved?.fields.ballot_id ?? newId();
+    const body = {
       semantics: ballotType.value,
       title: title.value,
       description: description.value,
@@ -508,7 +841,7 @@ async function open() {
             },
           }
         : {}),
-    });
+    };
     const config = DecideConfigSchema.parse({
       configVersion: 1,
       weight: weight.value,
@@ -517,22 +850,87 @@ async function open() {
       approvalBasisPoints: approval.value,
     });
     const opening = ballotType.value === 'poll' ? 'openpoll' : 'open';
-    await run(
-      current.value.deployment.account,
-      opening,
-      encodeDecide(opening, {
-        ...actor(),
-        ballot_id: newId(),
-        kind: config.weight === 'member' ? 0 : config.weight === 'credit' ? 1 : 2,
-        choices: ballotType.value === 'proposal' ? 2 : ballotChoices.value.length,
-        duration: config.duration,
-        quorum: config.quorumBasisPoints,
-        approval: config.approvalBasisPoints,
-        metadata,
-      }),
-      'Ballot opened',
-    );
+    let openingFields = saved?.fields ?? {
+      ...actor(),
+      ballot_id: ballotId,
+      kind: config.weight === 'member' ? 0 : config.weight === 'credit' ? 1 : 2,
+      choices: body.options.length,
+      duration: config.duration,
+      quorum: config.quorumBasisPoints,
+      approval: config.approvalBasisPoints,
+      metadata: '',
+    };
+    let metadata: string;
+    if (privateBallot.value) {
+      if (!workspace.network?.capabilities.includes('private-ballot-content-v1'))
+        throw Error('PRIVATE_BALLOT_UNSUPPORTED');
+      if (!vaultUnlocked.value || !props.member) throw Error('VAULT_LOCKED');
+      const payload = PrivateRecordPayloadSchema.parse({
+        schemaVersion: 1,
+        kind: 'ballot-content',
+        source: current.value.deployment.account,
+        recordId: ballotId,
+        body,
+      });
+      if (!saved)
+        privateDraft.value = savePrivateBallotDraft(
+          props.dao.reference,
+          current.value.deployment.account,
+          props.member.memberId,
+          { stage: 'content', action: opening, fields: openingFields },
+        );
+      const reference = await publishPrivateRecord(
+        props.dao.reference,
+        props.member.memberId,
+        ballotId,
+        1,
+        payload,
+      );
+      if (disposed || domain !== context.value || !vaultUnlocked.value) return;
+      metadata = encodeBallotMetadata({
+        schemaVersion: 4,
+        semantics: body.semantics,
+        options: body.options.map((_, index) => index),
+        privateContent: reference,
+        ...(body.document ? { document: body.document } : {}),
+      });
+    } else
+      metadata = encodeBallotMetadata({
+        schemaVersion: 3,
+        ...body,
+        ...(props.dao.privacy !== 'public' ? { publicDisclosure: true as const } : {}),
+      });
+    if (saved?.stage === 'opening' && metadata !== saved.fields.metadata)
+      throw Error('PRIVATE_BALLOT_CONTEXT');
+    openingFields = { ...openingFields, metadata };
+    if (privateBallot.value)
+      privateDraft.value = savePrivateBallotDraft(
+        props.dao.reference,
+        current.value.deployment.account,
+        props.member.memberId,
+        { stage: 'opening', action: opening, fields: openingFields },
+      );
+    if (privateDraft.value && (await existingPrivateBallot(privateDraft.value))) {
+      if (disposed || domain !== context.value) return;
+      await load();
+      success.value = 'Ballot opened';
+    } else {
+      ballotPreparing.value = false;
+      await run(
+        current.value.deployment.account,
+        opening,
+        encodeDecide(opening, openingFields),
+        'Ballot opened',
+      );
+    }
     if (!disposed && domain === context.value && success.value === 'Ballot opened') {
+      if (privateDraft.value)
+        clearPrivateBallotDraft(
+          props.dao.reference,
+          current.value.deployment.account,
+          props.member.memberId,
+        );
+      privateDraft.value = undefined;
       title.value = '';
       description.value = '';
       ballotChoices.value = ['', '', ''];
@@ -546,6 +944,8 @@ async function open() {
         cause instanceof z.ZodError
           ? (cause.issues[0]?.message ?? 'Check the ballot content.')
           : friendlyError(cause);
+  } finally {
+    if (!disposed && domain === context.value) ballotPreparing.value = false;
   }
 }
 function preparedBallot(ballot: ModuleState['ballots'][number], choice: number) {
@@ -557,6 +957,7 @@ function preparedBallot(ballot: ModuleState['ballots'][number], choice: number) 
     ballot,
     definitions: data.value.ballotDefinitions,
     choice,
+    privateContent: openedBallots.value[ballot.id],
     execution: data.value.executions.find((row) => row.ballot_id === ballot.id),
     grantPlan: data.value.grantPlans.find((row) => row.ballot_id === ballot.id),
     documentChange: data.value.documentChanges.find((row) => row.ballot_id === ballot.id),
@@ -566,14 +967,15 @@ function preparedBallot(ballot: ModuleState['ballots'][number], choice: number) 
 }
 function ballotHasSeparateDocument(ballot: ModuleState['ballots'][number]) {
   return (
-    !!readBallotMetadata(ballot.metadata, ballot.choices)?.document &&
+    !!ballotContent(ballot)?.document &&
     !data.value?.arbitrationPlans.some((row) => row.ballot_id === ballot.id)
   );
 }
 function ballotNeedsTarget(ballotId: string) {
   return (
     data.value?.ballotDefinitions.some(
-      (row) => row.ballot_id === ballotId && (row.version === 2 || row.purpose === 6),
+      (row) =>
+        row.ballot_id === ballotId && (row.version === 2 || row.version === 4 || row.purpose === 6),
     ) ?? false
   );
 }
@@ -1550,7 +1952,7 @@ const selectedProject = computed(() =>
         ref="ballotDialog"
         class="panel ballot-dialog"
         aria-labelledby="ballot-dialog-title"
-        @cancel="busy && $event.preventDefault()"
+        @cancel="(busy || ballotPreparing) && $event.preventDefault()"
       >
         <header class="ballot-dialog-heading">
           <h2 id="ballot-dialog-title">Open a ballot</h2>
@@ -1558,7 +1960,7 @@ const selectedProject = computed(() =>
             type="button"
             class="decide-icon"
             aria-label="Close ballot form"
-            :disabled="busy"
+            :disabled="busy || ballotPreparing"
             @click="ballotDialog?.close()"
           >
             <X :size="24" aria-hidden="true" />
@@ -1566,135 +1968,189 @@ const selectedProject = computed(() =>
         </header>
         <p v-if="error" class="alert" role="alert">{{ error }}</p>
         <p v-if="busy" role="status">Opening ballot…</p>
+        <p v-else-if="ballotPreparing" role="status">Preparing encrypted ballot…</p>
+        <p v-if="success" role="status">{{ success }}</p>
         <p v-else-if="!signerReady" class="notice">
           Choose an authorized signer in Signing &amp; wallets before opening this ballot.
         </p>
         <form @submit.prevent="open">
-          <fieldset :disabled="busy">
-            <label for="ballot-title">Public ballot title</label
-            ><input id="ballot-title" v-model="title" maxlength="160" required autofocus />
-            <label for="ballot-description">Public explanation</label>
-            <textarea
-              id="ballot-description"
-              v-model="description"
-              maxlength="2000"
-              rows="4"
-              required
-              placeholder="Explain the decision, why it matters and what each choice means."
-            />
-            <p class="field-help">
-              The title, explanation and choices are public on chain. Keep confidential details in
-              an encrypted supporting document.
-            </p>
-            <label for="ballot-type">Ballot type</label>
-            <select id="ballot-type" v-model="ballotType">
-              <option value="proposal">Approve or reject a proposal</option>
-              <option value="poll">Choose one option (2–16 choices)</option>
-            </select>
-            <p v-if="ballotType === 'proposal'" class="field-help">Choices: Reject · Approve</p>
-            <template v-else>
-              <div v-for="(_, index) in ballotChoices" :key="index" class="ballot-choice">
-                <label :for="`ballot-choice-${index}`">Choice {{ index + 1 }}</label>
-                <div class="button-row">
-                  <input
-                    :id="`ballot-choice-${index}`"
-                    v-model="ballotChoices[index]"
-                    maxlength="80"
-                    required
-                  />
-                  <button
-                    type="button"
-                    class="secondary"
-                    :aria-label="`Remove choice ${index + 1}`"
-                    :disabled="ballotChoices.length <= 2"
-                    @click="ballotChoices.splice(index, 1)"
-                  >
-                    Remove
-                  </button>
-                </div>
-              </div>
-              <button
-                type="button"
-                class="secondary"
-                :disabled="ballotChoices.length >= 16"
-                @click="ballotChoices.push('')"
-              >
-                Add choice
-              </button>
+          <button
+            v-if="hasPrivateDraft"
+            type="button"
+            class="secondary"
+            :disabled="busy || ballotPreparing"
+            @click="resumePrivateBallot"
+          >
+            Review unfinished private ballot
+          </button>
+          <button
+            v-if="emptyPrivateDraft"
+            type="button"
+            class="secondary"
+            :disabled="busy || ballotPreparing"
+            @click="discardEmptyPrivateBallot"
+          >
+            Discard empty draft
+          </button>
+          <fieldset :disabled="busy || ballotPreparing">
+            <fieldset :disabled="!!privateDraft">
+              <label v-if="dao.privacy !== 'public'" class="check-line">
+                <input v-model="publicBallot" type="checkbox" /> Publish ballot wording publicly
+              </label>
+              <label for="ballot-title">{{
+                privateBallot ? 'Private ballot title' : 'Public ballot title'
+              }}</label
+              ><input id="ballot-title" v-model="title" maxlength="160" required autofocus />
+              <label for="ballot-description">{{
+                privateBallot ? 'Private explanation' : 'Public explanation'
+              }}</label>
+              <textarea
+                id="ballot-description"
+                v-model="description"
+                maxlength="2000"
+                rows="4"
+                required
+                placeholder="Explain the decision, why it matters and what each choice means."
+              />
               <p class="field-help">
-                One vote per member. A unique leading option must reach your DAO’s approval
-                threshold; a simple plurality can fail.
+                {{
+                  privateBallot
+                    ? 'The title, explanation and custom choices are encrypted for DAO content readers. Ordinary votes, participation and totals remain public.'
+                    : 'The title, explanation and every choice will be public permanently on chain.'
+                }}
               </p>
-            </template>
-            <label for="ballot-document">Supporting document (optional)</label>
-            <select id="ballot-document" v-model="ballotDocument" :disabled="choicesLoading">
-              <option value="">No supporting document</option>
-              <option
-                v-for="document in content?.documents ?? []"
-                :key="document.id"
-                :value="document.id"
-              >
-                {{ documentLabel(document) }}
-              </option>
-            </select>
-            <p v-if="choicesError" class="field-help">
-              Supporting documents could not load.
-              <button type="button" class="secondary" @click="loadMemberChoices">
-                Retry documents
-              </button>
-            </p>
-            <p class="field-help">
-              The selected version is recorded with the ballot. Longer proposals can be published in
-              <router-link :to="`/dao/${dao.reference.daoId}/documents`">Documents</router-link>.
-            </p>
-            <div class="three-column">
-              <div>
-                <label for="weight">Voting weight</label
-                ><select id="weight" v-model="weight" :disabled="!!governance?.policy || busy">
-                  <option value="member">Equal active members</option>
-                  <option value="credit">Governance credits</option>
-                  <option value="native-stake">Escrowed native stake</option>
-                </select>
+              <label for="ballot-type">Ballot type</label>
+              <select id="ballot-type" v-model="ballotType">
+                <option value="proposal">Approve or reject a proposal</option>
+                <option value="poll">Choose one option (2–16 choices)</option>
+              </select>
+              <p v-if="ballotType === 'proposal'" class="field-help">Choices: Reject · Approve</p>
+              <template v-else>
+                <div v-for="(_, index) in ballotChoices" :key="index" class="ballot-choice">
+                  <label :for="`ballot-choice-${index}`">Choice {{ index + 1 }}</label>
+                  <div class="button-row">
+                    <input
+                      :id="`ballot-choice-${index}`"
+                      v-model="ballotChoices[index]"
+                      maxlength="80"
+                      required
+                    />
+                    <button
+                      type="button"
+                      class="secondary"
+                      :aria-label="`Remove choice ${index + 1}`"
+                      :disabled="ballotChoices.length <= 2"
+                      @click="ballotChoices.splice(index, 1)"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  class="secondary"
+                  :disabled="ballotChoices.length >= 16"
+                  @click="ballotChoices.push('')"
+                >
+                  Add choice
+                </button>
+                <p class="field-help">
+                  One vote per member. A unique leading option must reach your DAO’s approval
+                  threshold; a simple plurality can fail.
+                </p>
+              </template>
+              <label for="ballot-document">Supporting document (optional)</label>
+              <select id="ballot-document" v-model="ballotDocument" :disabled="choicesLoading">
+                <option value="">No supporting document</option>
+                <option
+                  v-for="document in content?.documents ?? []"
+                  :key="document.id"
+                  :value="document.id"
+                >
+                  {{ documentLabel(document) }}
+                </option>
+              </select>
+              <p v-if="choicesError" class="field-help">
+                Supporting documents could not load.
+                <button type="button" class="secondary" @click="loadMemberChoices">
+                  Retry documents
+                </button>
+              </p>
+              <p class="field-help">
+                The selected version is recorded with the ballot. Longer proposals can be published
+                in
+                <router-link :to="`/dao/${dao.reference.daoId}/documents`">Documents</router-link>.
+              </p>
+              <div class="three-column">
+                <div>
+                  <label for="weight">Voting weight</label
+                  ><select id="weight" v-model="weight" :disabled="!!governance?.policy || busy">
+                    <option value="member">Equal active members</option>
+                    <option value="credit">Governance credits</option>
+                    <option value="native-stake">Escrowed native stake</option>
+                  </select>
+                </div>
+                <VotingDurationInput
+                  id="duration"
+                  v-model="duration"
+                  label="Duration"
+                  :disabled="!!governance?.policy || busy"
+                  allow-date
+                  :now="now"
+                />
+                <PercentageInput
+                  id="quorum"
+                  v-model="quorum"
+                  label="Quorum (%)"
+                  kind="quorum"
+                  :disabled="!!governance?.policy || busy"
+                />
               </div>
-              <VotingDurationInput
-                id="duration"
-                v-model="duration"
-                label="Duration"
-                :disabled="!!governance?.policy || busy"
-                allow-date
-                :now="now"
-              />
               <PercentageInput
-                id="quorum"
-                v-model="quorum"
-                label="Quorum (%)"
-                kind="quorum"
+                id="approval"
+                v-model="approval"
+                label="Approval (%)"
+                kind="approval"
                 :disabled="!!governance?.policy || busy"
               />
-            </div>
-            <PercentageInput
-              id="approval"
-              v-model="approval"
-              label="Approval (%)"
-              kind="approval"
-              :disabled="!!governance?.policy || busy"
-            />
-            <p v-if="governance?.policy" class="field-help">
-              These settings follow your DAO’s saved governance policy.
-            </p>
-            <p class="field-help">
-              Weight is frozen at opening. New members cannot vote in an existing ballot.
-            </p>
-            <p class="field-help">
-              This ballot is advisory. Passing it does not automatically move funds or change DAO
-              policy.
-            </p>
+              <p v-if="governance?.policy" class="field-help">
+                These settings follow your DAO’s saved governance policy.
+              </p>
+              <p class="field-help">
+                Weight is frozen at opening. New members cannot vote in an existing ballot.
+              </p>
+              <p class="field-help">
+                This ballot is advisory. Passing it does not automatically move funds or change DAO
+                policy.
+              </p>
+            </fieldset>
             <div class="button-row">
-              <button :disabled="!allowed('open')">Open ballot</button>
+              <p v-if="privateBallot && !vaultUnlocked" role="status">
+                Unlock your account to encrypt this ballot.
+              </p>
+              <p
+                v-if="
+                  privateBallot &&
+                  !workspace.network?.capabilities.includes('private-ballot-content-v1')
+                "
+                role="status"
+              >
+                Private ballots are unavailable on this deployment.
+              </p>
+              <button
+                :disabled="
+                  !allowed('open') ||
+                  (privateBallot &&
+                    (!vaultUnlocked ||
+                      !workspace.network?.capabilities.includes('private-ballot-content-v1')))
+                "
+              >
+                {{ privateDraft ? 'Finish private ballot' : 'Open ballot' }}
+              </button>
               <button
                 type="button"
                 class="secondary"
-                :disabled="busy"
+                :disabled="busy || ballotPreparing"
                 @click="ballotDialog?.close()"
               >
                 Cancel
@@ -1728,6 +2184,28 @@ const selectedProject = computed(() =>
                     ? 'Passed'
                     : 'Not passed'
             }}</span>
+          </div>
+          <div v-if="ballot.privateReference && !ballot.definition">
+            <p>Private content. Read and verify the original wording before voting.</p>
+            <button
+              v-if="vaultUnlocked && member?.active"
+              type="button"
+              class="secondary"
+              :disabled="!!ballotReading"
+              @click="readBallot(ballot.id)"
+            >
+              {{
+                ballotReading === ballot.id ? 'Reading encrypted ballot…' : 'Read private ballot'
+              }}
+            </button>
+            <RouterLink
+              v-else
+              :to="{ path: '/account', query: { unlock: '1', returnTo: route.fullPath } }"
+              >Unlock account to read</RouterLink
+            >
+            <p v-if="ballotReadError[ballot.id]" role="alert" class="alert">
+              {{ ballotReadError[ballot.id] }}
+            </p>
           </div>
           <p v-if="ballot.definition?.description" class="ballot-explanation">
             {{ ballot.definition.description }}
@@ -1782,7 +2260,7 @@ const selectedProject = computed(() =>
             :dao-id="dao.reference.daoId"
             :ballot-id="ballot.id"
           />
-          <p v-if="!ballot.definition" class="alert">
+          <p v-if="!ballot.definition && !ballot.privateReference" class="alert">
             The ballot’s choice definitions are unavailable or inconsistent.
           </p>
           <p>

@@ -508,6 +508,7 @@ function eligibleAction(action: string) {
     aria-labelledby="members-tab-applications"
   >
     <p v-if="error" class="alert" role="alert">{{ error }}</p>
+    <p v-if="success && !creationPopup" class="notice" role="status">{{ success }}</p>
     <p v-if="data && !data.joinApplications.length" class="empty-state">
       No membership applications yet.
     </p>
@@ -535,7 +536,16 @@ function eligibleAction(action: string) {
       </p>
       <details>
         <summary>Review complete public identity and document commitment</summary>
-        <p><DocumentReferenceLink :dao-id="dao.reference.daoId" :document-id="app.document_id" :version="app.document_version" :commitment="app.document_commitment" :return-to="`/dao/${dao.reference.daoId}/members`" label="Review application evidence" /></p>
+        <p>
+          <DocumentReferenceLink
+            :dao-id="dao.reference.daoId"
+            :document-id="app.document_id"
+            :version="app.document_version"
+            :commitment="app.document_commitment"
+            :return-to="`/dao/${dao.reference.daoId}/members`"
+            label="Review application evidence"
+          />
+        </p>
         <p class="mono wrap">{{ app.signing_key }}</p>
         <p class="mono wrap">{{ app.encryption_key }}</p>
         <p>
