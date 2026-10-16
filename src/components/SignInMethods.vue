@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { FingerprintPattern, Mail, Send, Anchor, Gem, RefreshCw, ChevronRight } from '@lucide/vue';
 import type { Account, RecoveryMethod } from '@daclify/core-protocol';
@@ -25,6 +25,7 @@ const props = defineProps<{
   returnTo?: string;
   unlockMethods?: RecoveryMethod['kind'][] | undefined;
   initialMethod?: 'telegram' | 'email' | 'passkey' | undefined;
+  pairedEmail?: string | undefined;
 }>();
 const route = useRoute(),
   router = useRouter();
@@ -65,13 +66,21 @@ function choose(id: (typeof choices)[number]['id']) {
 }
 const linked = ref<SignInMethods>();
 const history = ref<Awaited<ReturnType<typeof api.credentialHistory>>>();
-const email = ref('');
+const email = ref(props.pairedEmail ?? '');
 const code = ref('');
+const codeInput = ref<HTMLInputElement>();
+const sendingCode = ref(false);
 const revealed = ref('');
 const awaitingCode = ref(false);
 const busy = ref(false);
 const walletBusy = ref(false);
 const working = computed(() => busy.value || walletBusy.value);
+watch(
+  () => props.pairedEmail,
+  (value) => {
+    if (!email.value && !awaitingCode.value && !working.value) email.value = value ?? '';
+  },
+);
 watch(working, (active) => emit('busy', active), { flush: 'sync' });
 const error = ref('');
 const notice = ref('');
@@ -128,7 +137,10 @@ async function run(work: (check: Check) => Promise<void>) {
   } catch (cause) {
     if (!disposed && generation === revision) error.value = problem(cause);
   } finally {
-    if (!disposed && generation === revision) busy.value = false;
+    if (!disposed && generation === revision) {
+      busy.value = false;
+      sendingCode.value = false;
+    }
   }
 }
 function review(message: string) {
@@ -261,6 +273,7 @@ async function sendCode() {
     const mailbox = email.value;
     revealed.value = '';
     code.value = '';
+    sendingCode.value = true;
     const started =
       props.mode === 'manage'
         ? await api.startEmailLink(mailbox)
@@ -268,8 +281,9 @@ async function sendCode() {
     check();
     awaitingCode.value = true;
     if ('code' in started) revealed.value = started.code;
-    else notice.value = 'Check that mailbox for the code.';
   });
+  await nextTick();
+  if (!working.value && !error.value) codeInput.value?.focus();
 }
 async function confirmCode() {
   await run(async (check) => {
@@ -336,6 +350,7 @@ async function earlierHistory() {
 watch(context, () => {
   revision++;
   busy.value = false;
+  sendingCode.value = false;
   linked.value = undefined;
   options.value = undefined;
   history.value = undefined;
@@ -638,21 +653,24 @@ onUnmounted(() => {
           required
           :disabled="working"
         />
+        <p class="field-help">We’ll send an 8-digit code. You’ll confirm it on the next step.</p>
         <button type="submit" :disabled="working">
-          {{ busy ? 'Sending code…' : 'Send code' }}
+          {{ sendingCode ? 'Sending code…' : 'Send code' }}
         </button>
       </form>
+      <p v-if="sendingCode" role="status">Sending code…</p>
       <p v-if="revealed" class="notice" role="status">
         The code for this browser is {{ revealed }}.
       </p>
       <form v-if="awaitingCode" @submit.prevent="confirmCode">
-        <p class="email-code-destination">
-          Enter the 8-digit code for <strong class="wrap">{{ email }}</strong
-          >.
+        <p class="email-code-destination" role="status">
+          Code requested. Enter the 8-digit code for <strong class="wrap">{{ email }}</strong
+          >. <template v-if="!revealed">Check your inbox and spam folder.</template>
         </p>
         <label for="sign-in-code">Email code</label>
         <input
           id="sign-in-code"
+          ref="codeInput"
           v-model="code"
           inputmode="numeric"
           autocomplete="one-time-code"
@@ -662,11 +680,19 @@ onUnmounted(() => {
           :disabled="working"
         />
         <button type="submit" :disabled="working">
-          {{ busy ? 'Checking code…' : mode === 'manage' ? 'Confirm email' : 'Sign in with email' }}
+          {{
+            busy && !sendingCode
+              ? 'Checking code…'
+              : mode === 'manage'
+                ? 'Confirm email'
+                : unlockMethods
+                  ? 'Verify code and unlock'
+                  : 'Sign in with email'
+          }}
         </button>
         <div class="button-row">
           <button type="button" class="text-button" :disabled="working" @click="sendCode">
-            Send another code</button
+            {{ sendingCode ? 'Sending code…' : 'Send another code' }}</button
           ><button type="button" class="text-button" :disabled="working" @click="changeEmail">
             Use another email
           </button>

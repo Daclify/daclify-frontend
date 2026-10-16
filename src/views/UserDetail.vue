@@ -106,17 +106,24 @@ const dao = computed(() =>
 );
 let generation = 0,
   disposed = false;
+const profileIdentity = computed(() =>
+  JSON.stringify([
+    state.network?.chainId,
+    state.network?.runtime,
+    state.account?.id,
+    daoId.value,
+    memberId.value,
+  ]),
+);
 watch(
-  () =>
-    JSON.stringify([
-      state.network?.chainId,
-      state.network?.runtime,
-      state.account?.id,
-      daoId.value,
-      memberId.value,
-      profileRevision.value,
-      vaultUnlocked.value,
-    ]),
+  profileIdentity,
+  () => {
+    editing.value = false;
+  },
+  { flush: 'sync' },
+);
+watch(
+  () => JSON.stringify([profileIdentity.value, profileRevision.value, vaultUnlocked.value]),
   async () => {
     const request = ++generation;
     profile.value = undefined;
@@ -126,7 +133,6 @@ watch(
     exists.value = false;
     memberNative.value = '';
     publicMember.value = undefined;
-    editing.value = false;
     busy.value = true;
     try {
       if (!daoId.value || !memberId.value) {

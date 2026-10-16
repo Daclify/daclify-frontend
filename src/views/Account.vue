@@ -110,6 +110,12 @@ const recoveryInfo = ref<RecoveryMethods>();
 const unlockMethods = computed(() =>
   recoveryInfo.value?.methods.filter((method) => method.mode).map((method) => method.kind),
 );
+const unlockEmail = computed(() => {
+  const methods = recoveryInfo.value?.methods.filter(
+    (method) => method.kind === 'email' && method.mode,
+  );
+  return methods?.length === 1 ? methods[0]?.subject : undefined;
+});
 function openApprovalRecovery() {
   approvalRecoveryRequested.value = true;
   void nextTick(() =>
@@ -792,6 +798,7 @@ function backup() {
                   (!requested || unlockMethods?.some((method) => method !== 'google'))
                 "
                 mode="enter"
+                :paired-email="unlockEmail"
                 :unlock-methods="requested ? unlockMethods : undefined"
                 @authenticated="onSignedIn"
                 @busy="providerBusy = $event"
@@ -963,6 +970,7 @@ function backup() {
             <SignInMethods
               v-if="unlockMethods?.some((method) => method !== 'google')"
               mode="enter"
+              :paired-email="unlockEmail"
               :unlock-methods="unlockMethods"
               @authenticated="(account) => onSignedIn(account, true)"
               @busy="providerBusy = $event"

@@ -10,6 +10,7 @@ import {
   VERSION,
   UserMembershipSchema,
   MemberProfileSchema,
+  PeopleRoutes,
   recoveryVaultDomain,
 } from '@daclify/core-protocol';
 import {
@@ -46,6 +47,28 @@ async function fixture(page: Page, withProfile = false, initiallyAuthenticated =
         }),
       });
     if (path === '/v1/daos') return route.fulfill({ json: { daos: [], next: null } });
+    if (path === PeopleRoutes.members.path)
+      return route.fulfill({
+        json: PeopleRoutes.members.response.parse({
+          members: withProfile
+            ? [
+                {
+                  id: '1',
+                  native_account: 'alice',
+                  active: true,
+                  dao: {
+                    chainId: 'ab'.repeat(32),
+                    contract: 'daclifycore',
+                    daoId: '1',
+                    interfaceVersion: 1,
+                  },
+                  profile: null,
+                },
+              ]
+            : [],
+          next: null,
+        }),
+      });
     if (path === '/v1/sign-in/session')
       return route.fulfill(authenticated ? { json: { account } } : { status: 204 });
     if (path === '/v1/me/memberships')
@@ -174,9 +197,124 @@ async function unlockProfile(page: Page) {
   await profile.getByLabel('Sign-in email', { exact: true }).fill('alice@example.test');
   await profile.getByRole('button', { name: /Send.*code/ }).click();
   await profile.getByLabel('Email code', { exact: true }).fill('12345678');
-  await profile.getByRole('button', { name: 'Sign in with email', exact: true }).click();
+  await profile.getByRole('button', { name: 'Verify code and unlock', exact: true }).click();
   return profile;
 }
+test('sends a code to the paired email from the embedded profile and focuses verification', async ({
+  page,
+}) => {
+  await fixture(page, true, true);
+  let releaseDelivery = () => {};
+  const delivery = new Promise<void>((resolve) => {
+    releaseDelivery = resolve;
+  });
+  const writes: string[] = [];
+  page.on('request', (request) => {
+    if (request.method() === 'POST') writes.push(new URL(request.url()).pathname);
+  });
+  await page.route('**/v1/sign-in/email/login/start', async (route) => {
+    expect(route.request().postDataJSON()).toEqual({ email: 'alice@example.test' });
+    await delivery;
+    await route.fulfill({ json: { delivery: 'sent' } });
+  });
+  await page.goto('/users/me');
+  await page.getByRole('button', { name: 'Edit profile & account', exact: true }).click();
+  const profile = page.getByRole('tabpanel', { name: 'Profile', exact: true });
+  await profile.getByRole('button', { name: 'E-Mail', exact: true }).click();
+  await expect(profile.getByLabel('Sign-in email', { exact: true })).toHaveValue(
+    'alice@example.test',
+  );
+  expect(writes).toEqual([]);
+  await profile.getByRole('button', { name: 'Send code', exact: true }).click();
+  await expect(profile.getByRole('button', { name: 'Sending code…', exact: true })).toBeDisabled();
+  await expect(profile.getByRole('status')).toContainText('Sending');
+  releaseDelivery();
+  await expect(profile.getByRole('status')).toContainText('Code requested');
+  await expect(profile.getByLabel('Email code', { exact: true })).toBeFocused();
+  const verify = profile.getByRole('button', { name: 'Verify code and unlock', exact: true });
+  await expect(verify).toBeVisible();
+  await profile.getByLabel('Email code', { exact: true }).fill('12345678');
+  await verify.click();
+  // Unlocking must retain the embedded editor, rather than silently closing it.
+  await expect(profile.getByLabel('Full name', { exact: true })).toHaveValue('Alice Example');
+  expect(writes).toEqual([
+    '/v1/sign-in/email/login/start',
+    '/v1/sign-in/email/login',
+    '/v1/account/recovery/claim',
+  ]);
+});
+test('keeps the paired email and offers retry when requesting a code fails', async ({ page }) => {
+  await fixture(page, true, true);
+  let unavailable = true;
+  await page.route('**/v1/sign-in/email/login/start', (route) =>
+    route.fulfill(
+      unavailable
+        ? { status: 503, json: { code: 'SERVICE_UNAVAILABLE', message: 'Synthetic failure' } }
+        : { json: { delivery: 'sent' } },
+    ),
+  );
+  await page.goto('/account');
+  const profile = page.getByRole('tabpanel', { name: 'Profile', exact: true });
+  await profile.getByRole('button', { name: 'E-Mail', exact: true }).click();
+  await profile.getByRole('button', { name: 'Send code', exact: true }).click();
+  await expect(profile.getByRole('alert')).toBeVisible();
+  await expect(profile.getByLabel('Sign-in email', { exact: true })).toHaveValue(
+    'alice@example.test',
+  );
+  await expect(profile.getByLabel('Email code', { exact: true })).toHaveCount(0);
+  await expect(profile.getByRole('button', { name: 'Send code', exact: true })).toBeEnabled();
+  unavailable = false;
+  await profile.getByRole('button', { name: 'Send code', exact: true }).click();
+  await expect(profile.getByRole('status')).toContainText('Code requested');
+  await expect(profile.getByLabel('Email code', { exact: true })).toBeFocused();
+  await expect(
+    profile.getByRole('button', { name: 'Verify code and unlock', exact: true }),
+  ).toBeVisible();
+});
+test('requires an explicit email choice when multiple full-access addresses are paired', async ({
+  page,
+}) => {
+  await fixture(page, true, true);
+  await page.route('**/v1/account/recovery', (route) =>
+    route.fulfill({
+      json: RecoveryMethodsSchema.parse({
+        methods: ['alice@example.test', 'second@example.test'].map((subject) => ({
+          credentialKey: 'email:' + subject,
+          kind: 'email',
+          subject,
+          chainId: null,
+          mode: 'daclify-assisted',
+          availableModes: ['daclify-assisted'],
+          reason: null,
+        })),
+        assistedEver: true,
+        configured: true,
+        reason: null,
+      }),
+    }),
+  );
+  let requests = 0;
+  await page.route('**/v1/sign-in/email/login/start', (route) => {
+    requests++;
+    expect(route.request().postDataJSON()).toEqual({ email: 'second@example.test' });
+    return route.fulfill({ json: { delivery: 'sent' } });
+  });
+  await page.goto('/account');
+  const profile = page.getByRole('tabpanel', { name: 'Profile', exact: true });
+  await profile.getByRole('button', { name: 'E-Mail', exact: true }).click();
+  const email = profile.getByLabel('Sign-in email', { exact: true });
+  await expect(email).toHaveValue('');
+  await profile.getByRole('button', { name: 'Send code', exact: true }).click();
+  await expect(email).toBeFocused();
+  expect(requests).toBe(0);
+  await email.fill('second@example.test');
+  await profile.getByRole('button', { name: 'Send code', exact: true }).click();
+  await expect(profile.getByLabel('Email code', { exact: true })).toBeFocused();
+  expect(requests).toBe(1);
+  await profile.getByRole('button', { name: 'Use another email', exact: true }).click();
+  await expect(email).toHaveValue('second@example.test');
+  await expect(profile.getByLabel('Email code', { exact: true })).toHaveCount(0);
+});
 test('unlocks a signed-in email account directly from its locked profile without a vault password', async ({
   page,
 }) => {
