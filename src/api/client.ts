@@ -1,4 +1,5 @@
 import { ContactRecoveryRoutes } from '@daclify/core-protocol';
+import { PrivateRecordRoutes } from '@daclify/core-protocol';
 import { QuickAccountRoutes } from '@daclify/core-protocol';
 import { QuickBallotRoutes } from '@daclify/modules';
 import {
@@ -903,6 +904,15 @@ export const api = {
       if (cursor !== undefined) query.set(key, cursor);
     const path = ApiRoutes.content.path.replace(':id', IdSchema.parse(daoId));
     return request(path + (query.size ? '?' + query.toString() : ''), ApiRoutes.content.response);
+  },
+  privateIdentity: async (dao: DaoRef) => {
+    assertOperatorDao(dao);
+    const result = await request(
+      PrivateRecordRoutes.identity.path.replace(':id', IdSchema.parse(dao.daoId)),
+      PrivateRecordRoutes.identity.response,
+    );
+    if (daoPaymentKey(result.dao) !== daoPaymentKey(dao)) throw new ApiFailure('DAO_REFERENCE');
+    return result;
   },
   content: async (daoId: string) => {
     const path = ApiRoutes.content.path.replace(':id', IdSchema.parse(daoId));

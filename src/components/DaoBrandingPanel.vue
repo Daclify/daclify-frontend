@@ -194,14 +194,31 @@ async function save() {
           ...(logo.value ? { logo: BrandImageSchema.parse(JSON.parse(logo.value)) } : {}),
           ...(cover.value ? { cover: BrandImageSchema.parse(JSON.parse(cover.value)) } : {}),
         };
-    const metadata = MetadataSchema.parse({
-      schemaVersion: 3,
-      title: dao.title,
-      description: dao.description,
-      purpose: dao.purpose ?? 'custom',
-      setup: dao.setup ?? null,
-      branding: { ...images, summary: summary.value },
-    });
+    const snapshot =
+      dao.privacy !== 'public' &&
+      workspace.network?.capabilities.includes('private-dao-identity-v1')
+        ? await api.privateIdentity(dao.reference)
+        : undefined;
+    if (generation !== revision) return;
+    const metadata = MetadataSchema.parse(
+      snapshot?.metadata.schemaVersion === 4
+        ? {
+            ...snapshot.metadata,
+            publicIdentity: {
+              title: snapshot.metadata.publicIdentity?.title ?? dao.title,
+              description: snapshot.metadata.publicIdentity?.description ?? dao.description,
+              branding: { ...images, summary: summary.value },
+            },
+          }
+        : {
+            schemaVersion: 3,
+            title: dao.title,
+            description: dao.description,
+            purpose: dao.purpose ?? 'custom',
+            setup: dao.setup ?? null,
+            branding: { ...images, summary: summary.value },
+          },
+    );
     const request = makeInstruction(
       dao.reference,
       member.memberId,
@@ -214,6 +231,9 @@ async function save() {
         dao_id: dao.reference.daoId,
         member_id: member.memberId,
         metadata: JSON.stringify(metadata),
+        ...(metadata.schemaVersion === 4 && snapshot
+          ? { expected: snapshot.metadataCommitment }
+          : {}),
       }),
     );
     await relayInstruction(request);

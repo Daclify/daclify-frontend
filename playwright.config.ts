@@ -6,7 +6,10 @@ const port = z.coerce
   .min(1024)
   .max(65535)
   .parse(process.env.DACLIFY_TEST_UI_PORT ?? 5178);
-const baseURL = 'http://127.0.0.1:' + port;
+const host = z
+  .enum(['127.0.0.1', 'localhost'])
+  .parse(process.env.DACLIFY_TEST_UI_HOST ?? '127.0.0.1');
+const baseURL = `http://${host}:${port}`;
 export default defineConfig({
   testDir: 'tests/e2e',
   fullyParallel: false,

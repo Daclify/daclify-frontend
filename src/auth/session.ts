@@ -33,6 +33,7 @@ import {
   type EncryptedProfile,
   type ProfileKeyGrant,
   type EncryptionPublicKey,
+  HostedUploadSchema,
 } from '@daclify/core-protocol';
 import {
   instructionDigest,
@@ -72,6 +73,7 @@ import {
   preparePrivateFile,
   openPrivateFile,
   verifyStoredFile,
+  decodeStoredBytes,
   type PreparedFile,
   type FileMetadata,
 } from '../content/files';
@@ -1037,6 +1039,21 @@ export async function decryptDaoFile(
     stored,
     key,
     contentDomain(dao, document.document_id, document.version, document.key_epoch),
+  );
+  guardEpochAccess(started);
+  return opened;
+}
+export async function openPreparedDaoFile(member: string, content: DaoContent, input: unknown) {
+  const upload = HostedUploadSchema.parse(input),
+    started = generation;
+  if (upload.envelopeVersion !== 1) throw Error('DOCUMENT_FORMAT');
+  const stored = decodeStoredBytes(upload.content);
+  await verifyStoredFile(upload, stored);
+  const key = await epochKey(upload.dao, member, upload.keyEpoch, content);
+  const opened = await openPrivateFile(
+    stored,
+    key,
+    contentDomain(upload.dao, upload.documentId, upload.version, upload.keyEpoch),
   );
   guardEpochAccess(started);
   return opened;

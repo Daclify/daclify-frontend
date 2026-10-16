@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, watch, onBeforeUnmount } from 'vue';
 import { useRoute } from 'vue-router';
-import { type DaoClaimView, DaoClaimSetupSchema } from '@daclify/core-protocol';
+import {
+  type DaoClaimView,
+  DaoClaimSetupSchema,
+  type PrivateRecordPayload,
+} from '@daclify/core-protocol';
 import { api, friendlyError } from '../api/client';
 import { resolveApiUrl } from '../api/networks';
 import { useWorkspace } from '../state/workspace';
@@ -11,7 +15,11 @@ import { nativeWallet, connectNative } from '../auth/telos-zero';
 import { evmWallet, connectEvm } from '../auth/telos-evm';
 import SignInMethods from './SignInMethods.vue';
 import GoogleSignIn from './GoogleSignIn.vue';
-const props = defineProps<{ request: Parameters<typeof api.daoClaimIssue>[0]['request'] | null }>();
+import { sealPrivateCreation } from '../content/private-identity-setup';
+const props = defineProps<{
+  request: Parameters<typeof api.daoClaimIssue>[0]['request'] | null;
+  identity?: Extract<PrivateRecordPayload, { kind: 'dao-identity' }>['body'] | undefined;
+}>();
 const route = useRoute();
 const state = useWorkspace(),
   links = ref<DaoClaimView[]>([]),
@@ -106,12 +114,21 @@ async function issue() {
   error.value = '';
   link.value = '';
   try {
+    const sealed =
+      props.request.privacy !== 'public'
+        ? await sealPrivateCreation(props.request, 'invitation', props.identity)
+        : { request: props.request, contentKey: undefined };
+    if (expected !== context()) return;
     const result = await api.daoClaimIssue(
-      { request: props.request },
+      { request: sealed.request },
       approval.value === 'sign-in',
     );
     if (expected !== context()) return;
-    link.value = new URL('/claim-dao#' + result.token, window.location.origin).toString();
+    link.value = new URL(
+      '/claim-dao#' +
+        (sealed.contentKey ? `v2:${result.token}:${sealed.contentKey}` : result.token),
+      window.location.origin,
+    ).toString();
     await load();
   } catch (cause) {
     if (expected === context()) error.value = friendlyError(cause);

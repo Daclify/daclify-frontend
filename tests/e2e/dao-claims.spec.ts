@@ -104,7 +104,7 @@ test('new-account entry preserves a secret-free redirect and claims the sole nat
   ).toBeVisible();
   expect((await new AxeBuilder({ page: target }).analyze()).violations).toEqual([]);
   const accountHref = await target
-    .getByRole('link', { name: 'Sign in', exact: true })
+    .getByRole('link', { name: 'Sign in', exact: true, includeHidden: true })
     .getAttribute('href');
   expect(accountHref?.includes(new URL(link).hash.slice(1))).toBe(false);
   await target.getByRole('button', { name: 'Sign in or create an account', exact: true }).click();

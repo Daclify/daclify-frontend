@@ -3,7 +3,14 @@ import { accountDestination } from '../auth/destination';
 import { computed, ref, watch, onBeforeUnmount } from 'vue';
 import { useRoute } from 'vue-router';
 import { ArrowLeft, ArrowUpRight, KeyRound, ShieldCheck } from '@lucide/vue';
-import { DaoPresets, daoPaymentKey, type DaoRef } from '@daclify/core-protocol';
+import {
+  DaoPresets,
+  daoPaymentKey,
+  type DaoRef,
+  type PrivateRecordPayload,
+} from '@daclify/core-protocol';
+import { vaultUnlocked } from '../auth/session';
+import { readPrivateRecord, readPrivateImage } from '../content/private-records';
 import { BallotContentSchema, type ModuleState } from '@daclify/modules';
 import { api, friendlyError } from '../api/client';
 import { canSignMember } from '../auth/action-signer';
@@ -38,7 +45,13 @@ const invalidDocumentLink = computed(
     ['document', 'version', 'commitment'].some((key) => route.query[key] !== undefined) &&
     !linkedDocument.value,
 );
-const documentReturnTo = computed(()=>typeof route.query.returnTo==='string' && route.query.returnTo.startsWith(`/dao/${route.params.id}/`) && /^\/dao\/[0-9]+\/[a-z-]+$/.test(route.query.returnTo) ? route.query.returnTo : undefined);
+const documentReturnTo = computed(() =>
+  typeof route.query.returnTo === 'string' &&
+  route.query.returnTo.startsWith(`/dao/${route.params.id}/`) &&
+  /^\/dao\/[0-9]+\/[a-z-]+$/.test(route.query.returnTo)
+    ? route.query.returnTo
+    : undefined,
+);
 const dao = computed(() =>
   state.daos.find(
     (d) =>
@@ -53,6 +66,92 @@ const membership = computed(() =>
   ),
 );
 const signerReady = computed(() => canSignMember(membership.value));
+const privateIdentity = ref<Extract<PrivateRecordPayload, { kind: 'dao-identity' }>['body']>();
+const privateSnapshot = ref<Awaited<ReturnType<typeof api.privateIdentity>>>();
+const privateIdentityError = ref('');
+const privateImages = ref<{ logo?: string; cover?: string }>({});
+function clearPrivateImages() {
+  for (const url of Object.values(privateImages.value)) if (url) URL.revokeObjectURL(url);
+  privateImages.value = {};
+}
+let privateIdentityGeneration = 0;
+const identityContext = () =>
+  JSON.stringify([
+    dao.value?.reference,
+    state.account?.id,
+    state.account?.encryptionKey,
+    membership.value?.memberId,
+    membership.value?.active,
+    dao.value?.keyEpoch,
+    vaultUnlocked.value,
+    state.network?.capabilities,
+  ]);
+async function loadPrivateIdentity() {
+  const generation = ++privateIdentityGeneration,
+    current = dao.value,
+    member = membership.value;
+  privateIdentity.value = undefined;
+  privateSnapshot.value = undefined;
+  privateIdentityError.value = '';
+  clearPrivateImages();
+  if (
+    !current ||
+    current.privacy === 'public' ||
+    !state.network?.capabilities.includes('private-dao-identity-v1')
+  )
+    return;
+  try {
+    const snapshot = await api.privateIdentity(current.reference);
+    if (generation !== privateIdentityGeneration) return;
+    privateSnapshot.value = snapshot;
+    if (!snapshot.reference || !vaultUnlocked.value || !member?.active) return;
+    const content = await api.content(current.reference.daoId);
+    if (generation !== privateIdentityGeneration) return;
+    const opened = await readPrivateRecord(
+      current.reference,
+      member.memberId,
+      snapshot.reference,
+      content,
+      {
+        kind: 'dao-identity',
+        source: current.reference.contract,
+        recordId: current.reference.daoId,
+      },
+    );
+    if (generation !== privateIdentityGeneration || opened.kind !== 'dao-identity') return;
+    privateIdentity.value = opened.body;
+    for (const slot of ['logo', 'cover'] as const) {
+      const reference = opened.body.branding?.[slot];
+      if (!reference) continue;
+      try {
+        const image = await readPrivateImage(
+          current.reference,
+          member.memberId,
+          reference,
+          content,
+        );
+        if (generation !== privateIdentityGeneration) return;
+        privateImages.value[slot] = URL.createObjectURL(
+          new Blob([Uint8Array.from(image.bytes).buffer], { type: image.mediaType }),
+        );
+      } catch {
+        /* Unavailable or unsafe images retain the text-only private identity. */
+      }
+    }
+  } catch (cause) {
+    if (generation === privateIdentityGeneration) privateIdentityError.value = friendlyError(cause);
+  }
+}
+watch(identityContext, loadPrivateIdentity, { immediate: true, flush: 'sync' });
+onBeforeUnmount(() => {
+  privateIdentityGeneration++;
+  privateIdentity.value = undefined;
+  clearPrivateImages();
+});
+async function refreshIdentity() {
+  await state.refresh();
+  await loadPrivateIdentity();
+}
 const role = computed(() =>
   !membership.value
     ? 'Visitor'
@@ -182,15 +281,26 @@ const setupTabs = computed<ReadonlyArray<readonly [string, string]>>(() => [
   </div>
   <div v-else class="workspace-page">
     <header class="workspace-heading">
+      <img v-if="privateImages.cover" class="private-dao-cover" :src="privateImages.cover" alt="" />
       <RouterLink class="workspace-back" to="/hub"
         ><ArrowLeft aria-hidden="true" /> All DAOs</RouterLink
       >
       <div class="workspace-identity">
         <div>
           <p class="eyebrow">{{ preset?.title }} WORKSPACE</p>
-          <h1>{{ dao.title }}</h1>
+          <img
+            v-if="privateImages.logo"
+            class="private-dao-logo"
+            :src="privateImages.logo"
+            alt=""
+          />
+          <h1>{{ privateIdentity?.title ?? dao.title }}</h1>
           <p class="lead wrap">
-            {{ dao.description || 'A shared place for decisions and contributions.' }}
+            {{
+              privateIdentity?.description ||
+              dao.description ||
+              'A shared place for decisions and contributions.'
+            }}
           </p>
         </div>
         <div class="workspace-badges">
@@ -201,6 +311,12 @@ const setupTabs = computed<ReadonlyArray<readonly [string, string]>>(() => [
         </div>
       </div>
     </header>
+    <p v-if="privateIdentityError" class="notice" role="status">
+      Private DAO details are unavailable. {{ privateIdentityError }}
+      <button type="button" class="secondary" @click="loadPrivateIdentity">
+        Retry private details
+      </button>
+    </p>
     <div class="workspace-navigation">
       <nav class="workspace-destinations" aria-label="DAO sections">
         <div>
@@ -313,7 +429,10 @@ const setupTabs = computed<ReadonlyArray<readonly [string, string]>>(() => [
       :key="panelKey"
       :dao="dao"
       :member="membership"
-      @updated="state.refresh"
+      :private-identity="privateIdentity"
+      :private-reference="privateSnapshot?.reference ?? undefined"
+      :private-mode="privateSnapshot?.metadata.schemaVersion === 4"
+      @updated="refreshIdentity"
     />
     <ConnectedApps v-else-if="section === 'apps'" :key="panelKey" :dao="dao" :member="membership" />
     <PlatformDao v-else-if="section === 'platform' && isPlatform" :key="panelKey" />
@@ -387,6 +506,18 @@ const setupTabs = computed<ReadonlyArray<readonly [string, string]>>(() => [
   </div>
 </template>
 <style scoped>
+.private-dao-logo {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 12px;
+}
+.private-dao-cover {
+  width: 100%;
+  max-height: 160px;
+  object-fit: cover;
+  border-radius: 12px;
+}
 .workspace-page {
   display: grid;
   gap: 24px;

@@ -2,18 +2,31 @@
 import { computed, ref, watch, onBeforeUnmount } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { CircleHelp, CreditCard, Database, Users, Boxes, Pencil } from '@lucide/vue';
-import { MetadataSchema, type DaoSummary, type UserMembership } from '@daclify/core-protocol';
+import {
+  MetadataSchema,
+  type DaoSummary,
+  type UserMembership,
+  type PrivateRecordPayload,
+  type PrivateRecordReference,
+} from '@daclify/core-protocol';
 import { encodeAction, makeInstruction } from '@daclify/core-protocol/sdk';
 import WorkspaceDialog from './WorkspaceDialog.vue';
 import WorkspaceTabs from './WorkspaceTabs.vue';
 import DaoBrandingPanel from './DaoBrandingPanel.vue';
+import PrivateDaoIdentity from './PrivateDaoIdentity.vue';
 import GovernancePanel from './GovernancePanel.vue';
 import { currentOperator } from '../api/networks';
 import { relayInstruction } from '../auth/session';
 import { canSignMember } from '../auth/action-signer';
-import { friendlyError } from '../api/client';
+import { api, friendlyError } from '../api/client';
 import { useWorkspace } from '../state/workspace';
-const props = defineProps<{ dao: DaoSummary; member: UserMembership | undefined }>();
+const props = defineProps<{
+  dao: DaoSummary;
+  member: UserMembership | undefined;
+  privateMode?: boolean;
+  privateIdentity?: Extract<PrivateRecordPayload, { kind: 'dao-identity' }>['body'] | undefined;
+  privateReference?: PrivateRecordReference | undefined;
+}>();
 defineEmits<{ updated: [] }>();
 const route = useRoute(),
   router = useRouter(),
@@ -31,6 +44,7 @@ const busy = ref(false),
   error = ref(''),
   notice = ref(''),
   newTitle = ref(props.dao.title);
+const publicConsent = ref(false);
 const context = computed(() =>
   JSON.stringify([
     props.dao.reference,
@@ -49,6 +63,7 @@ watch(context, () => {
   notice.value = '';
   busy.value = false;
   popup.value = false;
+  publicConsent.value = false;
 });
 watch(
   () => props.dao.title,
@@ -75,13 +90,29 @@ async function rename() {
   error.value = '';
   notice.value = '';
   try {
-    const metadata = MetadataSchema.parse({
-      schemaVersion: d.branding ? 3 : d.setup ? 2 : 1,
-      title: newTitle.value.trim(),
-      description: d.description,
-      ...(d.setup || d.branding ? { purpose: d.purpose ?? 'custom', setup: d.setup ?? null } : {}),
-      ...(d.branding ? { branding: d.branding } : {}),
-    });
+    if (props.privateMode && !publicConsent.value) throw Error('PUBLIC_CONSENT_REQUIRED');
+    const snapshot = props.privateMode ? await api.privateIdentity(d.reference) : undefined;
+    if (generation !== revision) return;
+    const metadata = MetadataSchema.parse(
+      snapshot?.metadata.schemaVersion === 4
+        ? {
+            ...snapshot.metadata,
+            publicIdentity: {
+              ...snapshot.metadata.publicIdentity,
+              title: newTitle.value.trim(),
+              description: snapshot.metadata.publicIdentity?.description ?? '',
+            },
+          }
+        : {
+            schemaVersion: d.branding ? 3 : d.setup ? 2 : 1,
+            title: newTitle.value.trim(),
+            description: d.description,
+            ...(d.setup || d.branding
+              ? { purpose: d.purpose ?? 'custom', setup: d.setup ?? null }
+              : {}),
+            ...(d.branding ? { branding: d.branding } : {}),
+          },
+    );
     await relayInstruction(
       makeInstruction(
         d.reference,
@@ -95,6 +126,9 @@ async function rename() {
           dao_id: d.reference.daoId,
           member_id: m.memberId,
           metadata: JSON.stringify(metadata),
+          ...(metadata.schemaVersion === 4 && snapshot
+            ? { expected: snapshot.metadataCommitment }
+            : {}),
         }),
       ),
     );
@@ -141,10 +175,18 @@ async function rename() {
       aria-labelledby="settings-tab-identity"
       class="settings-content"
     >
+      <PrivateDaoIdentity
+        v-if="privateMode"
+        :dao="dao"
+        :member="member"
+        :body="privateIdentity"
+        :reference="privateReference"
+        @updated="$emit('updated')"
+      />
       <section class="panel">
         <div class="panel-heading">
           <div>
-            <h2>Public identity</h2>
+            <h2>Public directory identity</h2>
             <p class="settings-description">
               The name people see in the directory and your workspace.
             </p>
@@ -176,6 +218,10 @@ async function rename() {
         </p>
         <p v-if="error" class="alert" role="alert">{{ error }}</p>
         <form @submit.prevent="rename">
+          <label v-if="privateMode" class="checkbox-label"
+            ><input v-model="publicConsent" type="checkbox" required />Publish this name publicly in
+            the directory and on chain.</label
+          >
           <label for="rename">New DAO name</label
           ><input id="rename" v-model="newTitle" maxlength="160" required :disabled="busy" />
           <p v-if="!newTitle.trim()" class="field-help">Enter a DAO name before signing.</p>

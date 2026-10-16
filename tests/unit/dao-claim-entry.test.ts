@@ -47,3 +47,16 @@ it('rejects expired, malformed and different-API checkpoints', () => {
   }
   expect(() => saveClaimDestination(storage(), 'invalid', 'https://api.example/')).toThrow();
 });
+it('keeps a private invitation content key only in memory while sign-in receives an opaque checkpoint', () => {
+  const tab = storage(),
+    token = 'b'.repeat(43),
+    contentKey = 'c'.repeat(43),
+    fragment = `v2:${token}:${contentKey}`;
+  const path = accountEntryDestination('/claim-dao#' + fragment, tab, 'https://api.example/');
+  expect(path).toMatch(/^\/claim-dao\?resume=/);
+  expect(path).not.toContain(contentKey);
+  expect(tab.getItem('daclify.dao-claim-entry')).not.toContain(contentKey);
+  const checkpoint = new URL(path, 'https://app.example').searchParams.get('resume');
+  expect(takeClaimDestination(tab, checkpoint, 'https://api.example/')).toBe(fragment);
+  expect(takeClaimDestination(tab, checkpoint, 'https://api.example/')).toBeUndefined();
+});

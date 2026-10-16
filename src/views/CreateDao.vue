@@ -5,6 +5,7 @@ import { ArrowRight } from '@lucide/vue';
 import {
   DaoPresets,
   DaoClaimSetupSchema,
+  PrivateIdentityBodySchema,
   DeploymentOptions,
   DaoSetupSchema,
   FoundingAgentSchema,
@@ -17,6 +18,9 @@ import {
 import { useWorkspace } from '../state/workspace';
 import { api, ApiFailure, friendlyError } from '../api/client';
 import { createdDaoLocation } from '../auth/destination';
+import { vaultUnlocked } from '../auth/session';
+import { sealPrivateCreation, openPrivateFounder } from '../content/private-identity-setup';
+import { installPrivateIdentity } from '../content/install-private-identity';
 import Account from './Account.vue';
 import DaoClaimIssuer from '../components/DaoClaimIssuer.vue';
 import VotingDurationInput from '../components/VotingDurationInput.vue';
@@ -29,6 +33,42 @@ const platform = ref<PlatformStatus>();
 const platformBusy = ref(false),
   platformError = ref('');
 const order = ref<CreationOrderView>();
+const privateOrderIdentity = ref<{ title: string; description: string }>();
+let privateOrderGeneration = 0;
+watch(
+  () =>
+    JSON.stringify([
+      order.value?.requestId,
+      state.account?.id,
+      state.network?.chainId,
+      state.network?.runtime,
+      vaultUnlocked.value,
+    ]),
+  async () => {
+    const generation = ++privateOrderGeneration;
+    privateOrderIdentity.value = undefined;
+    const current = order.value,
+      sealed = current?.setup.privateSetup;
+    if (!current || sealed?.stage !== 'founder' || !vaultUnlocked.value) return;
+    try {
+      const dao = {
+        chainId: current.network.chainId,
+        contract: current.network.runtime,
+        daoId: sealed.daoId,
+        interfaceVersion: 1 as const,
+      };
+      const payload = await openPrivateFounder(dao, sealed, current.setup);
+      if (generation === privateOrderGeneration) privateOrderIdentity.value = payload.body;
+    } catch {
+      /* Original keys are required; keep the opaque identity while locked or unavailable. */
+    }
+  },
+  { flush: 'sync' },
+);
+onBeforeUnmount(() => {
+  privateOrderGeneration++;
+  privateOrderIdentity.value = undefined;
+});
 const orderUnavailable = ref(false);
 const copyMessage = ref('');
 const savedOrderUrl = computed(() =>
@@ -168,8 +208,18 @@ const resolved = computed(() => {
 });
 const claimRequest = computed(() => {
   if (!state.network || !resolved.value || deployment.value !== 'shared') return null;
+  if (
+    privacy.value !== 'public' &&
+    !PrivateIdentityBodySchema.safeParse({ title: title.value, description: description.value })
+      .success
+  )
+    return null;
   const result = DaoClaimSetupSchema.safeParse({
-    metadata: { schemaVersion: 1, title: title.value, description: description.value },
+    metadata: {
+      schemaVersion: 1,
+      title: privacy.value === 'public' ? title.value : 'Private DAO',
+      description: privacy.value === 'public' ? description.value : '',
+    },
     privacy: privacy.value,
     token: {
       chainId: state.network.chainId,
@@ -256,7 +306,7 @@ async function create() {
   try {
     if (!quotedInput.value) {
       orderId.value = crypto.randomUUID();
-      quotedInput.value = {
+      const draft: Parameters<typeof api.creationOrder>[0] = {
         requestId: orderId.value,
         deployment: 'shared',
         method: 'free',
@@ -275,6 +325,17 @@ async function create() {
             : {}),
         },
       };
+      const sealed =
+        privacy.value !== 'public'
+          ? (
+              await sealPrivateCreation(draft.request, 'founder', {
+                title: title.value,
+                description: description.value,
+              })
+            ).request
+          : draft.request;
+      if (request !== orderSequence || accountId !== state.account?.id) return;
+      quotedInput.value = { ...draft, request: sealed };
       await router.replace({ path: '/create', query: { order: orderId.value } });
     }
     const input = quotedInput.value;
@@ -300,6 +361,7 @@ async function checkOrder() {
     acceptOrder(result);
     if (order.value?.state === 'created' && order.value.dao) {
       const dao = order.value.dao;
+      if (order.value.setup.privateSetup && !(await api.privateIdentity(dao)).reference) return;
       await state.refresh();
       if (request === orderSequence) await router.push(createdDaoLocation(dao.daoId));
     }
@@ -324,9 +386,27 @@ async function completeOrder() {
     if (request !== orderSequence || accountId !== state.account?.id) return;
     acceptOrder(result);
     if (result.dao) {
+      if (result.setup.privateSetup) await installPrivateIdentity(result);
       await state.refresh();
       if (request === orderSequence) await router.push(createdDaoLocation(result.dao.daoId));
     }
+  } catch (cause) {
+    if (request === orderSequence) error.value = friendlyError(cause);
+  } finally {
+    if (request === orderSequence) busy.value = false;
+  }
+}
+async function finishPrivateSetup() {
+  if (!order.value || busy.value) return;
+  const request = ++orderSequence;
+  busy.value = true;
+  error.value = '';
+  try {
+    await installPrivateIdentity(order.value);
+    if (request !== orderSequence) return;
+    const dao = order.value.dao;
+    await state.refresh();
+    if (dao && request === orderSequence) await router.push(createdDaoLocation(dao.daoId));
   } catch (cause) {
     if (request === orderSequence) error.value = friendlyError(cause);
   } finally {
@@ -506,8 +586,8 @@ onBeforeUnmount(() => {
     <Account access-setup />
   </section>
   <section v-else-if="order" class="panel narrow">
-    <h2>{{ order.setup.metadata.title }}</h2>
-    <p>{{ order.setup.metadata.description }}</p>
+    <h2>{{ privateOrderIdentity?.title ?? order.setup.metadata.title }}</h2>
+    <p>{{ privateOrderIdentity?.description ?? order.setup.metadata.description }}</p>
     <h3>Review this saved setup</h3>
     <dl class="fact-list">
       <dt>Deployment</dt>
@@ -609,11 +689,29 @@ onBeforeUnmount(() => {
       retry.
     </p>
     <p v-else>DAO created. This receipt has been used and cannot create a second DAO.</p>
+    <div v-if="order.state === 'created' && order.setup.privateSetup" role="status">
+      <p>
+        Finish saving the encrypted DAO details with your original account keys. Your saved setup
+        can be resumed; no private text is published.
+      </p>
+      <button v-if="vaultUnlocked" :disabled="busy" @click="finishPrivateSetup">
+        {{ busy ? 'Saving encrypted details…' : 'Finish private DAO setup' }}
+      </button>
+      <RouterLink
+        v-else
+        :to="{ path: '/account', query: { unlock: '1', returnTo: route.fullPath } }"
+        >Unlock your account to finish</RouterLink
+      >
+    </div>
     <p v-if="order.state === 'paid'">
       This saved order is bound to the founding participant shown above. Prepare a claim link before
       DAO creation if someone else should be the founder.
     </p>
-    <button v-if="order.state === 'paid'" :disabled="busy" @click="completeOrder">
+    <button
+      v-if="order.state === 'paid'"
+      :disabled="busy || (!!order.setup.privateSetup && (!vaultUnlocked || !privateOrderIdentity))"
+      @click="completeOrder"
+    >
       Create this DAO
     </button>
     <button class="secondary" :disabled="busy" @click="checkOrder">
@@ -668,7 +766,7 @@ onBeforeUnmount(() => {
         </button>
       </div>
       <fieldset :disabled="!!quotedInput">
-        <legend>02 · Public identity</legend>
+        <legend>02 · {{ privacy === 'public' ? 'Public identity' : 'Private identity' }}</legend>
         <label for="dao-title">DAO name</label
         ><input
           id="dao-title"
@@ -680,12 +778,16 @@ onBeforeUnmount(() => {
         ><textarea
           id="dao-description"
           v-model="description"
-          maxlength="1800"
+          :maxlength="privacy === 'public' ? 1800 : 4000"
           rows="3"
           placeholder="What is your community here to do?"
         ></textarea>
         <p class="field-help">
-          These fields are public on the blockchain, including for DAOs with encrypted documents.
+          {{
+            privacy === 'public'
+              ? 'These fields are public on the blockchain.'
+              : 'These fields are encrypted in your browser. Public discovery uses Private DAO; publishing a public alias is a separate choice.'
+          }}
         </p>
       </fieldset>
       <fieldset :disabled="!!quotedInput">
@@ -701,8 +803,8 @@ onBeforeUnmount(() => {
           </option>
         </select>
         <p class="field-help">
-          Encryption protects document contents. Memberships, votes, balances, and transaction
-          metadata remain public.
+          Private DAO names and descriptions are encrypted before saving. Memberships, votes,
+          balances, and transaction metadata remain public.
           <RouterLink to="/docs/privacy">Read the privacy limits</RouterLink>.
         </p>
       </fieldset>
@@ -877,6 +979,20 @@ onBeforeUnmount(() => {
         <RouterLink to="/docs/shared-hosting">Hosting and pricing guide ↗</RouterLink>
       </div>
       <div class="form-footer">
+        <p v-if="privacy !== 'public' && !vaultUnlocked" class="notice">
+          Unlock your original account keys to create this private DAO.
+          <RouterLink :to="{ path: '/account', query: { unlock: '1', returnTo: route.fullPath } }"
+            >Unlock account</RouterLink
+          >
+        </p>
+        <p
+          v-if="
+            privacy !== 'public' && !state.network?.capabilities.includes('private-dao-identity-v1')
+          "
+          class="notice"
+        >
+          Private identity is not enabled on this deployment. No private setup will be sent.
+        </p>
         <p v-if="!ready" class="field-help">
           Check governance limits and required founding agent public keys.
         </p>
@@ -887,13 +1003,19 @@ onBeforeUnmount(() => {
             !available ||
             !ready ||
             deployment !== 'shared' ||
-            state.account.signingKey === null
+            state.account.signingKey === null ||
+            (privacy !== 'public' &&
+              (!vaultUnlocked || !state.network?.capabilities.includes('private-dao-identity-v1')))
           "
         >
           {{ busy ? 'Preparing order…' : 'Review free DAO setup' }}
         </button>
       </div>
-      <DaoClaimIssuer v-if="canIssueClaim" :request="claimRequest" />
+      <DaoClaimIssuer
+        v-if="canIssueClaim"
+        :request="claimRequest"
+        :identity="privacy === 'public' ? undefined : { title, description }"
+      />
       <p v-if="claimEligibilityError" role="status">
         Invitation eligibility could not be checked: {{ claimEligibilityError }}
         <button type="button" class="secondary" @click="loadClaimEligibility">

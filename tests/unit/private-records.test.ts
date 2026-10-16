@@ -8,8 +8,16 @@ import {
   NetworkSchema,
   RecoveryContextSchema,
   VERSION,
+  DaoSummarySchema,
+  HostedUploadSchema,
+  HostedDocumentSchema,
+  HostedIntentSchema,
+  UserMembershipSchema,
+  PrivateRecordRoutes,
 } from '@daclify/core-protocol';
-import { readPrivateRecord } from '../../src/content/private-records';
+import { readPrivateRecord, readPrivateImage } from '../../src/content/private-records';
+import { publishPrivateRecord } from '../../src/content/publish-private-record';
+import { updatePrivateIdentity } from '../../src/content/dao-identity';
 import { generateVaultSecrets, sha256Hex } from '../../src/auth/vault';
 import {
   encryptDaoFile,
@@ -19,7 +27,7 @@ import {
   preparePrivateEpoch,
 } from '../../src/auth/session';
 import { useWorkspace } from '../../src/state/workspace';
-import { api } from '../../src/api/client';
+import { api, ApiFailure } from '../../src/api/client';
 
 const dao = DaoRefSchema.parse({
   chainId: 'ab'.repeat(32),
@@ -156,6 +164,171 @@ it('opens exact ciphertext with original keys and never stores or sends its decr
   expect(localStorage.length).toBe(0);
   expect(sessionStorage.length).toBe(0);
 });
+it('reconciles an already published private record without another signature and refuses changed content', async () => {
+  const f = await fixture();
+  vi.spyOn(api, 'content').mockResolvedValue(f.records);
+  const send = vi.spyOn(api, 'relay');
+  expect(
+    await publishPrivateRecord(dao, '1', f.document.document_id, f.document.version, payload),
+  ).toEqual(f.reference);
+  expect(send).not.toHaveBeenCalled();
+  await expect(
+    publishPrivateRecord(dao, '1', f.document.document_id, f.document.version, {
+      ...payload,
+      body: { ...payload.body, title: 'Changed after lost response' },
+    }),
+  ).rejects.toThrow('DOCUMENT_VERSION');
+  expect(send).not.toHaveBeenCalled();
+});
+it('finishes linking a published identity after a lost response without publishing it again', async () => {
+  const f = await fixture(),
+    previous = { ...f.reference, version: 1 };
+  const snapshot = PrivateRecordRoutes.identity.response.parse({
+    dao,
+    reference: previous,
+    metadata: {
+      schemaVersion: 4,
+      title: 'Private DAO',
+      description: '',
+      purpose: 'custom',
+      setup: null,
+      privateIdentity: previous,
+    },
+    metadataCommitment: 'ab'.repeat(32),
+  });
+  vi.spyOn(api, 'privateIdentity')
+    .mockResolvedValueOnce(snapshot)
+    .mockResolvedValueOnce({ ...snapshot, reference: f.reference });
+  vi.spyOn(api, 'content').mockResolvedValue(f.records);
+  vi.spyOn(api, 'memberships').mockResolvedValue([
+    UserMembershipSchema.parse({
+      dao,
+      memberId: '1',
+      nonce: '0',
+      active: true,
+      admin: true,
+      reviewer: false,
+      credits: '0',
+      claim: '0',
+      stake: '0',
+      nativeAccount: '',
+      custody: 'user-controlled',
+      signingKey: f.account.signingKey,
+    }),
+  ]);
+  const send = vi.spyOn(api, 'relay').mockResolvedValue({ transactionId: 'ab'.repeat(32) });
+  expect(await updatePrivateIdentity(dao, '1', previous, payload.body)).toEqual(f.reference);
+  expect(send).toHaveBeenCalledTimes(1);
+  expect(send.mock.calls[0]?.[0].action).toBe('setmeta');
+});
+it('resumes the same encrypted file request when interruption happens before the server reserves it', async () => {
+  const f = await fixture(),
+    state = useWorkspace(),
+    network = state.network;
+  if (!network) throw Error('fixture network missing');
+  network.capabilities.push('private-records-v1');
+  const large = {
+    ...payload,
+    body: { ...payload.body, description: 'Private long canary '.repeat(190) },
+  };
+  vi.spyOn(api, 'content').mockResolvedValue(f.records);
+  vi.spyOn(api, 'dao').mockResolvedValue(
+    DaoSummarySchema.parse({
+      reference: dao,
+      title: 'Private DAO',
+      description: '',
+      privacy: 'encrypted-user-controlled',
+      owner: 'alice',
+      token: { chainId: dao.chainId, contract: 'eosio.token', symbol: 'TLOS', precision: 4 },
+      members: 1,
+      available: '0',
+      reserved: '0',
+      claims: '0',
+      keyEpoch: '1',
+    }),
+  );
+  vi.spyOn(api, 'memberships').mockResolvedValue([
+    UserMembershipSchema.parse({
+      dao,
+      memberId: '1',
+      nonce: '0',
+      active: true,
+      admin: true,
+      reviewer: false,
+      credits: '0',
+      claim: '0',
+      stake: '0',
+      nativeAccount: '',
+      custody: 'user-controlled',
+      signingKey: f.account.signingKey,
+    }),
+  ]);
+  const upload = vi
+    .spyOn(api, 'upload')
+    .mockRejectedValueOnce(new TypeError('Interrupted before request'));
+  vi.spyOn(api, 'reconcileUpload').mockRejectedValue(new ApiFailure('UPLOAD_UNKNOWN'));
+  await expect(publishPrivateRecord(dao, '1', '42', 1, large, true)).rejects.toThrow(
+    'Interrupted before request',
+  );
+  const first = HostedUploadSchema.parse(upload.mock.calls[0]?.[0]);
+  expect(JSON.stringify(first)).not.toContain('Private long canary');
+  const saved = sessionStorage.getItem(sessionStorage.key(0) ?? '');
+  const send = vi.spyOn(api, 'relay');
+  await expect(publishPrivateRecord(dao, '1', '42', 1, payload, true)).rejects.toThrow(
+    'PENDING_UPLOAD_FINISH',
+  );
+  await expect(
+    publishPrivateRecord(
+      dao,
+      '1',
+      '42',
+      1,
+      {
+        ...large,
+        body: { ...large.body, title: 'Changed pending intent' },
+      },
+      true,
+    ),
+  ).rejects.toThrow('PENDING_UPLOAD_FINISH');
+  expect(send).not.toHaveBeenCalled();
+  expect(upload).toHaveBeenCalledTimes(1);
+  expect(sessionStorage.getItem(sessionStorage.key(0) ?? '')).toBe(saved);
+  upload.mockImplementation(async (input) =>
+    HostedDocumentSchema.parse({
+      ...HostedIntentSchema.strip().parse(input),
+      cid: 'bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku',
+    }),
+  );
+  vi.spyOn(api, 'documentBytes').mockResolvedValue({ content: first.content });
+  send.mockImplementation(async (request) => {
+    expect(request.action).toBe('putdoc');
+    f.records.documents.push({
+      ...f.document,
+      id: '5',
+      document_id: '42',
+      version: 1,
+      cid: 'bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku',
+      metadata: first.metadata,
+      bytes: first.bytes,
+      commitment: first.commitment,
+    });
+    return { transactionId: 'ab'.repeat(32) };
+  });
+  expect(await publishPrivateRecord(dao, '1', '42', 1, large, true)).toMatchObject({
+    documentId: '42',
+    version: 1,
+    commitment: first.commitment,
+  });
+  expect(upload.mock.calls[1]?.[0]).toEqual(first);
+  expect(sessionStorage.length).toBe(0);
+  const key = JSON.stringify(['daclify.pending-private-record.v1', '/', f.account.id, dao]);
+  if (!saved) throw Error('pending fixture missing');
+  sessionStorage.setItem(key, saved);
+  await publishPrivateRecord(dao, '1', '42', 1, large, true);
+  expect(upload).toHaveBeenCalledTimes(2);
+  expect(send).toHaveBeenCalledTimes(1);
+  expect(sessionStorage.length).toBe(0);
+});
 
 it('rejects wrong DAO, missing versions, copied epochs, commitments and public fallbacks', async () => {
   const f = await fixture();
@@ -193,6 +366,35 @@ it('opens verified encrypted JSON files while keeping their name and content pri
   expect(await readPrivateRecord(dao, '1', f.reference, f.records, expected)).toEqual(payload);
   expect(prepared.metadata).toBe('{}');
   expect(prepared.content).not.toContain(payload.body.title);
+});
+it('opens private raster assets with exact grants and rejects active content disguised as an image', async () => {
+  const f = await fixture();
+  async function image(bytes: Uint8Array) {
+    const prepared = await encryptDaoFile(dao, '1', '41', 2, '1', f.records, bytes, {
+      version: 1,
+      filename: 'hidden-logo-canary.png',
+      mediaType: 'image/png',
+    });
+    Object.assign(f.document, {
+      cid: 'bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku',
+      metadata: prepared.metadata,
+      bytes: prepared.bytes,
+      commitment: prepared.commitment,
+    });
+    f.reference.commitment = prepared.commitment;
+    vi.spyOn(api, 'documentBytes').mockResolvedValue({ content: prepared.content });
+  }
+  const png = Uint8Array.of(137, 80, 78, 71, 13, 10, 26, 10);
+  await image(png);
+  expect(await readPrivateImage(dao, '1', f.reference, f.records)).toEqual({
+    bytes: png,
+    mediaType: 'image/png',
+  });
+  await expect(
+    readPrivateImage(dao, '1', { ...f.reference, version: 1 }, f.records),
+  ).rejects.toThrow();
+  await image(new TextEncoder().encode('<svg onload="alert(1)"/>'));
+  await expect(readPrivateImage(dao, '1', f.reference, f.records)).rejects.toThrow('FILE_METADATA');
 });
 
 it.each([

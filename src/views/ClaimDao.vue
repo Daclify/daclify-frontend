@@ -2,7 +2,9 @@
 import { computed, ref, watch, onBeforeUnmount } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
-  DaoClaimTokenSchema,
+  DaoRefSchema,
+  type PrivateRecordPayload,
+  type PrivateFounderSetup,
   type DaoClaimView,
   type PlatformStatus,
   type CreationMethod,
@@ -11,7 +13,17 @@ import {
 import { useWorkspace } from '../state/workspace';
 import { api, ApiFailure, friendlyError } from '../api/client';
 import { resolveApiUrl } from '../api/networks';
-import { saveClaimDestination, takeClaimDestination } from '../auth/dao-claim-entry';
+import {
+  parseClaimFragment,
+  saveClaimDestination,
+  takeClaimDestination,
+} from '../auth/dao-claim-entry';
+import {
+  openPrivateInvitation,
+  openPrivateFounder,
+  resealPrivateInvitation,
+} from '../content/private-identity-setup';
+import { vaultUnlocked } from '../auth/session';
 import { createdDaoLocation } from '../auth/destination';
 import Account from './Account.vue';
 const state = useWorkspace(),
@@ -24,7 +36,16 @@ const claim = ref<DaoClaimView>(),
   unconfirmed = ref(false),
   loading = ref(false);
 const method = ref<CreationMethod>('free');
-const secret = computed(() => DaoClaimTokenSchema.safeParse(route.hash.slice(1)));
+const privateIdentity = ref<Extract<PrivateRecordPayload, { kind: 'dao-identity' }>>();
+let sealedFounder: { context: string; setup: PrivateFounderSetup } | undefined;
+const secret = computed(() => {
+  try {
+    const value = parseClaimFragment(route.hash.slice(1));
+    return { success: true as const, data: value.token, contentKey: value.contentKey };
+  } catch {
+    return { success: false as const };
+  }
+});
 const context = () =>
   JSON.stringify([
     state.account?.id,
@@ -46,6 +67,7 @@ const ready = computed(
     matches.value &&
     !loading.value &&
     !busy.value &&
+    (!claim.value?.request?.privateSetup || (!!privateIdentity.value && vaultUnlocked.value)) &&
     (claim.value?.state === 'claiming' ||
       claim.value?.state === 'created' ||
       (claim.value?.state === 'ready' &&
@@ -57,8 +79,15 @@ const usd = (cents: number) =>
 async function enter() {
   if (!secret.value.success) return;
   try {
-    const destination = saveClaimDestination(sessionStorage, secret.value.data, resolveApiUrl('/'));
-    await router.push({ path: '/account', query: { returnTo: destination } });
+    const destination = saveClaimDestination(
+      sessionStorage,
+      route.hash.slice(1),
+      resolveApiUrl('/'),
+    );
+    await router.replace({
+      path: '/account',
+      query: { returnTo: destination, ...(state.account ? { unlock: '1' } : {}) },
+    });
   } catch (cause) {
     error.value = friendlyError(cause);
   }
@@ -87,6 +116,10 @@ async function confirm() {
       throw new ApiFailure('DAO_REFERENCE');
     if (result.state === 'created') {
       if (!result.founderExecutive || !result.dao) throw new ApiFailure('DAO_CLAIM_PENDING');
+      if (result.setup.privateSetup) {
+        await router.replace({ path: '/create', query: { order: result.requestId } });
+        return;
+      }
       const daoId = result.dao.daoId;
       await state.refresh();
       if (current()) await router.replace(createdDaoLocation(daoId));
@@ -111,7 +144,31 @@ async function confirm() {
       }
     }
     if (!current()) return;
-    result ??= await api.daoClaimConfirm({ token, method: method.value });
+    let privateSetup: PrivateFounderSetup | undefined;
+    const draft = claim.value?.request?.privateSetup;
+    if (!result && draft?.stage === 'invitation') {
+      const contentKey = secret.value.success ? secret.value.contentKey : undefined;
+      if (!contentKey) throw Error('PRIVATE_INVITATION_REQUIRED');
+      if (sealedFounder?.context !== expected) {
+        const dao = DaoRefSchema.parse({
+          chainId: claim.value.chainId,
+          contract: claim.value.runtime,
+          daoId: draft.daoId,
+          interfaceVersion: 1,
+        });
+        const request = claim.value.request;
+        if (!request) throw Error('PRIVATE_INVITATION_REQUIRED');
+        const setup = await resealPrivateInvitation(dao, draft, contentKey, request);
+        if (!current()) return;
+        sealedFounder = { context: expected, setup };
+      }
+      privateSetup = sealedFounder.setup;
+    }
+    result ??= await api.daoClaimConfirm({
+      token,
+      method: method.value,
+      ...(privateSetup ? { privateSetup } : {}),
+    });
     await accept(result);
   } catch (cause) {
     if (!current()) return;
@@ -144,12 +201,14 @@ async function confirm() {
   }
 }
 watch(
-  () => JSON.stringify([route.hash, route.query.resume, context()]),
+  () => JSON.stringify([route.hash, route.query.resume, context(), vaultUnlocked.value]),
   async () => {
     const started = ++generation;
     busy.value = false;
     unconfirmed.value = false;
     claim.value = undefined;
+    privateIdentity.value = undefined;
+    if (!vaultUnlocked.value || sealedFounder?.context !== context()) sealedFounder = undefined;
     platform.value = undefined;
     error.value = '';
     loading.value = true;
@@ -169,6 +228,27 @@ watch(
       claim.value = preview;
       platform.value = status;
       method.value = preview.method ?? (status.chain?.creation?.shared_usd === 0 ? 'free' : 'card');
+      const setup = preview.request?.privateSetup;
+      if (setup) {
+        const dao = DaoRefSchema.parse({
+          chainId: preview.chainId,
+          contract: preview.runtime,
+          daoId: setup.daoId,
+          interfaceVersion: 1,
+        });
+        const contentKey = secret.value.success ? secret.value.contentKey : undefined;
+        const request = preview.request;
+        if (!request) throw Error('PRIVATE_INVITATION_REQUIRED');
+        const opened =
+          setup.stage === 'invitation' && contentKey
+            ? await openPrivateInvitation(dao, setup, contentKey, request)
+            : setup.stage === 'founder' && vaultUnlocked.value
+              ? await openPrivateFounder(dao, setup, request)
+              : undefined;
+        if (started !== generation) return;
+        privateIdentity.value = opened;
+        if (!opened && setup.stage === 'invitation') throw Error('PRIVATE_INVITATION_REQUIRED');
+      }
     } catch (cause) {
       if (started === generation) error.value = friendlyError(cause);
     } finally {
@@ -184,7 +264,9 @@ onBeforeUnmount(() => {
 <template>
   <section class="panel claim-card" aria-labelledby="claim-title" :aria-busy="busy || loading">
     <p class="eyebrow">COMMUNITY INVITATION</p>
-    <h1 id="claim-title">{{ claim?.request?.metadata.title ?? 'Claim your DAO' }}</h1>
+    <h1 id="claim-title">
+      {{ privateIdentity?.body.title ?? claim?.request?.metadata.title ?? 'Claim your DAO' }}
+    </h1>
     <p v-if="loading" role="status">Loading the invitation…</p>
     <p v-if="error" class="alert" role="alert">{{ error }}</p>
     <p v-if="unconfirmed" role="status">
@@ -195,7 +277,9 @@ onBeforeUnmount(() => {
       }}
     </p>
     <template v-if="claim">
-      <p v-if="claim.request?.metadata.description">{{ claim.request.metadata.description }}</p>
+      <p v-if="privateIdentity?.body.description || claim.request?.metadata.description">
+        {{ privateIdentity?.body.description ?? claim.request?.metadata.description }}
+      </p>
       <dl class="fact-list">
         <dt>Setup</dt>
         <dd>
@@ -251,8 +335,20 @@ onBeforeUnmount(() => {
         <template v-else>
           <p class="account-reference">
             Claim with account <code>{{ state.account.id }}</code
-            >. Your vault can stay locked.
+            >.
+            {{
+              claim.request?.privateSetup
+                ? 'Your original account keys protect this private setup.'
+                : 'Your vault can stay locked.'
+            }}
           </p>
+          <template v-if="claim.request?.privateSetup && !vaultUnlocked">
+            <p>
+              Unlock with a paired method that has full access, your own device or your recovery
+              kit. Sign-in alone cannot decrypt your keys.
+            </p>
+            <button type="button" class="secondary" @click="enter">Unlock account to claim</button>
+          </template>
           <label v-if="!claim.method && price !== undefined && price > 0" for="claim-payment"
             >Creation payment</label
           >
