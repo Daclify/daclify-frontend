@@ -141,7 +141,10 @@ async function fixture(page: Page, withProfile = false, initiallyAuthenticated =
       key = payload.key;
       envelope = payload.envelope;
       return route.fulfill({
-        headers: { 'x-daclify-recovery-grant': 'g'.repeat(43) },
+        headers: {
+          'x-daclify-recovery-grant': 'g'.repeat(43),
+          'access-control-expose-headers': 'x-daclify-recovery-grant',
+        },
         json: { account, csrfToken: 'c'.repeat(43) },
       });
     }
