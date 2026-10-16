@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.15.0-alpha.47
+
+- Show claim invitation preparation immediately on eligible free saved setups, and put the personal resume address under Save this order for my own account.
+- Explain rejected personal order links with an original-account return path, retry and explicit new-setup action. Keep the blank creation form hidden until the user chooses a new setup.
+- Preserve owner-only order access and exclude rejected links from the list of earlier saved orders.
+
 ## 0.15.0-alpha.46
 
 - Open the DAO workspace after successful creation, resumed creation or claiming, with approval setup available from the workspace when keys are locked.

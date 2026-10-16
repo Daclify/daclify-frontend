@@ -15,7 +15,7 @@ import {
   type PlatformStatus,
 } from '@daclify/core-protocol';
 import { useWorkspace } from '../state/workspace';
-import { api, friendlyError } from '../api/client';
+import { api, ApiFailure, friendlyError } from '../api/client';
 import { createdDaoLocation } from '../auth/destination';
 import Account from './Account.vue';
 import DaoClaimIssuer from '../components/DaoClaimIssuer.vue';
@@ -29,6 +29,7 @@ const platform = ref<PlatformStatus>();
 const platformBusy = ref(false),
   platformError = ref('');
 const order = ref<CreationOrderView>();
+const orderUnavailable = ref(false);
 const copyMessage = ref('');
 const savedOrderUrl = computed(() =>
   order.value
@@ -81,6 +82,7 @@ function acceptOrder(result: CreationOrderView) {
   )
     throw new Error('DAO_REFERENCE');
   order.value = result;
+  orderUnavailable.value = false;
   copyMessage.value = '';
 }
 async function copyOrderLink() {
@@ -302,7 +304,11 @@ async function checkOrder() {
       if (request === orderSequence) await router.push(createdDaoLocation(dao.daoId));
     }
   } catch (cause) {
-    if (request === orderSequence) error.value = friendlyError(cause);
+    if (request === orderSequence) {
+      orderUnavailable.value =
+        cause instanceof ApiFailure && cause.code === 'CREATION_ORDER_UNKNOWN';
+      error.value = friendlyError(cause);
+    }
   } finally {
     if (request === orderSequence) busy.value = false;
   }
@@ -355,11 +361,13 @@ async function resume() {
   await checkOrder();
 }
 function newOrder() {
-  if (orderId.value) previousOrders.value = [...new Set([...previousOrders.value, orderId.value])];
+  if (orderId.value && (order.value || quotedInput.value))
+    previousOrders.value = [...new Set([...previousOrders.value, orderId.value])];
   orderSequence++;
   busy.value = false;
   error.value = '';
   order.value = undefined;
+  orderUnavailable.value = false;
   quotedInput.value = undefined;
   orderId.value = '';
   void router.replace('/create');
@@ -379,6 +387,7 @@ watch(
     error.value = '';
     platform.value = undefined;
     order.value = undefined;
+    orderUnavailable.value = false;
     previousOrders.value = [];
     quotedInput.value = undefined;
     void loadPlatform();
@@ -395,6 +404,7 @@ watch(
     orderSequence++;
     busy.value = false;
     order.value = undefined;
+    orderUnavailable.value = false;
     quotedInput.value = undefined;
     orderId.value = id;
     resumeId.value = id;
@@ -421,7 +431,11 @@ onBeforeUnmount(() => {
     </div>
   </div>
   <p v-if="error" class="alert" role="alert">{{ error }}</p>
-  <section class="panel deployment-options" aria-label="Deployment options">
+  <section
+    v-if="!orderUnavailable"
+    class="panel deployment-options"
+    aria-label="Deployment options"
+  >
     <h2>01 · Choose your deployment</h2>
     <div class="choice-grid">
       <label v-for="option in DeploymentOptions" :key="option.id" class="choice"
@@ -439,7 +453,7 @@ onBeforeUnmount(() => {
       >
     </div>
   </section>
-  <section v-if="deployment !== 'shared'" class="panel narrow">
+  <section v-if="deployment !== 'shared' && !orderUnavailable" class="panel narrow">
     <h2>Operate your own DAO</h2>
     <p>
       Your DAO owns its contracts, upgrade keys and server. Choose the Daclify app or your own
@@ -461,6 +475,25 @@ onBeforeUnmount(() => {
       >Set up account</RouterLink
     >
   </div>
+  <section v-else-if="orderUnavailable" class="panel narrow" aria-labelledby="order-access-title">
+    <h2 id="order-access-title">This is a personal order link</h2>
+    <p>Only the Daclify account that saved this order can open it.</p>
+    <p>Ask the sender for a claim invitation so you can create the DAO with your own account.</p>
+    <p class="field-help">
+      A claim invitation is a separate private link. An order ID cannot replace it.
+    </p>
+    <RouterLink
+      class="button secondary"
+      :to="{ path: '/account', query: { returnTo: route.fullPath } }"
+      >Use the original account</RouterLink
+    >
+    <p class="field-help">
+      On the account page, sign out and sign in with the account that saved the order. Your return
+      address is preserved.
+    </p>
+    <button class="secondary" :disabled="busy" @click="checkOrder">Retry order</button>
+    <button class="secondary" :disabled="busy" @click="newOrder">Start a new setup</button>
+  </section>
   <section
     v-else-if="state.account.signingKey === null && !canIssueClaim"
     class="full-access-setup"
@@ -594,7 +627,7 @@ onBeforeUnmount(() => {
     >
       Start a different order
     </button>
-    <details v-if="canIssueClaim && savedClaimRequest">
+    <details v-if="canIssueClaim && savedClaimRequest" open>
       <summary>Prepare this setup for someone else</summary>
       <p>
         This saves a separate invitation using the settings above. Your saved order stays unchanged.
@@ -610,12 +643,18 @@ onBeforeUnmount(() => {
       The saved order link is for your account; use a claim link to invite someone else. A browser
       return or a transaction ID you enter is not accepted as payment proof.
     </p>
-    <label for="saved-order-link">Saved order link (only for your account)</label>
-    <input id="saved-order-link" :value="savedOrderUrl" readonly />
-    <button class="secondary" :disabled="!savedOrderUrl" @click="copyOrderLink">
-      Copy order link
-    </button>
-    <p v-if="copyMessage" class="field-help" role="status">{{ copyMessage }}</p>
+    <details>
+      <summary>Save this order for my own account</summary>
+      <p>
+        This address only resumes your order. It cannot be used by another account to claim a DAO.
+      </p>
+      <label for="saved-order-link">Saved order link (only for your account)</label>
+      <input id="saved-order-link" :value="savedOrderUrl" readonly />
+      <button class="secondary" :disabled="!savedOrderUrl" @click="copyOrderLink">
+        Copy my order link
+      </button>
+      <p v-if="copyMessage" class="field-help" role="status">{{ copyMessage }}</p>
+    </details>
   </section>
   <div v-else class="create-workspace">
     <form class="panel form-panel" @submit.prevent="create">
@@ -922,7 +961,11 @@ onBeforeUnmount(() => {
       >{{ id }}
     </RouterLink>
   </p>
-  <form v-if="state.account && !order" class="panel narrow" @submit.prevent="resume">
+  <form
+    v-if="state.account && !order && !orderUnavailable"
+    class="panel narrow"
+    @submit.prevent="resume"
+  >
     <h2>Resume a setup order</h2>
     <label for="resume-order">Order ID</label
     ><input id="resume-order" v-model="resumeId" required /><button :disabled="busy">

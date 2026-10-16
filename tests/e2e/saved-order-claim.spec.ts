@@ -126,7 +126,8 @@ test('copies a durable owner-only order address that resumes the saved setup', a
 }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   const { order, writes } = await savedOrder(page);
-  await page.getByRole('button', { name: 'Copy order link', exact: true }).click();
+  await page.getByText('Save this order for my own account', { exact: true }).click();
+  await page.getByRole('button', { name: 'Copy my order link', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Order link copied' })).toBeVisible();
   const copied = await page.evaluate(() => navigator.clipboard.readText());
   expect(copied).toBe(new URL('/create?order=' + order.requestId, page.url()).toString());
@@ -144,7 +145,8 @@ test('keeps a selectable order address when clipboard access fails', async ({ pa
     }),
   );
   const { order } = await savedOrder(page);
-  await page.getByRole('button', { name: 'Copy order link', exact: true }).click();
+  await page.getByText('Save this order for my own account', { exact: true }).click();
+  await page.getByRole('button', { name: 'Copy my order link', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Select and copy' })).toBeVisible();
   await expect(page.getByLabel('Saved order link (only for your account)')).toHaveValue(
     new URL('/create?order=' + order.requestId, page.url()).toString(),
@@ -155,7 +157,9 @@ test('issues a separate claim link from the saved free setup without creating th
   page,
 }) => {
   const { order, writes, issued } = await savedOrder(page);
-  await page.getByText('Prepare this setup for someone else', { exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Prepare this DAO for someone else', exact: true }),
+  ).toBeVisible();
   await expect(page.getByRole('button', { name: 'Create claim link', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: 'Create claim link', exact: true }).click();
   await expect(page.getByLabel('Private invitation link · copy now')).toHaveValue(
@@ -174,7 +178,9 @@ test('issues a separate claim link from the saved free setup without creating th
 
 test('retains the saved order when opening account access for claim approval', async ({ page }) => {
   const { order } = await savedOrder(page);
-  await page.getByText('Prepare this setup for someone else', { exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Prepare this DAO for someone else', exact: true }),
+  ).toBeVisible();
   await page.getByLabel('Approve invitation with').selectOption('vault');
   const link = page.getByRole('link', { name: 'Unlock your Daclify account', exact: true });
   const href = await link.getAttribute('href');
@@ -276,4 +282,68 @@ test('keeps account entry links on their requested section', async ({ page }) =>
       'true',
     );
   }
+});
+
+test('explains a personal order link rejected by the service without showing a new setup', async ({
+  page,
+}) => {
+  const { order, writes } = await savedOrder(page);
+  await page.route('**/v1/dao-orders/' + order.requestId, (route) =>
+    route.fulfill({
+      status: 404,
+      json: { code: 'CREATION_ORDER_UNKNOWN', message: 'CREATION_ORDER_UNKNOWN' },
+    }),
+  );
+  await page.reload();
+  await expect(
+    page.getByRole('heading', { name: 'This is a personal order link', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      'Ask the sender for a claim invitation so you can create the DAO with your own account.',
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(page.getByLabel('DAO name', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Create claim link', exact: true })).toHaveCount(0);
+  const account = page.getByRole('link', { name: 'Use the original account', exact: true });
+  const href = await account.getAttribute('href');
+  if (!href) throw Error('ORIGINAL_ACCOUNT_LINK_REQUIRED');
+  expect(new URL(href, page.url()).searchParams.get('returnTo')).toBe(
+    '/create?order=' + order.requestId,
+  );
+  expect(writes).toEqual([]);
+  await page.getByRole('button', { name: 'Start a new setup', exact: true }).click();
+  await expect(page).toHaveURL(/\/create$/);
+  await expect(page.getByLabel('DAO name', { exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: order.requestId, exact: true })).toHaveCount(0);
+  expect(writes).toEqual([]);
+});
+
+test('retries a rejected order without issuing another setup or invitation', async ({ page }) => {
+  const { order, writes } = await savedOrder(page);
+  let unavailable = true;
+  await page.route('**/v1/dao-orders/' + order.requestId, (route) =>
+    route.fulfill(
+      unavailable
+        ? {
+            status: 404,
+            json: { code: 'CREATION_ORDER_UNKNOWN', message: 'CREATION_ORDER_UNKNOWN' },
+          }
+        : { json: order },
+    ),
+  );
+  await page.reload();
+  await expect(
+    page.getByRole('heading', { name: 'This is a personal order link', exact: true }),
+  ).toBeVisible();
+  unavailable = false;
+  await page.getByRole('button', { name: 'Retry order', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: order.setup.metadata.title, exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'This is a personal order link', exact: true }),
+  ).toHaveCount(0);
+  expect(writes).toEqual([]);
 });

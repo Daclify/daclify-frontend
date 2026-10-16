@@ -1,6 +1,10 @@
 {
   "requirements": [
     {
+      "id": "PERSONAL-ORDER-ACCESS-AND-CLAIM-LINK-DISCOVERY",
+      "tests": ["tests/e2e/saved-order-claim.spec.ts"]
+    },
+    {
       "id": "ACCOUNT-SECTION-ORDER-AND-POST-CREATION-DAO-DESTINATION",
       "tests": [
         "tests/e2e/account-settings.spec.ts",
