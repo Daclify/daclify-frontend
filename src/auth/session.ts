@@ -3,7 +3,7 @@ import { quickAccountDigest } from '@daclify/core-protocol/sdk';
 import { openBallotGrant } from '../quick-ballots/keys';
 import { openAccountReceipt } from '../quick-ballots/receipts';
 import { assertOperatorDao } from '../api/networks';
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import { useWorkspace } from '../state/workspace';
 import { csrfStorageKey } from '../api/networks';
 import { PrivateKey, Serializer } from '@wharfkit/antelope';
@@ -42,7 +42,7 @@ import {
   verifyRecoveryIdentity,
   type instruction,
 } from '@daclify/core-protocol/sdk';
-import { api, setAccountControlSigner } from '../api/client';
+import { api, setAccountControlSigner, takeRecoveryGrant } from '../api/client';
 import {
   AppSnapshotEnvelopeSchema,
   appEvidenceDomain,
@@ -50,7 +50,7 @@ import {
   type AppEvidenceContextSchema,
 } from '@daclify/core-protocol';
 import type { ActivityTableSchemas } from '@daclify/modules/sdk';
-import type { z } from 'zod';
+import { z } from 'zod';
 import {
   unlockVault,
   createEpochGrant,
@@ -158,23 +158,119 @@ export function saveRestoredVault(record: RecoveryKit): void {
   lockVault();
   localStorage.setItem('daclify.vault.v1', JSON.stringify(RecoveryKitSchema.parse(record)));
 }
-export function lockVault(): void {
+function clearVault(): void {
   generation++;
   secrets = undefined;
   vaultUnlocked.value = false;
   if (timer) clearTimeout(timer);
   timer = undefined;
 }
-export async function logoutAccount(): Promise<void> {
-  lockVault();
-  await api.logout();
+let publishSessionEvent: ((type: 'lock' | 'logout', accountId?: string) => void) | undefined;
+const SessionEventSchema = z.strictObject({
+  type: z.enum(['lock', 'logout']),
+  accountId: z.uuid(),
+  scope: z.string().min(1).max(512),
+});
+export function startSessionSecurity(): () => void {
   const state = useWorkspace();
+  const storageKey = 'daclify.session-event.v1';
+  let channel: BroadcastChannel | undefined;
+  try {
+    if (typeof BroadcastChannel !== 'undefined') channel = new BroadcastChannel(storageKey);
+  } catch {
+    // Storage events also support browsers that deny BroadcastChannel access.
+  }
+  let receiving = false;
+  function receive(raw: unknown) {
+    if (typeof raw !== 'string' || raw.length > 1024) return;
+    let signal: z.infer<typeof SessionEventSchema>;
+    try {
+      signal = SessionEventSchema.parse(JSON.parse(raw));
+    } catch {
+      return;
+    }
+    if (signal.scope !== csrfStorageKey() || signal.accountId !== state.account?.id) return;
+    receiving = true;
+    try {
+      clearVault();
+      if (signal.type === 'logout') {
+        takeRecoveryGrant(signal.accountId);
+        sessionStorage.removeItem(csrfStorageKey());
+        state.account = undefined;
+        state.memberships = [];
+      }
+    } finally {
+      receiving = false;
+    }
+  }
+  function publish(type: 'lock' | 'logout', accountId = state.account?.id) {
+    if (receiving || !accountId) return;
+    const value = JSON.stringify({ type, accountId, scope: csrfStorageKey() });
+    try {
+      if (channel) channel.postMessage(value);
+      else {
+        localStorage.setItem(storageKey, value);
+        localStorage.removeItem(storageKey);
+      }
+    } catch {
+      // A browser messaging failure must never prevent the local key lock.
+    }
+  }
+  const onMessage = (event: MessageEvent<unknown>) => receive(event.data);
+  const onStorage = (event: StorageEvent) => {
+    if (event.storageArea === localStorage && event.key === storageKey) receive(event.newValue);
+  };
+  channel?.addEventListener('message', onMessage);
+  window.addEventListener('storage', onStorage);
+  publishSessionEvent = publish;
+  const stop = watch(
+    () => [
+      state.account?.id,
+      state.account?.signingKey,
+      state.account?.encryptionKey?.x,
+      state.account?.encryptionKey?.y,
+    ],
+    (_next, previous) => {
+      if (
+        secrets &&
+        (state.account?.signingKey !== PrivateKey.from(secrets.signingKey).toPublic().toString() ||
+          state.account?.encryptionKey?.x !== secrets.encryptionPrivateKey.x ||
+          state.account?.encryptionKey?.y !== secrets.encryptionPrivateKey.y)
+      )
+        clearVault();
+      if (previous[0] && !state.account) {
+        takeRecoveryGrant(previous[0]);
+        sessionStorage.removeItem(csrfStorageKey());
+        publish('logout', previous[0]);
+      }
+    },
+    { flush: 'sync' },
+  );
+  return () => {
+    stop();
+    channel?.close();
+    window.removeEventListener('storage', onStorage);
+    if (publishSessionEvent === publish) publishSessionEvent = undefined;
+  };
+}
+export function lockVault(): void {
+  clearVault();
+  publishSessionEvent?.('lock');
+}
+export async function logoutAccount(): Promise<void> {
+  const state = useWorkspace(),
+    accountId = state.account?.id,
+    scope = csrfStorageKey();
+  clearVault();
+  publishSessionEvent?.('logout');
+  await api.logout();
+  if (state.account?.id !== accountId || csrfStorageKey() !== scope) return;
   state.account = undefined;
   state.memberships = [];
 }
 function touch() {
   if (timer) clearTimeout(timer);
-  timer = setTimeout(lockVault, 10 * 60_000);
+  timer = setTimeout(clearVault, 10 * 60_000);
 }
 export function acceptProviderSession(account: Account, csrfToken: string): Account {
   if (!/^[A-Za-z0-9_-]{32,128}$/.test(csrfToken)) throw new Error('CSRF_REQUIRED');

@@ -1,0 +1,25 @@
+{
+	admin off
+	auto_https off
+}
+
+http://:9091 {
+	bind 0.0.0.0
+	encode gzip
+	respond /healthz "ok" 200
+	root * /data/daclify-runtime/builds/frontend-testnet
+	@assets path /assets/*
+	header @assets Cache-Control "public, max-age=31536000, immutable"
+	@pages not path /assets/*
+	header @pages Cache-Control "no-cache"
+	header X-Content-Type-Options nosniff
+	header Content-Security-Policy "frame-ancestors 'none'"
+	header X-Frame-Options DENY
+	handle /assets/* {
+		file_server
+	}
+	handle {
+		try_files {path} /index.html
+		file_server
+	}
+}

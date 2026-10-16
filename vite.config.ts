@@ -1,7 +1,7 @@
 import { defineConfig, loadEnv } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import { z } from 'zod';
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 export default defineConfig(({ mode, command }) => {
   const env = loadEnv(mode, process.cwd(), 'DACLIFY_TEST_');
   const uiPort = z.coerce
@@ -28,7 +28,12 @@ export default defineConfig(({ mode, command }) => {
       : undefined;
   return {
     plugins: [vue()],
+    preview: {
+      headers: { 'Content-Security-Policy': "frame-ancestors 'none'", 'X-Frame-Options': 'DENY' },
+    },
     server: {
+      fs: { allow: [process.cwd(), realpathSync(new URL('./node_modules', import.meta.url))] },
+      headers: { 'Content-Security-Policy': "frame-ancestors 'none'", 'X-Frame-Options': 'DENY' },
       port: uiPort,
       watch: { ignored: ['**/.artifacts/**'] },
       strictPort: true,

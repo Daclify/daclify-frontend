@@ -1,6 +1,10 @@
 {
   "requirements": [
     {
+      "id": "BROWSER-SECURITY-CROSS-TAB-KEY-LOCK-AND-ANTI-FRAMING",
+      "tests": ["tests/e2e/session-security.spec.ts", "tests/unit/provider-session.test.ts"]
+    },
+    {
       "id": "BALLOT-CONTENT-PINNED-DOCUMENTS-AND-ACTUAL-CHOICES",
       "tests": [
         "tests/e2e/ballot-content.spec.ts",

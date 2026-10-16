@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.15.0-alpha.44
+
+- Lock matching account keys across portal tabs on sign-out or manual locking, including delayed/failed logout. Clear keys when the active account session disappears or its keys change; reject stale private work through the existing generation guard.
+- Block embedding of the portal with response-level framing headers for Vite, Netlify and the documented Caddy testnet host. Preserve top-level sign-in and OAuth popups.
+- Add desktop/mobile browser regressions for tab isolation, messaging fallbacks, session expiry and framing.
+
 ## 0.15.0-alpha.34
 
 - Add public explanations, exact supporting-document links and 3–16-option polls to DAO ballots. Render actual choices, votes, tallies and outcomes; prevent voting on inconsistent definitions. Preserve old binary ballots and saved governance rules.

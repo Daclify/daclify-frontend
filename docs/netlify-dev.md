@@ -83,6 +83,14 @@ Restart that service after configuration changes. Register actual provider callb
 
 The frontend build does not deploy or verify the API. Publishing static files alone cannot make login, payments or blockchain actions work; the hosted API and provider callbacks must be ready separately.
 
+## Browser framing protection
+
+The portal supports top-level pages and OAuth popups. It must not be embedded in another site's iframe. `public/_headers` is copied to `dist/_headers` for Netlify and sets HTTP `Content-Security-Policy: frame-ancestors 'none'` and `X-Frame-Options: DENY`. Vite development and preview use the same policy. This does not prevent the portal from displaying its provider sign-in widgets.
+
+Other static hosts must set those response headers themselves; they do not interpret Netlify's `_headers` file. The shared testnet uses the checked-in [Caddy example](deployment/Caddyfile.testnet), behind its existing HTTPS ingress. Adapt its bind, port and root to your host, validate with `caddy validate --config PATH --adapter caddyfile`, then reload/restart the frontend host. No API or database restart is needed for this static policy.
+
+After publishing, verify the actual `/account` and `/mcp/oauth/consent` HTTP responses and browser refusal to render the portal inside an unrelated-origin iframe. Top-level sign-in and supported OAuth popups must continue to work. `frame-ancestors` must be an HTTP response header; an HTML meta tag is insufficient. Reload old portal tabs after updating browser session code.
+
 ## Update the deployment
 
 For Git-connected projects, pushing `dev` triggers the configured Netlify build. That is independent of GitHub Actions. For a manual deployment, upload the new prebuilt `dist` folder in the project's Deploys page, or use an installed and authenticated Netlify CLI:
