@@ -357,6 +357,7 @@ test('requires an explicit email choice when multiple full-access addresses are 
     return route.fulfill({ json: { delivery: 'sent' } });
   });
   await page.goto('/account');
+  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
   const profile = page.getByRole('tabpanel', { name: 'Profile', exact: true });
   await profile.getByRole('button', { name: 'E-Mail', exact: true }).click();
   const email = profile.getByLabel('Sign-in email', { exact: true });
