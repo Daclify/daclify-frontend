@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.15.0-alpha.55 development
+
+- Add guarded local reading of exact encrypted descriptive records, with real original-key decryption and rejection of wrong parent/source/version/epoch, tampering and stale lock/account/network/member context.
+- Consume core35/modules43 development artifacts. Private identity/module writers and their deployment capabilities remain pending.
+
 ## 0.15.0-alpha.54
 
 - Add a clear Unlock account entry in the portal header that opens the unlock controls and returns to the original task after successful verification.
