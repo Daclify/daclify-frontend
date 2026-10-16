@@ -15,7 +15,7 @@ import { instructionDigest } from '@daclify/core-protocol/sdk';
 import { createVault } from '../../src/auth/vault';
 import AxeBuilder from '@axe-core/playwright';
 
-test('a claimed DAO uses the same approval setup without carrying its invitation secret', async ({
+test('a claimed DAO opens its workspace without carrying its invitation secret', async ({
   page,
 }) => {
   const fixture = await approvalFixture(page),
@@ -61,39 +61,46 @@ test('a claimed DAO uses the same approval setup without carrying its invitation
       }),
     }),
   );
+  let claimWrites = 0;
   await page.route('**' + ApiRoutes.daoClaimConfirm.path, (route) => {
-    expect(ApiRoutes.daoClaimConfirm.input.parse(route.request().postDataJSON()).token).toBe(token);
-    fixture.members.push(member);
-    return route.fulfill({
-      json: CreationOrderViewSchema.parse({
-        network: fixture.network,
-        setup: request,
-        creator: {
-          signingKey: fixture.account.signingKey,
-          encryptionKey: fixture.account.encryptionKey,
-          custody: fixture.account.custody,
-        },
-        requestId: crypto.randomUUID(),
-        deployment: 'shared',
-        method: 'free',
-        usdCents: 0,
-        tlosAmount: null,
-        recipient: fixture.network.runtime,
-        tokenContract: 'eosio.token',
-        memo: 'fixture',
-        expires: Math.floor(Date.now() / 1000) + 120,
-        state: 'created',
-        dao: member.dao,
-        checkoutUrl: null,
-        founderExecutive: true,
-      }),
-    });
+    claimWrites++;
+    return route.abort('failed');
   });
+  await page.route(
+    '**' + ApiRoutes.creationOrderStatus.path.replace(':id', preview.id),
+    (route) => {
+      fixture.members.push(member);
+      return route.fulfill({
+        json: CreationOrderViewSchema.parse({
+          network: fixture.network,
+          setup: request,
+          creator: {
+            signingKey: fixture.account.signingKey,
+            encryptionKey: fixture.account.encryptionKey,
+            custody: fixture.account.custody,
+          },
+          requestId: preview.id,
+          deployment: 'shared',
+          method: 'free',
+          usdCents: 0,
+          tlosAmount: null,
+          recipient: fixture.network.runtime,
+          tokenContract: 'eosio.token',
+          memo: 'fixture',
+          expires: Math.floor(Date.now() / 1000) + 120,
+          state: 'created',
+          dao: member.dao,
+          checkoutUrl: null,
+          founderExecutive: true,
+        }),
+      });
+    },
+  );
   await page.goto('/claim-dao#' + token);
   await page.getByRole('button', { name: 'Resume my claim', exact: true }).click();
-  await expect(page).toHaveURL(/\/account\?setup=approvals.*dao=3/);
+  await expect(page).toHaveURL(/\/dao\/3$/);
   expect(page.url()).not.toContain(token);
-  await expect(page.getByRole('heading', { name: 'Approval setup', exact: true })).toBeVisible();
+  expect(claimWrites).toBe(0);
   expect(fixture.submitted).toEqual([]);
 });
 
@@ -509,9 +516,7 @@ test('unlocking during approval setup stays on the setup screen', async ({ page 
   await expect(page.getByLabel('Authorize actions with')).toHaveValue('evm');
 });
 
-test('creating a DAO with locked account keys finishes through the same setup flow', async ({
-  page,
-}) => {
+test('creating a DAO with locked account keys opens its workspace', async ({ page }) => {
   const fixture = await approvalFixture(page),
     id = crypto.randomUUID();
   const order = CreationOrderViewSchema.parse({
@@ -556,12 +561,7 @@ test('creating a DAO with locked account keys finishes through the same setup fl
   await expect(page.getByRole('button', { name: 'Create this DAO', exact: true })).toBeVisible();
   expect(creates).toBe(0);
   await page.getByRole('button', { name: 'Create this DAO', exact: true }).click();
-  await expect(page).toHaveURL(/\/account\?setup=approvals.*dao=3/);
-  await expect(page.getByRole('heading', { name: 'Approval setup', exact: true })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Return to your DAO or setup' })).toHaveAttribute(
-    'href',
-    '/dao/3',
-  );
+  await expect(page).toHaveURL(/\/dao\/3$/);
   expect(creates).toBe(1);
   expect(fixture.submitted).toEqual([]);
 });

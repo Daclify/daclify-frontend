@@ -6,9 +6,10 @@ import {
   type DaoClaimView,
   type PlatformStatus,
   type CreationMethod,
+  type CreationOrderView,
 } from '@daclify/core-protocol';
 import { useWorkspace } from '../state/workspace';
-import { api, friendlyError } from '../api/client';
+import { api, ApiFailure, friendlyError } from '../api/client';
 import { resolveApiUrl } from '../api/networks';
 import { saveClaimDestination, takeClaimDestination } from '../auth/dao-claim-entry';
 import { createdDaoLocation } from '../auth/destination';
@@ -20,6 +21,7 @@ const claim = ref<DaoClaimView>(),
   platform = ref<PlatformStatus>(),
   error = ref(''),
   busy = ref(false),
+  unconfirmed = ref(false),
   loading = ref(false);
 const method = ref<CreationMethod>('free');
 const secret = computed(() => DaoClaimTokenSchema.safeParse(route.hash.slice(1)));
@@ -62,30 +64,81 @@ async function enter() {
   }
 }
 async function confirm() {
-  if (!ready.value || !secret.value.success) return;
+  if (!ready.value || !secret.value.success || !claim.value) return;
   const started = ++generation,
     expected = context(),
-    token = secret.value.data;
+    token = secret.value.data,
+    id = claim.value.id,
+    resume = unconfirmed.value || claim.value.state !== 'ready';
+  const current = () => started === generation && expected === context();
   busy.value = true;
+  unconfirmed.value = false;
   error.value = '';
-  try {
-    const result = await api.daoClaimConfirm({ token, method: method.value });
-    if (started !== generation || expected !== context()) return;
+  async function accept(result: CreationOrderView) {
+    if (!current()) return;
     if (
+      result.requestId !== id ||
       result.network.chainId !== state.network?.chainId ||
-      result.network.runtime !== state.network?.runtime
+      result.network.runtime !== state.network?.runtime ||
+      (result.dao &&
+        (result.dao.chainId !== result.network.chainId ||
+          result.dao.contract !== result.network.runtime))
     )
-      throw Error('DAO_REFERENCE');
-    if (result.state === 'created' && result.founderExecutive && result.dao) {
+      throw new ApiFailure('DAO_REFERENCE');
+    if (result.state === 'created') {
+      if (!result.founderExecutive || !result.dao) throw new ApiFailure('DAO_CLAIM_PENDING');
       const daoId = result.dao.daoId;
       await state.refresh();
-      if (expected === context()) await router.replace(createdDaoLocation(daoId));
+      if (current()) await router.replace(createdDaoLocation(daoId));
     } else {
       // Existing immutable payment/resume controls retain the reservation without carrying its secret.
       await router.replace({ path: '/create', query: { order: result.requestId } });
     }
+  }
+  const interrupted = (cause: unknown) =>
+    cause instanceof TypeError ||
+    cause instanceof SyntaxError ||
+    (cause instanceof DOMException && ['TimeoutError', 'AbortError'].includes(cause.name)) ||
+    (cause instanceof ApiFailure &&
+      ['SERVICE_UNAVAILABLE', 'DAO_CLAIM_PENDING', 'CREATION_ORDER_PENDING'].includes(cause.code));
+  try {
+    let result: CreationOrderView | undefined;
+    if (resume) {
+      try {
+        result = await api.creationOrderStatus(id);
+      } catch (cause) {
+        if (!(cause instanceof ApiFailure && cause.code === 'CREATION_ORDER_UNKNOWN')) throw cause;
+      }
+    }
+    if (!current()) return;
+    result ??= await api.daoClaimConfirm({ token, method: method.value });
+    await accept(result);
   } catch (cause) {
-    if (started === generation) error.value = friendlyError(cause);
+    if (!current()) return;
+    if (!interrupted(cause)) {
+      error.value = friendlyError(cause);
+      return;
+    }
+    // A lost HTTP response cannot establish whether the native transaction succeeded.
+    unconfirmed.value = true;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt) await new Promise((resolve) => setTimeout(resolve, 1000));
+      if (!current()) return;
+      try {
+        await accept(await api.creationOrderStatus(id));
+        return;
+      } catch (statusError) {
+        if (!current()) return;
+        if (
+          !interrupted(statusError) &&
+          !(statusError instanceof ApiFailure && statusError.code === 'CREATION_ORDER_UNKNOWN')
+        ) {
+          unconfirmed.value = false;
+          error.value = friendlyError(statusError);
+          return;
+        }
+      }
+    }
   } finally {
     if (started === generation) busy.value = false;
   }
@@ -95,6 +148,7 @@ watch(
   async () => {
     const started = ++generation;
     busy.value = false;
+    unconfirmed.value = false;
     claim.value = undefined;
     platform.value = undefined;
     error.value = '';
@@ -133,6 +187,13 @@ onBeforeUnmount(() => {
     <h1 id="claim-title">{{ claim?.request?.metadata.title ?? 'Claim your DAO' }}</h1>
     <p v-if="loading" role="status">Loading the invitation…</p>
     <p v-if="error" class="alert" role="alert">{{ error }}</p>
+    <p v-if="unconfirmed" role="status">
+      {{
+        busy
+          ? 'The response was interrupted. Checking your saved claim…'
+          : 'Creation may still be in progress. Resume this claim to check its saved result.'
+      }}
+    </p>
     <template v-if="claim">
       <p v-if="claim.request?.metadata.description">{{ claim.request.metadata.description }}</p>
       <dl class="fact-list">
@@ -211,7 +272,7 @@ onBeforeUnmount(() => {
             {{
               busy
                 ? 'Checking your claim…'
-                : claim.state === 'ready'
+                : claim.state === 'ready' && !unconfirmed
                   ? 'Claim and create DAO'
                   : 'Resume my claim'
             }}
