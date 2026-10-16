@@ -76,3 +76,5 @@ Works now separates **Work proposals** and **Member services**. The toolbar’s 
 [One wallet and approval setup](approval-setup.md) explains pairing, selected DAO activation, recovery and retries.
 
 The [ballot guide](ballots.md) covers proposal content, exact supporting-document versions and custom polls. The [module capability review](module-capability-gaps.md) separates current functionality, missing controls and contract limits.
+
+[Quick ballots](../../daclify-backend-core/docs/quick-ballots.md), [claim links](../../daclify-backend-core/docs/dao-claim-links.md) and [guided legal templates](legal-templates/README.md) describe the newer member flows and their limits.
