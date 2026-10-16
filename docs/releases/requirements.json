@@ -1,6 +1,10 @@
 {
   "requirements": [
     {
+      "id": "SAVED-ORDER-COPY-AND-FREE-SETUP-CLAIM-INVITATION",
+      "tests": ["tests/e2e/saved-order-claim.spec.ts"]
+    },
+    {
       "id": "BROWSER-SECURITY-CROSS-TAB-KEY-LOCK-AND-ANTI-FRAMING",
       "tests": ["tests/e2e/session-security.spec.ts", "tests/unit/provider-session.test.ts"]
     },

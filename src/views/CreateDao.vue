@@ -29,6 +29,29 @@ const platform = ref<PlatformStatus>();
 const platformBusy = ref(false),
   platformError = ref('');
 const order = ref<CreationOrderView>();
+const copyMessage = ref('');
+const savedOrderUrl = computed(() =>
+  order.value
+    ? new URL(
+        router.resolve({ path: '/create', query: { order: order.value.requestId } }).href,
+        window.location.origin,
+      ).toString()
+    : '',
+);
+const savedClaimRequest = computed(() => {
+  const value = order.value;
+  if (
+    !value ||
+    value.deployment !== 'shared' ||
+    value.method !== 'free' ||
+    value.usdCents !== 0 ||
+    value.state !== 'paid' ||
+    value.founderExecutive !== undefined
+  )
+    return null;
+  const parsed = DaoClaimSetupSchema.safeParse(value.setup);
+  return parsed.success ? parsed.data : null;
+});
 const orderId = ref(typeof route.query.order === 'string' ? route.query.order : '');
 const resumeId = ref(orderId.value);
 const previousOrders = ref<string[]>([]);
@@ -58,6 +81,19 @@ function acceptOrder(result: CreationOrderView) {
   )
     throw new Error('DAO_REFERENCE');
   order.value = result;
+  copyMessage.value = '';
+}
+async function copyOrderLink() {
+  const value = savedOrderUrl.value;
+  if (!value) return;
+  try {
+    await navigator.clipboard.writeText(value);
+    if (value === savedOrderUrl.value)
+      copyMessage.value = 'Order link copied. Only your account can resume this order.';
+  } catch {
+    if (value === savedOrderUrl.value)
+      copyMessage.value = 'Select and copy the saved order address below.';
+  }
 }
 const canIssueClaim = ref(false),
   claimEligibilityError = ref('');
@@ -540,6 +576,10 @@ onBeforeUnmount(() => {
       retry.
     </p>
     <p v-else>DAO created. This receipt has been used and cannot create a second DAO.</p>
+    <p v-if="order.state === 'paid'">
+      This saved order is bound to the founding participant shown above. Prepare a claim link before
+      DAO creation if someone else should be the founder.
+    </p>
     <button v-if="order.state === 'paid'" :disabled="busy" @click="completeOrder">
       Create this DAO
     </button>
@@ -554,13 +594,28 @@ onBeforeUnmount(() => {
     >
       Start a different order
     </button>
-    <p class="field-help">
-      Starting a different order does not cancel or refund this saved request. Bookmark
-      <RouterLink :to="{ path: '/create', query: { order: order.requestId } }"
-        >this order</RouterLink
-      >. Keep this order ID. A browser return or a transaction ID you enter is not accepted as
-      payment proof.
+    <details v-if="canIssueClaim && savedClaimRequest">
+      <summary>Prepare this setup for someone else</summary>
+      <p>
+        This saves a separate invitation using the settings above. Your saved order stays unchanged.
+      </p>
+      <p>Leave this order uncreated if the recipient should be the founder.</p>
+      <DaoClaimIssuer :request="savedClaimRequest" />
+    </details>
+    <p v-if="claimEligibilityError" class="field-help" role="status">
+      Invitation eligibility could not be checked: {{ claimEligibilityError }}
     </p>
+    <p class="field-help">
+      Starting a different order does not cancel or refund this saved request. Keep this order ID.
+      The saved order link is for your account; use a claim link to invite someone else. A browser
+      return or a transaction ID you enter is not accepted as payment proof.
+    </p>
+    <label for="saved-order-link">Saved order link (only for your account)</label>
+    <input id="saved-order-link" :value="savedOrderUrl" readonly />
+    <button class="secondary" :disabled="!savedOrderUrl" @click="copyOrderLink">
+      Copy order link
+    </button>
+    <p v-if="copyMessage" class="field-help" role="status">{{ copyMessage }}</p>
   </section>
   <div v-else class="create-workspace">
     <form class="panel form-panel" @submit.prevent="create">

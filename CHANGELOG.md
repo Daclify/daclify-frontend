@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.15.0-alpha.45
+
+- Replace the saved-order self-link with a copyable owner-only address and a manual-copy fallback.
+- Let eligible executives reuse a free, uncreated setup for a separate claim invitation. Preserve the original order, receipt and founding keys; exclude paid receipts and reserved claim orders.
+- Preserve the saved-order return address when account access is needed to approve an invitation, and explain how creation differs from later handover.
+
 ## 0.15.0-alpha.44
 
 - Lock matching account keys across portal tabs on sign-out or manual locking, including delayed/failed logout. Clear keys when the active account session disappears or its keys change; reject stale private work through the existing generation guard.

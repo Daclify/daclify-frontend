@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch, onBeforeUnmount } from 'vue';
+import { useRoute } from 'vue-router';
 import { type DaoClaimView, DaoClaimSetupSchema } from '@daclify/core-protocol';
 import { api, friendlyError } from '../api/client';
 import { resolveApiUrl } from '../api/networks';
@@ -11,6 +12,7 @@ import { evmWallet, connectEvm } from '../auth/telos-evm';
 import SignInMethods from './SignInMethods.vue';
 import GoogleSignIn from './GoogleSignIn.vue';
 const props = defineProps<{ request: Parameters<typeof api.daoClaimIssue>[0]['request'] | null }>();
+const route = useRoute();
 const state = useWorkspace(),
   links = ref<DaoClaimView[]>([]),
   link = ref(''),
@@ -180,8 +182,10 @@ onBeforeUnmount(() => {
       /></template>
     </template>
     <p v-else-if="approval === 'vault' && !ready">
-      <RouterLink to="/account?returnTo=/create">Unlock your Daclify account</RouterLink> to
-      approve.
+      <RouterLink :to="{ path: '/account', query: { returnTo: route.fullPath } }"
+        >Unlock your Daclify account</RouterLink
+      >
+      to approve.
     </p>
     <button
       v-else-if="(approval === 'native' || approval === 'evm') && !ready"
