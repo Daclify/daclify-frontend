@@ -182,12 +182,16 @@ try {
           details.getByRole('meter', { name: 'daclifycore1 ' + resource + ' usage' }),
         ).toBeVisible();
       }
-      await page.getByRole('button', { name: 'daclifyhubv1', exact: true }).click();
+      const overview = page.getByRole('region', { name: 'Contract connections', exact: true });
+      await overview.getByRole('button', { name: 'Fit graph', exact: true }).click();
+      await overview.getByRole('button', { name: 'daclifyhubv1', exact: true }).click();
       await expect(
         details.getByRole('heading', { name: 'daclifyhubv1', exact: true }),
       ).toBeVisible();
 
-      await page.getByRole('button', { name: 'daclifynames', exact: true }).click();
+      await overview.getByRole('button', { name: 'Show all', exact: true }).click();
+      await overview.getByRole('button', { name: 'Fit graph', exact: true }).click();
+      await overview.getByRole('button', { name: 'daclifynames', exact: true }).click();
       await expect(
         details.getByRole('heading', { name: 'daclifynames', exact: true }),
       ).toBeVisible();
