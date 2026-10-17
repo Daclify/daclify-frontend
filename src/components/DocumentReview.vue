@@ -94,7 +94,8 @@ async function read() {
       (doc.envelope_version === 1 && !vaultUnlocked.value)
     )
       return;
-    if (result.file && result.markdown === undefined) downloadFile(result.file.bytes, result.file.metadata);
+    if (result.file && result.markdown === undefined && doc.envelope_version === 0)
+      downloadFile(result.file.bytes, result.file.metadata);
     opened.value = result;
     text.value = result.text;
   } catch (cause) {
@@ -123,7 +124,24 @@ async function read() {
       Unlock your account keys to review this encrypted version.
     </p>
     <p v-if="error" role="alert" class="alert">{{ error }}</p>
-    <div v-if="opened?.markdown !== undefined" class="document-markdown" v-html="formatHelpAnswer(opened.markdown)" /><pre v-else-if="text" class="wrap">{{ text }}</pre><button v-if="opened?.file" class="secondary" @click="downloadFile(opened.file.bytes, opened.file.metadata)">Download reviewed file</button>
+    <div
+      v-if="opened?.markdown !== undefined"
+      class="document-markdown"
+      v-html="formatHelpAnswer(opened.markdown)"
+    />
+    <pre v-else-if="text" class="wrap">{{ text }}</pre>
+    <button
+      v-if="opened?.file"
+      class="secondary"
+      @click="downloadFile(opened.file.bytes, opened.file.metadata)"
+    >
+      {{
+        document?.envelope_version === 1 ? 'Download unprotected copy' : 'Download reviewed file'
+      }}
+    </button>
+    <p v-if="opened?.file && document?.envelope_version === 1" class="notice">
+      A downloaded copy is unprotected. Keep it private.
+    </p>
     <label v-if="text" class="choice"
       ><input v-model="reviewed" type="checkbox" /> I reviewed this document version</label
     >
@@ -131,6 +149,15 @@ async function read() {
 </template>
 
 <style scoped>
-.document-markdown { max-height: 55dvh; overflow: auto; overflow-wrap: anywhere; padding: 12px; }
-.document-markdown :deep(table) { display: block; max-width: 100%; overflow-x: auto; }
+.document-markdown {
+  max-height: 55dvh;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  padding: 12px;
+}
+.document-markdown :deep(table) {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
 </style>

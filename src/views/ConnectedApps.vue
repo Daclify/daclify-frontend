@@ -9,7 +9,12 @@ import {
   type DaoSummary,
   type UserMembership,
 } from '@daclify/core-protocol';
-import { encodeAction, makeInstruction, encodeAppJoin, AppJoinCodeHash } from '@daclify/core-protocol/sdk';
+import {
+  encodeAction,
+  makeInstruction,
+  encodeAppJoin,
+  AppJoinCodeHash,
+} from '@daclify/core-protocol/sdk';
 import { encodeActivity, encodeDecide } from '@daclify/modules/sdk';
 import type { ModuleState } from '@daclify/modules';
 import { api, friendlyError } from '../api/client';
@@ -182,19 +187,61 @@ async function configure(value: z.infer<typeof ConnectedAppConfigSchema>) {
     if (started === generation) busy.value = false;
   }
 }
-async function admissionSetup(app:z.infer<typeof ApiRoutes.connectedApps.response>[number],enabled:boolean){
- const started=generation;
- if(!admin.value||!ready.value||busy.value)return;busy.value=true;error.value='';notice.value='';
- try{
-  const config=await api.appJoinConfiguration(app.clientId),member=props.member,dao=props.dao.reference;
-  if(!config.source||!config.gateway||!member)throw new Error('APP_JOIN_UNAVAILABLE');
-  if(enabled)await signed(dao.contract,'modconfig',encodeAction('modconfig',{runtime:dao.contract,dao_id:dao.daoId,member_id:member.memberId,account:config.source,version:1,actions:['setappjoin','appinvite'],grants:['admitapp'],code_hash:AppJoinCodeHash}));
-  await signed(config.source,'setappjoin',encodeAppJoin('setappjoin',{runtime:dao.contract,dao_id:dao.daoId,member_id:member.memberId,app_id:app.config.appId,app_revision:app.config.revision,gateway:config.gateway.account,gateway_permission:config.gateway.permission,public_join:enabled,enabled}));
-  if(started!==generation)return;
-  const checked=await api.appJoinConfiguration(app.clientId);
-  if(checked.available!==enabled)throw new Error('APP_JOIN_PENDING');
-  notice.value=enabled?'App joining enabled. New users become members without voting rights.':'App joining disabled.';
- }catch(cause){if(started===generation)error.value=friendlyError(cause);}finally{if(started===generation)busy.value=false;}
+async function admissionSetup(
+  app: z.infer<typeof ApiRoutes.connectedApps.response>[number],
+  enabled: boolean,
+) {
+  const started = generation;
+  if (!admin.value || !ready.value || busy.value) return;
+  busy.value = true;
+  error.value = '';
+  notice.value = '';
+  try {
+    const config = await api.appJoinConfiguration(app.clientId),
+      member = props.member,
+      dao = props.dao.reference;
+    if (!config.source || !config.gateway || !member) throw new Error('APP_JOIN_UNAVAILABLE');
+    if (enabled)
+      await signed(
+        dao.contract,
+        'modconfig',
+        encodeAction('modconfig', {
+          runtime: dao.contract,
+          dao_id: dao.daoId,
+          member_id: member.memberId,
+          account: config.source,
+          version: 1,
+          actions: ['setappjoin', 'appinvite'],
+          grants: ['admitapp'],
+          code_hash: AppJoinCodeHash,
+        }),
+      );
+    await signed(
+      config.source,
+      'setappjoin',
+      encodeAppJoin('setappjoin', {
+        runtime: dao.contract,
+        dao_id: dao.daoId,
+        member_id: member.memberId,
+        app_id: app.config.appId,
+        app_revision: app.config.revision,
+        gateway: config.gateway.account,
+        gateway_permission: config.gateway.permission,
+        public_join: enabled,
+        enabled,
+      }),
+    );
+    if (started !== generation) return;
+    const checked = await api.appJoinConfiguration(app.clientId);
+    if (checked.available !== enabled) throw new Error('APP_JOIN_PENDING');
+    notice.value = enabled
+      ? 'App joining enabled. New users become members without voting rights.'
+      : 'App joining disabled.';
+  } catch (cause) {
+    if (started === generation) error.value = friendlyError(cause);
+  } finally {
+    if (started === generation) busy.value = false;
+  }
 }
 async function register() {
   const deployed = activity.value;
@@ -426,7 +473,7 @@ async function snapshot(receipt: ModuleState['activities'][number], event: Event
       filename: 'activity-' + receipt.id + '.json',
       mediaType: 'application/json',
     });
-    notice.value = 'Snapshot verified and decrypted.';
+    notice.value = 'Snapshot verified and downloaded as an unprotected copy.';
   });
 }
 async function decision(receipt: ModuleState['activities'][number]) {
@@ -581,7 +628,17 @@ async function more() {
         <slot name="connection" />
       </template>
       <article v-for="app in apps" :key="app.clientId" class="app-card">
-        <h3>{{ app.config.name }}</h3><div v-if="admin" class="actions"><button :disabled="busy||!ready||!app.config.enabled" @click="admissionSetup(app,true)">Enable app joining</button><button class="secondary" :disabled="busy||!ready" @click="admissionSetup(app,false)">Disable app joining</button></div>
+        <h3>{{ app.config.name }}</h3>
+        <div v-if="admin" class="actions">
+          <button
+            :disabled="busy || !ready || !app.config.enabled"
+            @click="admissionSetup(app, true)"
+          >
+            Enable app joining</button
+          ><button class="secondary" :disabled="busy || !ready" @click="admissionSetup(app, false)">
+            Disable app joining
+          </button>
+        </div>
         <p>
           {{
             !app.native
@@ -676,7 +733,7 @@ async function more() {
           </p>
         </div>
         <label v-if="receipt.evidence_cid && vaultUnlocked"
-          >Open saved encrypted snapshot<input
+          >Download an unprotected snapshot copy<input
             type="file"
             accept="application/json"
             :disabled="busy"

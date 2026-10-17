@@ -171,6 +171,8 @@ test('private creation publishes only ciphertext, supports hosted identity text 
 test('private claim links reveal their setup locally and reseal for the sole claimant without giving the issuer access', async ({
   page,
   browser,
+  proxy,
+  ignoreHTTPSErrors,
 }) => {
   test.setTimeout(120000);
   const issuer = await account(page);
@@ -201,7 +203,21 @@ test('private claim links reveal their setup locally and reseal for the sole cla
   await expect(issued).toBeVisible();
   const link = await issued.inputValue();
   expect(new URL(link).hash).toMatch(/^#v2:/);
+  const projections = await page.request.get(
+    'http://localhost:' +
+      (process.env.DACLIFY_TEST_API_PORT ?? 3008) +
+      '/fixture/private-projections',
+    { headers: { 'x-fixture-token': owner.token } },
+  );
+  expect(projections.ok()).toBe(true);
+  const stored = z
+    .object({ claims: z.array(z.object({ request: z.unknown() })).min(1) })
+    .parse(await projections.json());
+  expect(JSON.stringify(stored)).not.toContain(title);
+  expect(JSON.stringify(stored)).not.toContain(description);
   const recipient = await browser.newContext({
+      ...(proxy ? { proxy } : {}),
+      ignoreHTTPSErrors,
       baseURL: new URL(page.url()).origin,
       viewport: page.viewportSize() ?? { width: 1280, height: 720 },
     }),

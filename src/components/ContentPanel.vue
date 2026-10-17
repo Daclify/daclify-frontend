@@ -781,7 +781,7 @@ async function openManagedVersion(
     (document.envelope_version === 1 && !vaultUnlocked.value)
   )
     return;
-  if (opened.file && opened.markdown === undefined)
+  if (opened.file && opened.markdown === undefined && document.envelope_version === 0)
     downloadFile(opened.file.bytes, opened.file.metadata);
   return opened;
 }
@@ -1008,7 +1008,10 @@ async function openManagedVersion(
                 :disabled="busy || (document.envelope_version === 1 && (!vaultUnlocked || !member))"
                 @click="retrieve(document)"
               >
-                {{ document.envelope_version === 1 ? 'Decrypt and download' : 'Download' }} document
+                {{
+                  document.envelope_version === 1 ? 'Download unprotected copy of' : 'Download'
+                }}
+                document
                 {{ document.document_id }}
               </button></template
             >
@@ -1053,7 +1056,10 @@ async function openManagedVersion(
                 :disabled="busy || (version.envelope_version === 1 && (!vaultUnlocked || !member))"
                 @click="retrieve(version)"
               >
-                Download document {{ version.document_id }} version {{ version.version }}
+                {{
+                  version.envelope_version === 1 ? 'Download unprotected copy of' : 'Download'
+                }}
+                document {{ version.document_id }} version {{ version.version }}
               </button>
             </div>
           </details>

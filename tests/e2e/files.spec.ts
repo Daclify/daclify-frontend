@@ -33,6 +33,12 @@ async function openMenu(page: Page) {
   if ((await button.isVisible()) && (await button.getAttribute('aria-expanded')) === 'false')
     await button.click();
 }
+async function resourceLink(page: Page) {
+  const link = page.getByRole('link', { name: 'Manage resources →', exact: true });
+  if (!(await link.isVisible()))
+    await page.getByRole('button', { name: 'Add document', exact: true }).click();
+  return link;
+}
 async function createWorkspace(page: Page, encrypted = false) {
   await page.goto('/account');
   await page.getByRole('button', { name: 'New Account', exact: true }).click();
@@ -45,13 +51,14 @@ async function createWorkspace(page: Page, encrypted = false) {
   await openMenu(page);
   await page.getByRole('link', { name: 'Create', exact: true }).click();
   await page.getByLabel('DAO name').fill(`File fixture ${Date.now()}`);
-  if (encrypted) await page.getByLabel('Privacy policy').selectOption('encrypted-user-controlled');
+  await page
+    .getByLabel('Privacy policy')
+    .selectOption(encrypted ? 'encrypted-user-controlled' : 'public');
   await payCreation(page);
   await expect(page.getByRole('region', { name: 'Workspace overview' })).toBeVisible();
   await page.getByRole('link', { name: 'Documents', exact: true }).click();
   if (encrypted) {
     await page.getByText('Document access settings', { exact: true }).click();
-    await page.getByRole('button', { name: 'Initialize encryption epoch' }).click();
     await expect(page.getByText('Encryption epoch ready', { exact: true })).toBeVisible();
   }
 }
@@ -143,9 +150,21 @@ test('publishes only ciphertext for a private file and decrypts its original fil
     }),
   ).toBeVisible();
   const downloadEvent = page.waitForEvent('download');
-  await page.getByText('Content and download', { exact: true }).click();
   await page
-    .getByRole('button', { name: `Decrypt and download document ${input.documentId}`, exact: true })
+    .getByRole('article')
+    .filter({
+      has: page.getByRole('heading', {
+        name: `Private document #${input.documentId} · version 1`,
+        exact: true,
+      }),
+    })
+    .getByText('Content and download', { exact: true })
+    .click();
+  await page
+    .getByRole('button', {
+      name: `Download unprotected copy of document ${input.documentId}`,
+      exact: true,
+    })
     .click();
   const download = await downloadEvent;
   expect(download.suggestedFilename()).toBe(filename);
@@ -155,7 +174,7 @@ test('publishes only ciphertext for a private file and decrypts its original fil
   await page.getByRole('button', { name: 'Lock keys', exact: true }).click();
   await expect(
     page.getByRole('button', {
-      name: `Decrypt and download document ${input.documentId}`,
+      name: `Download unprotected copy of document ${input.documentId}`,
       exact: true,
     }),
   ).toBeDisabled();
@@ -183,7 +202,7 @@ test('shows one shared storage object for two published document references', as
   }
   await page.getByRole('button', { name: 'Add document', exact: true }).click();
   await expect(page.getByText(`${payload.length} bytes used of`, { exact: false })).toBeVisible();
-  await page.getByRole('link', { name: 'Manage resources →', exact: true }).click();
+  await (await resourceLink(page)).click();
   await expect(
     page.getByRole('heading', { name: 'Storage and blockchain resources' }),
   ).toBeVisible();
@@ -237,10 +256,9 @@ test('uploads a public card image for a private DAO, retries the same request an
     panel.getByRole('button', { name: 'Sign and update card', exact: true }),
   ).toBeDisabled();
   await panel.getByRole('button', { name: 'Cancel', exact: true }).click();
-  await openMenu(page);
-  await page.getByRole('link', { name: 'Your account', exact: true }).click();
-  await page.getByLabel('Vault password', { exact: true }).fill(password);
-  await page.getByRole('button', { name: 'Unlock and sign in', exact: true }).click();
+  await page.getByRole('link', { name: 'Unlock account', exact: true }).click();
+  await page.getByLabel('Password for this device', { exact: true }).fill(password);
+  await page.getByRole('button', { name: 'Unlock account', exact: true }).click();
   await expect(page).toHaveURL(/\/dao\/\d+\/settings$/);
   await page.getByRole('button', { name: 'Edit directory card', exact: true }).click();
   await retry.click();
@@ -257,6 +275,9 @@ test('uploads a public card image for a private DAO, retries the same request an
   await panel.getByRole('button', { name: 'Sign and update card', exact: true }).click();
   expect((await saved).status()).toBe(200);
   await expect(panel).not.toBeVisible();
+  await expect(
+    page.getByText('Private documents, public community identity.', { exact: true }),
+  ).toBeVisible();
   await page.getByRole('button', { name: 'Edit directory card', exact: true }).click();
   await expect(
     panel.getByRole('button', { name: 'Sign and update card', exact: true }),
@@ -277,7 +298,7 @@ test('recovers bounded hosted references, displays uncertain files and distingui
 }) => {
   await createWorkspace(page);
   await page.getByRole('button', { name: 'Add document', exact: true }).click();
-  await page.getByRole('link', { name: 'Manage resources →', exact: true }).click();
+  await (await resourceLink(page)).click();
   const panel = page
     .locator('aside')
     .filter({ has: page.getByRole('heading', { name: 'Hosted storage', exact: true }) });
@@ -324,7 +345,7 @@ test('requires exact recurring storage consent and shows a pending checkout with
   page,
 }) => {
   await createWorkspace(page);
-  const resources = page.getByRole('link', { name: 'Manage resources →', exact: true });
+  const resources = await resourceLink(page);
   const href = await resources.getAttribute('href');
   if (!href) throw new Error('Resource link missing');
   const dao = DaoRefSchema.parse(
@@ -392,7 +413,7 @@ test('previews eligibility, requires export consent and downloads a verified rec
   page,
 }) => {
   await createWorkspace(page);
-  const link = page.getByRole('link', { name: 'Manage resources →', exact: true });
+  const link = await resourceLink(page);
   const href = await link.getAttribute('href');
   if (!href) throw new Error('Resource link missing');
   const dao = DaoRefSchema.parse(
@@ -769,9 +790,7 @@ test('requires exact one-time card RAM consent and preserves the order across re
   page,
 }) => {
   await createWorkspace(page);
-  const href = await page
-    .getByRole('link', { name: 'Manage resources →', exact: true })
-    .getAttribute('href');
+  const href = await (await resourceLink(page)).getAttribute('href');
   if (!href) throw new Error('Resource link missing');
   const dao = DaoRefSchema.parse(
     JSON.parse(new URL(href, 'http://fixture').searchParams.get('dao') ?? 'null'),
@@ -854,7 +873,7 @@ test('requires exact one-time card RAM consent and preserves the order across re
     if (!saved) throw new Error('Missing saved order');
     return route.fulfill({ json: saved });
   });
-  await page.getByRole('link', { name: 'Manage resources →', exact: true }).click();
+  await (await resourceLink(page)).click();
   const panel = page.getByRole('region', { name: 'Buy RAM with a card', exact: true });
   await panel.getByLabel('Contract receiving RAM').selectOption(dao.contract);
   await panel.getByRole('button', { name: 'Get card quote', exact: true }).click();
@@ -885,7 +904,7 @@ test('curates whole storage objects with explicit capacity and preserves selecti
   page,
 }) => {
   await createWorkspace(page);
-  const link = page.getByRole('link', { name: 'Manage resources →', exact: true }),
+  const link = await resourceLink(page),
     href = await link.getAttribute('href');
   if (!href) throw new Error('Resource link missing');
   const dao = DaoRefSchema.parse(
@@ -964,13 +983,54 @@ test('previews document protection and signs restoration of verified original ar
 }) => {
   test.setTimeout(60000);
   await createWorkspace(page, true);
+  const ownedDaoId = new URL(page.url()).pathname.split('/')[2];
+  if (!ownedDaoId) throw Error('OWNED_DAO_REQUIRED');
+  const existing = ApiRoutes.content.response.parse(
+    await (await page.request.get(ApiRoutes.content.path.replace(':id', ownedDaoId))).json(),
+  );
+  const existingIds = new Set(existing.documents.map((row) => row.document_id));
+  let documentId = '';
   for (const version of [1, 2]) {
-    await page.getByLabel('Document ID', { exact: true }).fill('901');
-    await page.getByLabel('JSON content', { exact: true }).fill(JSON.stringify({ version }));
-    await page.getByRole('button', { name: 'Encrypt and publish JSON', exact: true }).click();
-    await expect(page.getByText(`Version ${version}`, { exact: true })).toBeVisible();
+    if (version === 1)
+      await page.getByRole('button', { name: 'Add document', exact: true }).click();
+    else
+      await page
+        .getByRole('article')
+        .filter({
+          has: page.getByRole('heading', {
+            name: `Private document #${documentId} · version 1`,
+            exact: true,
+          }),
+        })
+        .getByRole('button', { name: 'Add version', exact: true })
+        .click();
+    const dialog = page.getByRole('dialog');
+    const format = dialog.getByLabel('Document format', { exact: true });
+    if (!(await format.isVisible()))
+      await dialog.getByText('Other formats', { exact: true }).click();
+    await format.selectOption('json');
+    await dialog.getByLabel('JSON content', { exact: true }).fill(JSON.stringify({ version }));
+    await dialog.getByRole('button', { name: 'Encrypt and publish JSON', exact: true }).click();
+    await expect(dialog).not.toBeVisible();
+    const id = new URL(page.url()).pathname.split('/')[2];
+    if (!id) throw Error('OWNED_DAO_REQUIRED');
+    const latest = ApiRoutes.content.response.parse(
+      await (await page.request.get(ApiRoutes.content.path.replace(':id', id))).json(),
+    );
+    const record = latest.documents.find(
+      (row) =>
+        row.envelope_version === 1 && row.version === version && !existingIds.has(row.document_id),
+    );
+    if (!record) throw Error('OWNED_JSON_RECORD_REQUIRED');
+    documentId = record.document_id;
+    await expect(
+      page.getByRole('heading', {
+        name: `Private document #${documentId} · version ${version}`,
+        exact: true,
+      }),
+    ).toBeVisible();
   }
-  const link = page.getByRole('link', { name: 'Manage resources →', exact: true }),
+  const link = await resourceLink(page),
     href = await link.getAttribute('href');
   if (!href) throw new Error('Resource link missing');
   const dao = DaoRefSchema.parse(
@@ -979,7 +1039,7 @@ test('previews document protection and signs restoration of verified original ar
   const content = ApiRoutes.content.response.parse(
       await (await page.request.get(ApiRoutes.content.path.replace(':id', dao.daoId))).json(),
     ),
-    original = content.documents.find((d) => d.document_id === '901' && d.version === 1);
+    original = content.documents.find((d) => d.document_id === documentId && d.version === 1);
   if (!original) throw new Error('Original document missing');
   const source = archiveSourceSchema('document-versions'),
     domain = {
@@ -1023,7 +1083,7 @@ test('previews document protection and signs restoration of verified original ar
       families: [
         {
           kind: 'document-versions',
-          parentId: '901',
+          parentId: documentId,
           grossRamBytes: '1',
           chunks: [{ domain, root: tree.root, bytes: chunkBytes.length, rows }],
         },
@@ -1115,8 +1175,19 @@ test('previews document protection and signs restoration of verified original ar
   await restore.click();
   await expect(page.getByRole('button', { name: 'Restored on chain', exact: true })).toBeDisabled();
   await page.getByRole('link', { name: 'Back to DAO documents', exact: true }).click();
-  await page.getByText('Version history & integrity', { exact: true }).click();
-  await page.getByRole('button', { name: 'Decrypt document 901 version 1', exact: true }).click();
+  await page
+    .getByRole('article')
+    .filter({
+      has: page.getByRole('heading', {
+        name: `Private document #${documentId} · version 2`,
+        exact: true,
+      }),
+    })
+    .getByText('Version history & integrity', { exact: true })
+    .click();
+  await page
+    .getByRole('button', { name: `Decrypt document ${documentId} version 1`, exact: true })
+    .click();
   await expect(page.getByText('{\"version\":1}', { exact: true })).toBeVisible();
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -1126,7 +1197,7 @@ test('shows the original storage grace deadline and separates mail delivery from
   page,
 }) => {
   await createWorkspace(page);
-  const link = page.getByRole('link', { name: 'Manage resources →', exact: true }),
+  const link = await resourceLink(page),
     href = await link.getAttribute('href');
   if (!href) throw new Error('Resource link missing');
   const dao = DaoRefSchema.parse(

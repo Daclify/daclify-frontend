@@ -665,7 +665,11 @@ async function details(kind: 'history' | 'acceptances', id: string, more = false
                 class="secondary"
                 @click="downloadOpened(adopted.id)"
               >
-                Download reviewed file
+                {{
+                  documentFor(adopted)?.envelope_version === 1
+                    ? 'Download unprotected copy'
+                    : 'Download reviewed file'
+                }}
               </button></template
             >
             <p v-else-if="!documentFor(adopted)" class="field-help">
@@ -759,7 +763,11 @@ async function details(kind: 'history' | 'acceptances', id: string, more = false
                 class="secondary"
                 @click="downloadOpened(pending.id)"
               >
-                Download reviewed file
+                {{
+                  documentFor(pending)?.envelope_version === 1
+                    ? 'Download unprotected copy'
+                    : 'Download reviewed file'
+                }}
               </button></template
             >
             <template v-if="registered.approval && ballot(pending)">
