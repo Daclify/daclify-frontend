@@ -1,5 +1,5 @@
 import { QuickAccountPreparedSchema } from '@daclify/core-protocol';
-import { quickAccountDigest } from '@daclify/core-protocol/sdk';
+import { quickAccountDigest, quickAccountRoot } from '@daclify/core-protocol/sdk';
 import { openBallotGrant } from '../quick-ballots/keys';
 import { openAccountReceipt } from '../quick-ballots/receipts';
 import { assertOperatorDao } from '../api/networks';
@@ -576,10 +576,8 @@ export function signQuickApproval(value: unknown): string {
   const prepared = QuickAccountPreparedSchema.parse(value);
   if (!secrets) throw Error('VAULT_LOCKED');
   const key = PrivateKey.from(secrets.signingKey);
-  if (
-    prepared.context.anchor.kind !== 'key' ||
-    prepared.context.anchor.publicKey !== key.toPublic().toString()
-  )
+  const approval = quickAccountRoot(prepared.context);
+  if (approval.kind !== 'key' || approval.publicKey !== key.toPublic().toString())
     throw Error('ACCOUNT_KEY_MISMATCH');
   touch();
   return Serializer.encode({

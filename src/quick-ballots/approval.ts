@@ -12,6 +12,7 @@ import {
   quickAuthAbi,
   quickAccountAction,
   quickAccountDigest,
+  quickAccountRoot,
   validateQuickPreparation,
   decodeQuickAnchor,
 } from '@daclify/core-protocol/sdk';
@@ -130,7 +131,7 @@ export async function approveQuick(
   const method =
     'useDefault' in intent && intent.useDefault
       ? context.record && decodeQuickAnchor(context.record.approval)
-      : context.anchor;
+      : quickAccountRoot(context);
   if (!method) throw Error('QUICK_APPROVAL_REQUIRED');
   const digest = quickAccountDigest(prepared.action, prepared.request).toString();
   async function evmProof(credential: Extract<QuickAccountAnchor, { kind: 'evm' }>) {

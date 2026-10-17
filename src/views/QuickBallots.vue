@@ -13,7 +13,12 @@ import {
   type PrivateRecordPayload,
   daoPaymentKey,
 } from '@daclify/core-protocol';
-import { encodeQuickAnchor, decodeQuickAnchor, makeInstruction } from '@daclify/core-protocol/sdk';
+import {
+  encodeQuickAnchor,
+  decodeQuickAnchor,
+  makeInstruction,
+  quickAccountRoot,
+} from '@daclify/core-protocol/sdk';
 import {
   QuickBallotDefinitionSchema,
   quickQuestionReference,
@@ -870,7 +875,7 @@ async function vote(value: 0 | 1) {
     const useDefault = quickUsesDefault(status.context),
       credential = useDefault
         ? decodeQuickAnchor(status.context.record.approval)
-        : status.context.anchor;
+        : quickAccountRoot(status.context);
     if (!credential) throw Error('QUICK_APPROVAL_REQUIRED');
     const data = Bytes.from(
       encodeQuickBallot('respond', {
@@ -907,7 +912,7 @@ async function removeVote() {
     const useDefault = quickUsesDefault(status.context),
       credential = useDefault
         ? decodeQuickAnchor(status.context.record.approval)
-        : status.context.anchor;
+        : quickAccountRoot(status.context);
     if (!credential) throw Error('QUICK_APPROVAL_REQUIRED');
     const data = Bytes.from(
       encodeQuickBallot('remove', {

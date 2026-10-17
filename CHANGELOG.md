@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+Development 0.15.0-alpha.69 uses the current recovered Quick approval key while preserving the immutable voting anchor. Private DAO identity/branding publication checks the current epoch immediately before linking and directs interrupted edits to Reprepare and stale new images to replacement. Consume core50/modules62; no live rollout is claimed.
+
 ## 0.15.0-alpha.55 development
 
 - Add guarded local reading of exact encrypted descriptive records, with real original-key decryption and rejection of wrong parent/source/version/epoch, tampering and stale lock/account/network/member context.

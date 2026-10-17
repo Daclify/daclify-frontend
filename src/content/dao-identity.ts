@@ -83,6 +83,17 @@ export async function updatePrivateIdentity(
     privateIdentity: reference,
     privateAssets: unique,
   });
+  const current = await api.dao(dao.daoId);
+  check();
+  if (reference.keyEpoch !== current.keyEpoch) throw Error('PRIVATE_EPOCH_CHANGED');
+  if (
+    unique.some(
+      (ref) =>
+        ref.keyEpoch !== current.keyEpoch &&
+        !metadata.privateAssets?.some((old) => JSON.stringify(old) === JSON.stringify(ref)),
+    )
+  )
+    throw Error('PRIVATE_ASSET_EPOCH_CHANGED');
   await sendPrivateAction(dao, memberId, 'setmeta', {
     runtime: dao.contract,
     dao_id: dao.daoId,

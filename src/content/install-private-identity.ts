@@ -103,7 +103,10 @@ export async function installPrivateIdentity(order: CreationOrderView, reprepare
   if (metadata.privateIdentity) {
     if (JSON.stringify(metadata.privateIdentity) !== JSON.stringify(reference))
       throw Error('PRIVATE_METADATA_CHANGED');
-  } else
+  } else {
+    const current = await api.dao(dao.daoId);
+    check();
+    if (reference.keyEpoch !== current.keyEpoch) throw Error('PRIVATE_EPOCH_CHANGED');
     await sendPrivateAction(
       dao,
       '1',
@@ -115,6 +118,7 @@ export async function installPrivateIdentity(order: CreationOrderView, reprepare
       },
       true,
     );
+  }
   const published = await api.privateIdentity(dao);
   check();
   if (JSON.stringify(published.reference) !== JSON.stringify(reference))

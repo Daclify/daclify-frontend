@@ -110,14 +110,16 @@ async function openOriginalKeys() {
   await installCreatedVault(account, keys, context, () => {});
   return account;
 }
-async function fixture(value: unknown = payload) {
+async function fixture(value: unknown = payload, keyEpoch = '1') {
   const account = await openOriginalKeys();
-  const epoch = await preparePrivateEpoch(dao, '1', '1');
+  const epoch = await preparePrivateEpoch(dao, '1', keyEpoch);
   const records = DaoContentSchema.parse({
     dao,
     documents: [],
-    epochs: [{ epoch: '1', commitment: epoch.commitment, creator: '1' }],
-    keyGrants: [{ id: '1', recipient: '1', grantor: '1', epoch: '1', envelope: epoch.selfGrant }],
+    epochs: [{ epoch: keyEpoch, commitment: epoch.commitment, creator: '1' }],
+    keyGrants: [
+      { id: '1', recipient: '1', grantor: '1', epoch: keyEpoch, envelope: epoch.selfGrant },
+    ],
     members: [
       {
         id: '1',
@@ -132,11 +134,19 @@ async function fixture(value: unknown = payload) {
         active: true,
         admin: true,
         reviewer: false,
-        join_epoch: '1',
+        join_epoch: keyEpoch,
       },
     ],
   });
-  const metadata = await encryptDaoJson(dao, '1', '41', 2, '1', records, JSON.stringify(value));
+  const metadata = await encryptDaoJson(
+    dao,
+    '1',
+    '41',
+    2,
+    keyEpoch,
+    records,
+    JSON.stringify(value),
+  );
   const document = {
     id: '4',
     document_id: '41',
@@ -147,14 +157,14 @@ async function fixture(value: unknown = payload) {
     bytes: new TextEncoder().encode(metadata).length,
     commitment: await sha256Hex(new TextEncoder().encode(metadata)),
     envelope_version: 1,
-    key_epoch: '1',
+    key_epoch: keyEpoch,
   };
   records.documents.push(document);
   return {
     account,
     records,
     document,
-    reference: { documentId: '41', version: 2, commitment: document.commitment, keyEpoch: '1' },
+    reference: { documentId: '41', version: 2, commitment: document.commitment, keyEpoch },
   };
 }
 it('reads a private Quick question with DAO grants as a non-executive and refuses missing grants or copied contexts', async () => {
@@ -291,27 +301,28 @@ it('reconciles an already published private record without another signature and
   ).rejects.toThrow('DOCUMENT_VERSION');
   expect(send).not.toHaveBeenCalled();
 });
-it('finishes linking a published identity after a lost response without publishing it again', async () => {
-  const f = await fixture(),
-    previous = { ...f.reference, version: 1 };
-  const snapshot = PrivateRecordRoutes.identity.response.parse({
-    dao,
-    reference: previous,
-    metadata: {
-      schemaVersion: 4,
-      title: 'Private DAO',
-      description: '',
-      purpose: 'custom',
-      setup: null,
-      privateIdentity: previous,
-    },
-    metadataCommitment: 'ab'.repeat(32),
-  });
-  vi.spyOn(api, 'privateIdentity')
-    .mockResolvedValueOnce(snapshot)
-    .mockResolvedValueOnce({ ...snapshot, reference: f.reference });
-  vi.spyOn(api, 'dao').mockResolvedValue(
-    DaoSummarySchema.parse({
+it.each([false, true])(
+  'resumes a published identity and refuses an epoch change before linking (rotation=%s)',
+  async (rotated) => {
+    const f = await fixture(),
+      previous = { ...f.reference, version: 1 };
+    const snapshot = PrivateRecordRoutes.identity.response.parse({
+      dao,
+      reference: previous,
+      metadata: {
+        schemaVersion: 4,
+        title: 'Private DAO',
+        description: '',
+        purpose: 'custom',
+        setup: null,
+        privateIdentity: previous,
+      },
+      metadataCommitment: 'ab'.repeat(32),
+    });
+    vi.spyOn(api, 'privateIdentity')
+      .mockResolvedValueOnce(snapshot)
+      .mockResolvedValueOnce({ ...snapshot, reference: f.reference });
+    const summary = DaoSummarySchema.parse({
       reference: dao,
       title: 'Private DAO',
       description: '',
@@ -323,30 +334,110 @@ it('finishes linking a published identity after a lost response without publishi
       reserved: '0',
       claims: '0',
       keyEpoch: '1',
-    }),
-  );
-  vi.spyOn(api, 'content').mockResolvedValue(f.records);
-  vi.spyOn(api, 'memberships').mockResolvedValue([
-    UserMembershipSchema.parse({
+    });
+    vi.spyOn(api, 'dao')
+      .mockResolvedValueOnce(summary)
+      .mockResolvedValue({ ...summary, keyEpoch: rotated ? '2' : '1' });
+    vi.spyOn(api, 'content').mockResolvedValue(f.records);
+    vi.spyOn(api, 'memberships').mockResolvedValue([
+      UserMembershipSchema.parse({
+        dao,
+        memberId: '1',
+        nonce: '0',
+        active: true,
+        admin: true,
+        reviewer: false,
+        credits: '0',
+        claim: '0',
+        stake: '0',
+        nativeAccount: '',
+        custody: 'user-controlled',
+        signingKey: f.account.signingKey,
+      }),
+    ]);
+    const send = vi.spyOn(api, 'relay').mockResolvedValue({ transactionId: 'ab'.repeat(32) });
+    if (rotated) {
+      await expect(updatePrivateIdentity(dao, '1', previous, payload.body)).rejects.toThrow(
+        'PRIVATE_EPOCH_CHANGED',
+      );
+      expect(send).not.toHaveBeenCalled();
+      return;
+    }
+    expect(await updatePrivateIdentity(dao, '1', previous, payload.body)).toEqual(f.reference);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send.mock.calls[0]?.[0].action).toBe('setmeta');
+  },
+);
+it.each([false, true])(
+  'requires replacement of a stale new image but preserves a retained image (retained=%s)',
+  async (retained) => {
+    const image = { documentId: '99', version: 1, commitment: 'cd'.repeat(32), keyEpoch: '1' },
+      value = { ...payload, body: { ...payload.body, branding: { logo: image } } },
+      f = await fixture(value, '2'),
+      previous = { ...f.reference, version: 1 };
+    const snapshot = PrivateRecordRoutes.identity.response.parse({
       dao,
-      memberId: '1',
-      nonce: '0',
-      active: true,
-      admin: true,
-      reviewer: false,
-      credits: '0',
-      claim: '0',
-      stake: '0',
-      nativeAccount: '',
-      custody: 'user-controlled',
-      signingKey: f.account.signingKey,
-    }),
-  ]);
-  const send = vi.spyOn(api, 'relay').mockResolvedValue({ transactionId: 'ab'.repeat(32) });
-  expect(await updatePrivateIdentity(dao, '1', previous, payload.body)).toEqual(f.reference);
-  expect(send).toHaveBeenCalledTimes(1);
-  expect(send.mock.calls[0]?.[0].action).toBe('setmeta');
-});
+      reference: previous,
+      metadata: {
+        schemaVersion: 4,
+        title: 'Private DAO',
+        description: '',
+        purpose: 'custom',
+        setup: null,
+        privateIdentity: previous,
+        privateAssets: retained ? [image] : [],
+      },
+      metadataCommitment: 'ab'.repeat(32),
+    });
+    vi.spyOn(api, 'privateIdentity')
+      .mockResolvedValueOnce(snapshot)
+      .mockResolvedValueOnce({ ...snapshot, reference: f.reference });
+    vi.spyOn(api, 'dao').mockResolvedValue(
+      DaoSummarySchema.parse({
+        reference: dao,
+        title: 'Private DAO',
+        description: '',
+        privacy: 'encrypted-user-controlled',
+        owner: 'alice',
+        token: { chainId: dao.chainId, contract: 'eosio.token', symbol: 'TLOS', precision: 4 },
+        members: 1,
+        available: '0',
+        reserved: '0',
+        claims: '0',
+        keyEpoch: '2',
+      }),
+    );
+    vi.spyOn(api, 'content').mockResolvedValue(f.records);
+    vi.spyOn(api, 'memberships').mockResolvedValue([
+      UserMembershipSchema.parse({
+        dao,
+        memberId: '1',
+        nonce: '0',
+        active: true,
+        admin: true,
+        reviewer: false,
+        credits: '0',
+        claim: '0',
+        stake: '0',
+        nativeAccount: '',
+        custody: 'user-controlled',
+        signingKey: f.account.signingKey,
+      }),
+    ]);
+    const send = vi.spyOn(api, 'relay').mockResolvedValue({ transactionId: 'ab'.repeat(32) });
+    if (!retained) {
+      await expect(updatePrivateIdentity(dao, '1', previous, value.body)).rejects.toThrow(
+        'PRIVATE_ASSET_EPOCH_CHANGED',
+      );
+      expect(send).not.toHaveBeenCalled();
+      return;
+    }
+    await expect(updatePrivateIdentity(dao, '1', previous, value.body)).resolves.toEqual(
+      f.reference,
+    );
+    expect(send).toHaveBeenCalledOnce();
+  },
+);
 it('resumes the same encrypted file request when interruption happens before the server reserves it', async () => {
   const f = await fixture(),
     state = useWorkspace(),

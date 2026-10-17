@@ -38,6 +38,7 @@ const popup = ref(false),
   description = ref(''),
   summary = ref('');
 const resumeMessage = ref('');
+const uploadDao = ref<DaoSummary>();
 const uploading = ref(false),
   pending = ref(false),
   reviewing = ref(false);
@@ -74,6 +75,7 @@ watch(
     error.value = '';
     resumeMessage.value = '';
     content.value = undefined;
+    uploadDao.value = undefined;
     title.value = props.body?.title ?? '';
     description.value = props.body?.description ?? '';
     summary.value = props.body?.summary ?? '';
@@ -94,8 +96,14 @@ async function open() {
   popup.value = true;
   error.value = '';
   try {
-    const rows = await api.content(props.dao.reference.daoId);
-    if (started === generation) content.value = rows;
+    const [rows, current] = await Promise.all([
+      api.content(props.dao.reference.daoId),
+      api.dao(props.dao.reference.daoId),
+    ]);
+    if (started === generation) {
+      content.value = rows;
+      uploadDao.value = current;
+    }
   } catch (cause) {
     if (started === generation) error.value = friendlyError(cause);
   }
@@ -161,11 +169,19 @@ async function resume(reprepare = false) {
       if (JSON.stringify(result.payload) !== JSON.stringify(payload))
         throw Error('PRIVATE_RECORD_CONTEXT');
     }
+    const [current, contentRows] = await Promise.all([
+      api.dao(props.dao.reference.daoId),
+      api.content(props.dao.reference.daoId),
+    ]);
+    if (started !== generation) return;
+    uploadDao.value = current;
+    content.value = contentRows;
     title.value = payload.body.title;
     description.value = payload.body.description;
     summary.value = payload.body.summary ?? '';
     branding.value = { ...payload.body.branding };
-    resumeMessage.value = 'Unfinished edit restored for review. Save to finish its publication.';
+    resumeMessage.value =
+      'Unfinished edit restored for review. Replace any newly added image from an earlier encryption epoch under Private logo and cover, then save.';
   } catch (cause) {
     if (started === generation) error.value = friendlyError(cause);
   } finally {
@@ -345,7 +361,7 @@ async function save() {
         <button type="button" class="secondary" @click="delete branding.cover">Remove</button>
       </p>
       <FilePanel
-        :dao="dao"
+        :dao="uploadDao ?? dao"
         :member="member"
         :content="content"
         :selected-document-id="assetId"

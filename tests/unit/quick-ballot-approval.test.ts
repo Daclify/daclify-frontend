@@ -1,7 +1,12 @@
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { PrivateKey, Serializer, Signature } from '@wharfkit/antelope';
-import { AccountSchema, NetworkSchema, QuickAccountPreparedSchema } from '@daclify/core-protocol';
+import {
+  AccountSchema,
+  NetworkSchema,
+  QuickAccountPreparedSchema,
+  RecoveryContextSchema,
+} from '@daclify/core-protocol';
 import {
   QuickAuthCodeHash,
   quickAccountRequest,
@@ -13,6 +18,7 @@ import { useWorkspace } from '../../src/state/workspace';
 import { api } from '../../src/api/client';
 import * as vault from '../../src/auth/session';
 import { approveQuick, resumeQuickApproval, pendingQuick } from '../../src/quick-ballots/approval';
+import { generateVaultSecrets } from '../../src/auth/vault';
 const key = PrivateKey.generate('K1'),
   anchor = { kind: 'key', publicKey: key.toPublic().toString() };
 const context = {
@@ -69,9 +75,62 @@ beforeEach(() => {
   pendingQuick.value = undefined;
 });
 afterEach(() => {
+  vault.lockVault();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   setActivePinia(undefined);
+});
+it('signs with the recovered approval key while retaining the original voting anchor', async () => {
+  vi.stubGlobal('window', { location: new URL('http://localhost:5178/account') });
+  const keys = await generateVaultSecrets(),
+    signing = PrivateKey.from(keys.signingKey),
+    encryption = keys.encryptionPrivateKey;
+  const state = useWorkspace();
+  const account = AccountSchema.parse({
+    ...state.account,
+    signingKey: signing.toPublic().toString(),
+    encryptionKey: { kty: encryption.kty, crv: encryption.crv, x: encryption.x, y: encryption.y },
+  });
+  state.account = account;
+  await vault.installCreatedVault(
+    account,
+    keys,
+    RecoveryContextSchema.parse({
+      version: 1,
+      id: crypto.randomUUID(),
+      accountId: account.id,
+      origin: window.location.origin,
+      credentialKey: 'native:fixture',
+      mode: 'wallet-protected',
+      signingPublicKey: account.signingKey,
+      encryptionPublicKey: account.encryptionKey,
+      salt: btoa('a'.repeat(32)),
+    }),
+    () => {},
+  );
+  const recovered = { ...context, approvalKey: account.signingKey };
+  const expires = Math.floor(Date.now() / 1000) + 120;
+  const operation = quickAccountRequest(recovered, { operation: 'register' }, expires);
+  const prepared = {
+    ...operation,
+    context: recovered,
+    id: crypto.randomUUID(),
+    expiresAt: new Date(expires * 1000).toISOString(),
+  };
+  const signature = vault.signQuickApproval(prepared);
+  expect(
+    Serializer.decode({ type: Signature, data: signature }).verifyDigest(
+      quickAccountDigest(operation.action, operation.request),
+      signing.toPublic(),
+    ),
+  ).toBe(true);
+  expect(
+    Serializer.decode({ type: Signature, data: signature }).verifyDigest(
+      quickAccountDigest(operation.action, operation.request),
+      key.toPublic(),
+    ),
+  ).toBe(false);
+  expect(prepared.context.anchor).toEqual(anchor);
 });
 function fixture() {
   const expires = Math.floor(Date.now() / 1000) + 120,
