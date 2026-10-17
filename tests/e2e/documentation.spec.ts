@@ -77,7 +77,7 @@ test('groups guides, supports keyboard folding and keeps the current guide open'
   });
   const operators = navigation.locator('details').filter({ hasText: 'Operators & reference' });
   await expect(navigation).toHaveCount(0);
-  await expect(page.locator('.docs-content').getByRole('heading', { level: 2 })).toHaveCount(6);
+  await expect(page.locator('.docs-content').getByRole('heading', { level: 2 })).toHaveCount(7);
   await page.getByLabel('Search guides').fill('execctx');
   await expect(
     page.locator('.docs-content').getByRole('link', { name: /^Smart contracts and permissions/ }),

@@ -624,7 +624,7 @@ test('Users replaces Account; your profile is first, and only your detail has ed
   await page.getByRole('button', { name: 'Edit profile & account' }).click();
   await expect(page.getByRole('heading', { name: 'Private profile', exact: true })).toBeVisible();
   await page.getByRole('tab', { name: 'Profile', exact: true }).focus();
-  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('ArrowRight');
   await expect(page.getByRole('tab', { name: 'Sign-in methods', exact: true })).toBeFocused();
   await page.locator('summary').filter({ hasText: 'Telos EVM' }).click();
   await expect(
@@ -720,4 +720,60 @@ test('unavailable IPFS avatars keep the readable profile fallback', async ({ pag
   await expect(page.getByRole('heading', { name: 'Alice Adams', exact: true })).toBeVisible();
   await expect(page.locator('.profile-identity .person-avatar')).toHaveText('AL');
   await expect(page.locator('.profile-hero img')).toHaveCount(0);
+});
+
+test('Users continues beyond a bounded batch and retries without losing earlier users', async ({
+  page,
+}) => {
+  await page.route('**/v1/sign-in/session', (route) => route.fulfill({ status: 204 }));
+  const reads: number[] = [];
+  let failed = false;
+  await page.route(
+    (url) => url.pathname === PeopleRoutes.members.path,
+    (route) => {
+      const id = Number(new URL(route.request().url()).searchParams.get('daoId') ?? 1);
+      reads.push(id);
+      if (id === 21 && !failed) {
+        failed = true;
+        return route.fulfill({
+          status: 503,
+          json: { code: 'SERVICE_UNAVAILABLE', message: 'Unavailable' },
+        });
+      }
+      return route.fulfill({
+        json: PeopleRoutes.members.response.parse({
+          members: [
+            {
+              dao: { ...reference, daoId: String(id) },
+              id: '1',
+              native_account: '',
+              active: true,
+              profile: null,
+              identityKey: id.toString(16).padStart(64, '0'),
+              lastActive: null,
+            },
+          ],
+          next: id < 21 ? { daoId: String(id + 1), after: '0' } : null,
+        }),
+      });
+    },
+  );
+  await page.goto('/users');
+  await expect(page.locator('.person-card')).toHaveCount(20);
+  const more = page.getByRole('button', { name: 'Load more users', exact: true });
+  await expect(more).toBeVisible();
+  expect(reads).toEqual(Array.from({ length: 20 }, (_, index) => index + 1));
+  // Two clicks before rendering catches up must still start only one request.
+  await more.evaluate((element) => {
+    element.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    element.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  });
+  await expect(page.getByRole('alert')).toContainText('Could not load more users');
+  await expect(page.locator('.person-card')).toHaveCount(20);
+  expect(reads).toHaveLength(21);
+  await page.getByRole('button', { name: 'Retry', exact: true }).click();
+  await expect(page.locator('.person-card')).toHaveCount(21);
+  await expect(more).toHaveCount(0);
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  expect(reads).toEqual([...Array.from({ length: 21 }, (_, index) => index + 1), 21]);
 });

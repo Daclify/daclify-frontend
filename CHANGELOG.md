@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+Development 0.15.0-alpha.70 corrects manual ballot, profile, key-lock and mini-app availability guidance, replaces sibling-dependent documentation links and restores the seven-group handbook browser check. Consume unchanged core50 and the new modules63 documentation archive; no live rollout is claimed.
+
+## 0.15.0-alpha.69 development
+
 Development 0.15.0-alpha.69 uses the current recovered Quick approval key while preserving the immutable voting anchor. Private DAO identity/branding publication checks the current epoch immediately before linking and directs interrupted edits to Reprepare and stale new images to replacement. Consume core50/modules62; no live rollout is claimed.
 
 ## 0.15.0-alpha.55 development

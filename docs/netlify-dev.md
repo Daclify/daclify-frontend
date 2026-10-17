@@ -79,7 +79,7 @@ FRONTEND_ORIGIN=https://testnet.app.daclify.com
 API_PUBLIC_ORIGIN=https://testnet.api.daclify.com
 ```
 
-Restart that service after configuration changes. Register actual provider callbacks against the hosted API, including Telegram's `https://testnet.api.daclify.com/v1/sign-in/telegram/oidc/callback`. Google uses the actual frontend origin. See core's [paired-login runbook](../../daclify-backend-core/docs/operations/paired-login.md) and [payment runbook](../../daclify-backend-core/docs/operations/connected-payments.md); provider credentials belong to the API. Additional developer origins need the explicit API allowlist in core's [same-site local development instructions](../../daclify-backend-core/docs/development.md#local-frontend-with-a-hosted-testnet-api).
+Restart that service after configuration changes. Register actual provider callbacks against the hosted API, including Telegram's `https://testnet.api.daclify.com/v1/sign-in/telegram/oidc/callback`. Google uses the actual frontend origin. See core's [paired-login runbook](https://github.com/Daclify/daclify-backend-core/blob/dev/docs/operations/paired-login.md) and [payment runbook](https://github.com/Daclify/daclify-backend-core/blob/dev/docs/operations/connected-payments.md); provider credentials belong to the API. Additional developer origins need the explicit API allowlist in core's [same-site local development instructions](https://github.com/Daclify/daclify-backend-core/blob/dev/docs/development.md#local-frontend-with-a-hosted-testnet-api).
 
 The frontend build does not deploy or verify the API. Publishing static files alone cannot make login, payments or blockchain actions work; the hosted API and provider callbacks must be ready separately.
 

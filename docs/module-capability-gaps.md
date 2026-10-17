@@ -1,6 +1,6 @@
 # Module capabilities and remaining limits
 
-Reviewed against the current source on 16 October 2026. Package versions are owned by the repository manifests; [current status](../../daclify-backend-core/docs/current-status.md) records the live cohort. This guide describes implementation, not blanket production/provider qualification. Historical plans remain useful records but are not a current backlog.
+Reviewed against the current source on 16 October 2026. Package versions are owned by the repository manifests; [current status](https://github.com/Daclify/daclify-backend-core/blob/dev/docs/current-status.md) records the live cohort. This guide describes implementation, not blanket production/provider qualification. Historical plans remain useful records but are not a current backlog.
 
 | Module or flow | Current capability | Remaining limit |
 | --- | --- | --- |
@@ -20,7 +20,7 @@ Reviewed against the current source on 16 October 2026. Package versions are own
 
 ## Remaining product decisions
 
-Neutral two-option, ranked or abstention voting in ordinary Decide needs an explicit subtype and preserved funding semantics. Payroll terms/renewal would need contract-bound policy before adding UI. Mini-app database hosting remains future work; builders must follow the existing [database and account integration guide](../../daclify-backend-core/docs/connected-community-apps.md).
+Neutral two-option, ranked or abstention voting in ordinary Decide needs an explicit subtype and preserved funding semantics. Payroll terms/renewal would need contract-bound policy before adding UI. Mini-app database hosting remains future work; builders must follow the existing [database and account integration guide](https://github.com/Daclify/daclify-backend-core/blob/dev/docs/connected-community-apps.md).
 
 Completed decision-integrity, module document-reader, service-authoring and Works dispute plans must not be treated as outstanding implementation tasks. Reload older cached interfaces before voting; current clients reject unsupported or inconsistent definitions rather than guessing labels.
 
@@ -29,4 +29,4 @@ Completed decision-integrity, module document-reader, service-authoring and Work
 - [Ballots and Works](../src/components/ModulesPanel.vue), [elections](../src/components/ElectionPanel.vue), [document reader](../src/components/DocumentReview.vue).
 - [Grants](../src/components/GrantsPanel.vue), [admission](../src/components/AdmissionPanel.vue), [agreements](../src/components/ContributionAgreementPanel.vue), [service catalogue](../src/components/ServiceCatalogue.vue).
 - [Connected apps](../src/views/ConnectedApps.vue), [external Telos governance](../src/views/TelosGovernance.vue), [archive](../src/components/ArchivePanel.vue).
-- [Producer module guides](../../daclify-backend-modules/docs/generated/reference.md), [ballot guide](ballots.md), [Quick ballots](../../daclify-backend-core/docs/quick-ballots.md).
+- [Producer module guides](https://github.com/Daclify/daclify-backend-modules/blob/dev/docs/generated/reference.md), [ballot guide](ballots.md), [Quick ballots](https://github.com/Daclify/daclify-backend-core/blob/dev/docs/quick-ballots.md).

@@ -122,7 +122,7 @@ const cards = computed(() => {
   <p v-if="busy || next" class="field-help">
     Community links and latest activity cover memberships loaded so far.
   </p>
-  <button v-else-if="next" class="secondary" @click="load()">Load more users</button>
+  <button v-if="next && !busy" class="secondary" @click="load()">Load more users</button>
   <details class="users-privacy">
     <summary>About this directory</summary>
     <p class="field-help">
