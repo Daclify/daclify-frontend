@@ -199,7 +199,9 @@ test('a contract-name diagram switches a single account detail panel containing 
 }) => {
   await openContracts(page);
   const diagram = page.getByRole('region', { name: 'Contract connections', exact: true });
-  await expect(diagram.getByRole('button')).toHaveText(['core.we', 'works']);
+  await expect(diagram.locator('button[data-account]')).toHaveCount(2);
+  await expect(diagram.getByRole('button', { name: 'core.we', exact: true })).toBeVisible();
+  await expect(diagram.getByRole('button', { name: 'works', exact: true })).toBeVisible();
   const details = page.getByRole('region', { name: 'Contract Account Details', exact: true });
   await expect(details.getByRole('heading', { name: 'core.we', exact: true })).toBeVisible();
   await expect(
@@ -225,6 +227,114 @@ test('a contract-name diagram switches a single account detail panel containing 
     'true',
   );
   await expect(details.getByRole('button', { name: 'core.we@active', exact: true })).toHaveCount(0);
+});
+
+test('focus shows direct connections and expansion keeps the selected account details', async ({
+  page,
+}) => {
+  const chain = status.chain;
+  if (!chain) throw new Error('Fixture requires chain readings');
+  const core = chain.contracts[0];
+  if (!core) throw new Error('Fixture requires runtime contract');
+  await page.route('**/v1/platform/status', (route) =>
+    route.fulfill({
+      json: {
+        ...status,
+        chain: {
+          ...chain,
+          network: { ...network, hub: 'hub' },
+          contracts: [
+            ...chain.contracts,
+            ...['hub', 'unrelated'].map((account) => ({ ...core, account, permissions: [] })),
+          ],
+        },
+      },
+    }),
+  );
+  await openContracts(page);
+  const diagram = page.getByRole('region', { name: 'Contract connections', exact: true });
+  const node = (name: string) =>
+    diagram.getByRole('button', { name, exact: true, includeHidden: true });
+  const details = page.getByRole('region', { name: 'Contract Account Details', exact: true });
+  await node('works').click();
+  await expect(node('core.we')).toHaveAttribute('data-highlighted', 'true');
+  await expect(node('hub')).toHaveAttribute('data-highlighted', 'false');
+  await expect(node('unrelated')).toHaveAttribute('data-highlighted', 'false');
+  await expect(diagram.locator('[data-connection-kind="configuration"]')).toHaveAttribute(
+    'data-highlighted',
+    'false',
+  );
+  await diagram
+    .getByRole('button', { name: 'Expand connections for core.we', exact: true })
+    .click();
+  await expect(node('hub')).toHaveAttribute('data-highlighted', 'true');
+  await expect(node('unrelated')).toHaveAttribute('data-highlighted', 'false');
+  await expect(diagram.locator('[data-connection-kind="configuration"]')).toHaveAttribute(
+    'data-highlighted',
+    'true',
+  );
+  await expect(details.getByRole('heading', { name: 'works', exact: true })).toBeVisible();
+  await diagram
+    .getByRole('button', { name: 'Collapse connections for core.we', exact: true })
+    .click();
+  await expect(node('hub')).toHaveAttribute('data-highlighted', 'false');
+  await expect(details.getByRole('heading', { name: 'works', exact: true })).toBeVisible();
+  await diagram.getByRole('button', { name: 'Show all', exact: true }).click();
+  await expect(node('unrelated')).toHaveAttribute('data-highlighted', 'true');
+  await expect(details.getByRole('heading', { name: 'works', exact: true })).toBeVisible();
+  await node('works').click();
+  await expect(node('unrelated')).toHaveAttribute('data-highlighted', 'false');
+  await diagram.getByRole('button', { name: 'Show all', exact: true }).click();
+  await node('hub').click();
+  await expect(details.getByRole('heading', { name: 'hub', exact: true })).toBeVisible();
+  await expect(node('works')).toHaveAttribute('data-highlighted', 'false');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(node('works')).not.toBeVisible();
+  await expect(node('core.we')).toBeVisible();
+  await diagram.getByRole('button', { name: 'Show all', exact: true }).click();
+  await expect(node('works')).toBeVisible();
+});
+
+test('graph zoom, pan, fit and fullscreen do not change the selected account', async ({ page }) => {
+  await openContracts(page);
+  const diagram = page.getByRole('region', { name: 'Contract connections', exact: true });
+  const viewport = diagram.getByRole('group', { name: 'Pan and zoom contract graph', exact: true });
+  const zoom = diagram.getByLabel('Zoom level', { exact: true });
+  const fit = diagram.getByRole('button', { name: 'Fit graph', exact: true });
+  await fit.click();
+  const start = await zoom.textContent();
+  await diagram.getByRole('button', { name: 'Zoom in', exact: true }).click();
+  expect(await zoom.textContent()).not.toBe(start);
+  await diagram.getByRole('button', { name: 'Zoom out', exact: true }).click();
+  await fit.click();
+  await expect(zoom).toHaveText(start ?? '');
+  const world = diagram.locator('.diagram-world');
+  const beforePan = await world.getAttribute('style');
+  await viewport.focus();
+  await page.keyboard.press('ArrowRight');
+  expect(await world.getAttribute('style')).not.toBe(beforePan);
+  await page.keyboard.press('Home');
+  await expect(world).toHaveAttribute('style', beforePan ?? '');
+  const bounds = await viewport.boundingBox();
+  if (!bounds) throw new Error('Graph viewport is missing');
+  await page.mouse.move(bounds.x + 15, bounds.y + 15);
+  await page.mouse.down();
+  await page.mouse.move(bounds.x + 65, bounds.y + 45);
+  await page.mouse.up();
+  expect(await world.getAttribute('style')).not.toBe(beforePan);
+  await page.mouse.wheel(0, -100);
+  await expect(zoom).not.toHaveText(start ?? '');
+  await diagram.getByRole('button', { name: 'Enter fullscreen', exact: true }).click();
+  await expect
+    .poll(() => page.evaluate(() => document.fullscreenElement?.getAttribute('aria-label')))
+    .toBe('Contract connections');
+  await diagram.getByRole('button', { name: 'Exit fullscreen', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement === null)).toBe(true);
+  await expect(
+    page
+      .getByRole('region', { name: 'Contract Account Details', exact: true })
+      .getByRole('heading', { name: 'core.we', exact: true }),
+  ).toBeVisible();
 });
 
 test('configured accounts connect to the runtime with a distinct role description and remain selectable', async ({
@@ -279,6 +389,7 @@ test('configured accounts connect to the runtime with a distinct role descriptio
     ['fees', 'Fee treasury'],
     ['names', 'Name service'],
   ] as const) {
+    await diagram.getByRole('button', { name: 'Show all', exact: true }).click();
     const button = diagram.getByRole('button', { name, exact: true });
     await expect(button).toHaveAttribute('aria-description', 'core.we → ' + name + ' · ' + role);
     await button.focus();

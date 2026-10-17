@@ -222,6 +222,9 @@ onUnmounted(cancelResources);
         :runtime="chain?.network.runtime ?? ''"
         :selected="selected?.account ?? ''"
         :related="relatedAccounts"
+        :roles="
+          Object.fromEntries(contracts.map((c) => [c.account, accountRole(c, chain ?? undefined)]))
+        "
         @select="chooseContract"
       />
       <section
